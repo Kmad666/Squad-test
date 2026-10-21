@@ -8,6 +8,10 @@ const DummyScript = preload("res://scripts/dummy.gd")
 const CameraRigScript = preload("res://scripts/camera_rig.gd")
 const ReticleScript = preload("res://scripts/reticle.gd")
 const ReticlePanelScript = preload("res://scripts/reticle_panel.gd")
+const AtmosphereScript = preload("res://scripts/atmosphere.gd")
+const PostFxScript = preload("res://scripts/postfx.gd")
+const UI_FONT = preload("res://fonts/ShareTechMono-Regular.ttf")
+const NEON := Color(0.45, 1.0, 0.30)
 
 const NAV_HALF := 50.0          # playable half-size of the field (metres)
 const SQUAD_SIZE := 6
@@ -51,6 +55,15 @@ var hud_label: Label
 var reticle: Control
 var reticle_panel: PanelContainer
 var hits := 0
+var fire_heat := 0.0          # 0..1, how hard the squad is firing right now
+var flash := 0.0              # 0..1, muzzle-flash wash on screen
+var ui_root: Control
+var atmosphere: Node3D
+var postfx: CanvasLayer
+var _muzzle_light: OmniLight3D
+var _impacts: Array = []
+var _impact_idx := 0
+var _flicker_t := 0.0
 var kills := 0
 
 var _tracers: Array = []
@@ -60,7 +73,9 @@ var _tracer_idx := 0
 
 func _ready() -> void:
 	_setup_input()
-	_build_environment()
+	atmosphere = AtmosphereScript.new()
+	atmosphere.name = "Atmosphere"
+	add_child(atmosphere)
 	nav_region = NavigationRegion3D.new()
 	nav_region.name = "Nav"
 	add_child(nav_region)
@@ -70,6 +85,12 @@ func _ready() -> void:
 	_build_cover_points()
 	_build_dummies()
 	_build_tracers()
+	_build_impacts()
+	_muzzle_light = OmniLight3D.new()
+	_muzzle_light.light_color = Color(1.0, 0.68, 0.32)
+	_muzzle_light.omni_range = 9.0
+	_muzzle_light.visible = false
+	add_child(_muzzle_light)
 
 	squad = SquadScript.new()
 	squad.name = "Squad"
@@ -79,7 +100,12 @@ func _ready() -> void:
 	cam_rig = CameraRigScript.new()
 	cam_rig.name = "CameraRig"
 	cam_rig.target = squad
+	cam_rig.main = self
 	add_child(cam_rig)
+	atmosphere.cam_rig = cam_rig
+
+	postfx = PostFxScript.new()
+	add_child(postfx)
 
 	_build_hud()
 
@@ -106,32 +132,6 @@ func _bind(action: String, keys: Array) -> void:
 
 # ---------------------------------------------------------------- world
 
-func _build_environment() -> void:
-	var sky_mat := ProceduralSkyMaterial.new()
-	sky_mat.sky_top_color = Color(0.38, 0.58, 0.85)
-	sky_mat.sky_horizon_color = Color(0.72, 0.80, 0.88)
-	sky_mat.ground_horizon_color = Color(0.55, 0.62, 0.55)
-	sky_mat.ground_bottom_color = Color(0.25, 0.32, 0.22)
-	var sky := Sky.new()
-	sky.sky_material = sky_mat
-	var env := Environment.new()
-	env.background_mode = Environment.BG_SKY
-	env.sky = sky
-	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
-	env.ambient_light_energy = 0.35
-	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
-	var we := WorldEnvironment.new()
-	we.environment = env
-	add_child(we)
-
-	var sun := DirectionalLight3D.new()
-	sun.rotation = Vector3(deg_to_rad(-55), deg_to_rad(35), 0)
-	sun.light_energy = 0.75
-	sun.shadow_enabled = true
-	sun.directional_shadow_max_distance = 45.0
-	add_child(sun)
-
-
 func _build_ground() -> void:
 	var body := StaticBody3D.new()
 	body.name = "Ground"
@@ -146,18 +146,43 @@ func _build_ground() -> void:
 	var shader := Shader.new()
 	shader.code = """
 shader_type spatial;
-render_mode specular_disabled;
-uniform vec3 base_col : source_color = vec3(0.24, 0.40, 0.17);
-uniform vec3 line_col : source_color = vec3(0.20, 0.33, 0.14);
+// Rain-soaked field: dark wet grass, glossy puddles with rain ripples.
+uniform vec3 grass_col : source_color = vec3(0.10, 0.17, 0.08);
+uniform vec3 line_col : source_color = vec3(0.07, 0.12, 0.06);
 varying vec3 wpos;
+
+float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float noise(vec2 p) {
+	vec2 i = floor(p); vec2 f = fract(p);
+	vec2 u = f * f * (3.0 - 2.0 * f);
+	return mix(mix(hash(i), hash(i + vec2(1, 0)), u.x), mix(hash(i + vec2(0, 1)), hash(i + vec2(1, 1)), u.x), u.y);
+}
+
 void vertex() { wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz; }
+
 void fragment() {
 	vec2 g = abs(fract(wpos.xz / 4.0 - 0.5) - 0.5) * 4.0;
-	float l = 1.0 - smoothstep(0.0, 0.07, min(g.x, g.y));
+	float l = 1.0 - smoothstep(0.0, 0.06, min(g.x, g.y));
+	float puddle = smoothstep(0.52, 0.62, noise(wpos.xz * 0.22) * 0.7 + noise(wpos.xz * 0.9) * 0.3);
+	vec3 c = mix(grass_col, line_col, l * 0.6);
+	c = mix(c, c * 0.35, puddle);
 	bool outside = abs(wpos.x) > 50.0 || abs(wpos.z) > 50.0;
-	vec3 c = mix(base_col, line_col, l);
-	ALBEDO = outside ? c * 0.8 : c;
-	ROUGHNESS = 1.0;
+	ALBEDO = outside ? c * 0.7 : c;
+
+	// Rain ripples: expanding rings in a jittered grid of cells.
+	vec2 cell = floor(wpos.xz / 0.7);
+	vec2 local = fract(wpos.xz / 0.7) - 0.5;
+	float ph = hash(cell);
+	vec2 ctr = vec2(hash(cell + 3.1), hash(cell + 7.7)) - 0.5;
+	vec2 dv = local - ctr * 0.5;
+	float t = fract(TIME * 1.3 + ph);
+	float ring = 1.0 - smoothstep(0.0, 0.05, abs(length(dv) - t * 0.45));
+	vec2 n = normalize(dv + 1e-4) * ring * (1.0 - t) * 0.9;
+	NORMAL_MAP = normalize(vec3(n * 0.5 + 0.5, 1.0));
+	NORMAL_MAP_DEPTH = mix(0.4, 1.0, puddle);
+
+	ROUGHNESS = mix(0.32, 0.03, puddle);
+	SPECULAR = 0.65;
 }
 """
 	var mat := ShaderMaterial.new()
@@ -184,10 +209,15 @@ void fragment() {
 
 
 func _build_boxes() -> void:
+	# Rain-soaked wood: dark and glossy.
 	var low_mat := StandardMaterial3D.new()
-	low_mat.albedo_color = Color(0.55, 0.43, 0.27)
+	low_mat.albedo_color = Color(0.36, 0.27, 0.16)
+	low_mat.roughness = 0.18
+	low_mat.metallic_specular = 0.8
 	var tall_mat := StandardMaterial3D.new()
-	tall_mat.albedo_color = Color(0.40, 0.29, 0.18)
+	tall_mat.albedo_color = Color(0.26, 0.19, 0.12)
+	tall_mat.roughness = 0.18
+	tall_mat.metallic_specular = 0.8
 
 	for entry in BOX_LAYOUT:
 		var pos: Vector3 = entry[0]
@@ -273,9 +303,10 @@ func _build_dummies() -> void:
 func _build_tracers() -> void:
 	var mat := StandardMaterial3D.new()
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	mat.albedo_color = Color(1.0, 0.85, 0.35)
+	mat.albedo_color = Color(1.0, 0.82, 0.4)
+	mat.disable_fog = true
 	var bm := BoxMesh.new()
-	bm.size = Vector3(0.035, 0.035, 1.0)
+	bm.size = Vector3(0.04, 0.04, 1.0)
 	for i in TRACER_COUNT:
 		var mi := MeshInstance3D.new()
 		mi.mesh = bm
@@ -301,7 +332,82 @@ func spawn_tracer(from: Vector3, to: Vector3) -> void:
 	_tracer_idx = (_tracer_idx + 1) % _tracers.size()
 
 
+## Pool of one-shot spark/splash bursts for bullet impacts.
+func _build_impacts() -> void:
+	var mesh := BoxMesh.new()
+	mesh.size = Vector3(0.035, 0.035, 0.035)
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.vertex_color_use_as_albedo = true
+	mat.disable_fog = true
+	mesh.material = mat
+	for i in 16:
+		var p := CPUParticles3D.new()
+		p.emitting = false
+		p.one_shot = true
+		p.amount = 10
+		p.lifetime = 0.3
+		p.explosiveness = 1.0
+		p.local_coords = false
+		p.mesh = mesh
+		p.spread = 40.0
+		p.initial_velocity_min = 2.5
+		p.initial_velocity_max = 6.0
+		p.gravity = Vector3(0, -12, 0)
+		p.scale_amount_min = 0.6
+		p.scale_amount_max = 1.4
+		add_child(p)
+		_impacts.append(p)
+
+
+func spawn_impact(pos: Vector3, normal: Vector3, on_target: bool) -> void:
+	var p: CPUParticles3D = _impacts[_impact_idx]
+	_impact_idx = (_impact_idx + 1) % _impacts.size()
+	p.global_position = pos + normal * 0.03
+	p.direction = normal
+	p.color = Color(1.6, 0.9, 0.35) if on_target else Color(0.75, 0.82, 0.95)  # sparks vs wet splash
+	p.restart()
+	p.emitting = true
+
+
+## Every shot heats up the screen effects; many at once = shake, blur, flash.
+func on_shot(at: Vector3) -> void:
+	fire_heat = minf(1.0, fire_heat + 0.06)
+	flash = minf(1.0, flash + 0.3)
+	_muzzle_light.global_position = _muzzle_light.global_position.lerp(at, 0.5) if _muzzle_light.visible else at
+
+
 # ---------------------------------------------------------------- queries
+
+## The reticle box in screen pixels.
+func reticle_rect() -> Rect2:
+	var vs := get_viewport().get_visible_rect().size
+	var w: float = reticle.p["width"]
+	var h: float = reticle.p["height"]
+	var c := vs * 0.5 + Vector2(0, reticle.p["offset_y"])
+	return Rect2(c - Vector2(w, h) * 0.5, Vector2(w, h))
+
+
+## True if a world point shows up inside the reticle on screen.
+func in_reticle(world_pos: Vector3) -> bool:
+	var cam: Camera3D = cam_rig.cam
+	if cam.is_position_behind(world_pos):
+		return false
+	return reticle_rect().has_point(cam.unproject_position(world_pos))
+
+
+## A random world point under the reticle (what the squad hits when focus
+## firing with no target inside it).
+func reticle_world_point(rng: RandomNumberGenerator) -> Vector3:
+	var cam: Camera3D = cam_rig.cam
+	var r := reticle_rect()
+	var sp := Vector2(rng.randf_range(r.position.x, r.end.x), rng.randf_range(r.position.y, r.end.y))
+	var origin := cam.project_ray_origin(sp)
+	var dir := cam.project_ray_normal(sp)
+	var q := PhysicsRayQueryParameters3D.create(origin, origin + dir * 150.0, 1 | 4)
+	var hit := get_world_3d().direct_space_state.intersect_ray(q)
+	return hit["position"] if not hit.is_empty() else origin + dir * 80.0
+
 
 ## Flat direction the camera is looking. Cover orders shield the squad from
 ## this direction (the box ends up between each soldier and where you look).
@@ -317,26 +423,60 @@ func on_dummy_down() -> void:
 
 # ---------------------------------------------------------------- HUD
 
+func _neon_theme() -> Theme:
+	var t := Theme.new()
+	t.default_font = UI_FONT
+	t.default_font_size = 15
+	var glow := Color(NEON, 0.28)
+	for type in ["Label", "Button", "CheckBox"]:
+		t.set_color("font_color", type, NEON)
+		t.set_color("font_outline_color", type, glow)
+		t.set_constant("outline_size", type, 5)
+	for type in ["Button", "CheckBox"]:
+		t.set_color("font_hover_color", type, Color(0.75, 1.0, 0.6))
+		t.set_color("font_pressed_color", type, Color(0.75, 1.0, 0.6))
+		t.set_color("font_focus_color", type, NEON)
+	var btn := StyleBoxFlat.new()
+	btn.bg_color = Color(0.03, 0.1, 0.03, 0.9)
+	btn.border_color = Color(NEON, 0.5)
+	btn.set_border_width_all(1)
+	btn.set_content_margin_all(5)
+	t.set_stylebox("normal", "Button", btn)
+	var btn_h := btn.duplicate()
+	btn_h.bg_color = Color(0.06, 0.18, 0.05, 0.95)
+	t.set_stylebox("hover", "Button", btn_h)
+	t.set_stylebox("pressed", "Button", btn_h)
+	return t
+
+
 func _build_hud() -> void:
 	var layer := CanvasLayer.new()
+	layer.layer = 2
 	add_child(layer)
+	ui_root = Control.new()
+	ui_root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	ui_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	ui_root.theme = _neon_theme()
+	layer.add_child(ui_root)
+
 	reticle = ReticleScript.new()
-	layer.add_child(reticle)
+	ui_root.add_child(reticle)
 	var panel := PanelContainer.new()
 	panel.position = Vector2(12, 12)
 	var sb := StyleBoxFlat.new()
-	sb.bg_color = Color(0, 0, 0, 0.45)
-	sb.set_corner_radius_all(6)
+	sb.bg_color = Color(0.0, 0.05, 0.0, 0.55)
+	sb.border_color = Color(NEON, 0.35)
+	sb.set_border_width_all(1)
+	sb.set_corner_radius_all(3)
 	sb.set_content_margin_all(10)
 	panel.add_theme_stylebox_override("panel", sb)
-	layer.add_child(panel)
+	ui_root.add_child(panel)
 	hud_label = Label.new()
-	hud_label.add_theme_font_size_override("font_size", 15)
 	panel.add_child(hud_label)
 
 	reticle_panel = ReticlePanelScript.new()
 	reticle_panel.reticle = reticle
-	layer.add_child(reticle_panel)
+	ui_root.add_child(reticle_panel)
 
 
 func _input(event: InputEvent) -> void:
@@ -352,11 +492,29 @@ func _process(delta: float) -> void:
 			if _tracer_life[i] <= 0.0:
 				_tracers[i].visible = false
 
+	# Firing intensity decays when the guns go quiet.
+	fire_heat = move_toward(fire_heat, 0.0, delta * 1.1)
+	flash = move_toward(flash, 0.0, delta * 9.0)
+	_muzzle_light.light_energy = flash * 5.0
+	_muzzle_light.visible = flash > 0.03
+	if postfx:
+		postfx.set_fx(fire_heat, flash)
+
+	# Neon tube flicker on all UI: a steady hum plus the odd brown-out.
+	_flicker_t += delta
+	if ui_root:
+		var hum := 0.93 + 0.05 * sin(_flicker_t * 61.0) * sin(_flicker_t * 3.7)
+		if fmod(_flicker_t * 1.37, 4.1) < 0.06:
+			hum *= 0.55
+		ui_root.modulate = Color(1, 1, 1, hum)
+		reticle.focus_active = squad.fire_mode() == squad.FOCUS
+
 	if hud_label:
 		var captured := Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
-		hud_label.text = "SQUAD TEST\n" \
-			+ "WASD  move squad     Mouse  look%s     Wheel  zoom\n" % ("" if captured else " (click to grab)") \
-			+ "C / Space  take cover facing the camera / leave cover\n" \
-			+ "F  auto fire on/off     Tab  reticle settings\n\n" \
-			+ "Squad: %s\n" % squad.status_text() \
-			+ "Auto fire: %s     Hits: %d     Targets dropped: %d" % ["ON" if squad.auto_fire else "OFF", hits, kills]
+		hud_label.text = "SQUAD TEST // FIELD TRIAL\n" \
+			+ "WASD  move squad     MOUSE  aim%s     WHEEL  zoom\n" % ("" if captured else " (click to grab)") \
+			+ "HOLD LMB  focus fire on reticle     HOLD RMB  fire at will\n" \
+			+ "C / SPACE  cover vs camera facing     F  auto fire     TAB  reticle\n\n" \
+			+ "SQUAD   %s\n" % squad.status_text() \
+			+ "FIRE    %s%s\n" % [squad.fire_mode_text(), "   (auto fire ON)" if squad.auto_fire else ""] \
+			+ "HITS    %d     DROPPED  %d" % [hits, kills]

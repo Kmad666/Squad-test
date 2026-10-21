@@ -17,7 +17,10 @@ var soldiers: Array = []
 var anchor := Vector3.ZERO
 var slot_offsets: Array = []
 var in_cover := false
-var auto_fire := true
+var auto_fire := false            # F: permanent fire at will
+var forced_mode := -1              # tests can force a fire mode
+
+enum { HOLD, AT_WILL, FOCUS }
 var threat_dir := Vector3.FORWARD
 
 var _marker: MeshInstance3D
@@ -79,6 +82,28 @@ func _build_marker() -> void:
 	arrow.rotation.x = -PI / 2.0
 	arrow.position = Vector3(0, 0, -0.95)
 	_pointer.add_child(arrow)
+
+
+## Left mouse held = focus fire on the reticle, right mouse held = fire at
+## will, otherwise fire at will only if auto fire (F) is on.
+func fire_mode() -> int:
+	if forced_mode >= 0:
+		return forced_mode
+	if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+		if Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
+			return FOCUS
+		if Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT):
+			return AT_WILL
+	return AT_WILL if auto_fire else HOLD
+
+
+func fire_mode_text() -> String:
+	match fire_mode():
+		FOCUS:
+			return "FOCUS FIRE"
+		AT_WILL:
+			return "FIRE AT WILL"
+	return "HOLD FIRE"
 
 
 func get_focus() -> Vector3:

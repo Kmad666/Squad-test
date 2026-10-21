@@ -8,12 +8,14 @@ You command a squad of six soldiers as one unit. Each soldier picks its own targ
 ## Controls
 | Key | Action |
 |---|---|
-| WASD / arrows | Move the squad (loose cluster around the yellow marker) |
-| Mouse | Orbit the camera (click to grab the mouse, Esc to release) |
-| Wheel | Zoom |
+| WASD / arrows | Move the squad (loose cluster around the ring marker) |
+| Mouse | Aim the raised camera (click to grab the mouse, Esc to release) |
+| Hold left mouse | **Focus fire**: only targets inside the reticle; with none there, the squad saturates the area under it |
+| Hold right mouse | **Fire at will**: each soldier picks any target he can see |
+| F | Auto fire toggle (permanent fire at will) |
 | C / Space | Take cover against the direction the camera faces / leave cover (moving also leaves cover) |
-| F | Auto fire on/off |
 | Tab | Reticle settings (sizes are saved in your browser) |
+| Wheel | Zoom |
 
 ## How cover works
 On the cover order, each soldier runs to the closest free spot behind a box, on the far side from where
@@ -21,3 +23,5 @@ the camera is facing (the arrow at the squad marker shows that direction). The s
 group stays together. In cover, soldiers crouch and pop up to fire over low crates. Behind tall crates they lean out past the edge to shoot, then duck back.
 
 Every push to `main` builds the web version and publishes it to GitHub Pages (gh-pages branch).
+
+Font: Share Tech Mono (SIL Open Font License, see `fonts/OFL.txt`).

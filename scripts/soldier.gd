@@ -9,6 +9,9 @@ const BASE_SPEED := 5.6
 const RANGE := 45.0
 const EYE_HEIGHT := 1.45
 const RAY_MASK := 1 | 4     # world + dummies (soldiers are layer 2)
+const FIRE_HOLD := 0       # must match squad.gd
+const FIRE_AT_WILL := 1
+const FIRE_FOCUS := 2
 
 static var _mats := {}
 
@@ -76,6 +79,8 @@ static func _mat(key: String, color: Color, unshaded := false) -> StandardMateri
 	if not _mats.has(key):
 		var m := StandardMaterial3D.new()
 		m.albedo_color = color
+		m.roughness = 0.28   # rain-soaked
+		m.metallic_specular = 0.7
 		if unshaded:
 			m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 		_mats[key] = m
@@ -257,6 +262,8 @@ func _update_facing(delta: float, vel: Vector3) -> void:
 	var look := Vector3.ZERO
 	if target and is_instance_valid(target):
 		look = target.global_position - global_position
+	elif _has_aim:
+		look = _aim_point - global_position
 	elif state == State.IN_COVER:
 		look = squad.threat_dir
 	elif Vector2(vel.x, vel.z).length() > 0.4:
@@ -268,9 +275,22 @@ func _update_facing(delta: float, vel: Vector3) -> void:
 
 
 # ---------------------------------------------------------------- combat
+# Fire modes come from the squad: HOLD (no fire), AT_WILL (each soldier picks
+# any target he can see) and FOCUS (only targets inside the reticle; with none
+# there, the squad pours fire into the spot under the reticle).
+
+var _aim_point := Vector3.ZERO
+var _has_aim := false
+var _mode := 0
+
 
 func _eye() -> Vector3:
 	return global_position + Vector3(0, EYE_HEIGHT, 0)
+
+
+## Where this soldier shoots from: his lean-out spot behind tall cover, else where he stands.
+func _spot() -> Vector3:
+	return peek_pos if (state != State.FOLLOW and _is_tall()) else global_position
 
 
 func _has_los(d: Node3D, from_ground := Vector3.INF) -> bool:
@@ -280,24 +300,32 @@ func _has_los(d: Node3D, from_ground := Vector3.INF) -> bool:
 	return not hit.is_empty() and hit["collider"] == d
 
 
+func _point_los(from_ground: Vector3, p: Vector3) -> bool:
+	var q := PhysicsRayQueryParameters3D.create(from_ground + Vector3(0, EYE_HEIGHT, 0), p, RAY_MASK)
+	var hit := get_world_3d().direct_space_state.intersect_ray(q)
+	return hit.is_empty() or (hit["position"] as Vector3).distance_to(p) < 0.6
+
+
 ## Behind tall cover, look for targets from each lean-out spot and remember
 ## the first side that has a shot.
-func _find_target() -> Node3D:
+func _find_target(focus_only: bool) -> Node3D:
 	if state != State.FOLLOW and _is_tall():
 		for p in peeks:
-			var t := _find_target_from(p)
+			var t := _find_target_from(p, focus_only)
 			if t:
 				peek_pos = p
 				return t
 		return null
-	return _find_target_from(global_position)
+	return _find_target_from(global_position, focus_only)
 
 
-func _find_target_from(origin: Vector3) -> Node3D:
+func _find_target_from(origin: Vector3, focus_only: bool) -> Node3D:
 	var best: Node3D = null
 	var best_score := INF
 	for d in main.dummies:
 		if not d.alive:
+			continue
+		if focus_only and not main.in_reticle(d.global_position + Vector3(0, 1.25, 0)):
 			continue
 		var dist: float = global_position.distance_to(d.global_position)
 		if dist > RANGE or not _has_los(d, origin):
@@ -309,20 +337,56 @@ func _find_target_from(origin: Vector3) -> Node3D:
 	return best
 
 
+## Focus fire with no target in the reticle: pick a random spot inside the
+## reticle's footprint in the world and saturate it.
+func _pick_focus_point() -> void:
+	_aim_point = main.reticle_world_point(_rng)
+	_has_aim = false
+	if state != State.FOLLOW and _is_tall():
+		for p in peeks:
+			if _point_los(p, _aim_point):
+				peek_pos = p
+				_has_aim = true
+				return
+	else:
+		_has_aim = _point_los(global_position, _aim_point)
+
+
+func _choose_aim() -> void:
+	match _mode:
+		FIRE_HOLD:
+			target = null
+			_has_aim = false
+		FIRE_AT_WILL:
+			_has_aim = false
+			if target == null or not _has_los(target, _spot()) or _rng.randf() < 0.15:
+				target = _find_target(false)
+		FIRE_FOCUS:
+			if target and not (main.in_reticle(target.global_position + Vector3(0, 1.25, 0)) and _has_los(target, _spot())):
+				target = null
+			if target == null:
+				target = _find_target(true)
+			if target:
+				_has_aim = false
+			else:
+				_pick_focus_point()
+
+
 func _update_combat(delta: float) -> void:
 	_flash_timer -= delta
 	if _flash_timer <= 0.0:
 		_flash.visible = false
 
-	_retarget_timer -= delta
 	if target and not target.alive:
 		target = null
-	if _retarget_timer <= 0.0:
-		_retarget_timer = _rng.randf_range(0.35, 0.7)
-		var from_spot: Vector3 = peek_pos if (state != State.FOLLOW and _is_tall()) else global_position
-		if target == null or not _has_los(target, from_spot) or _rng.randf() < 0.15:
-			target = _find_target()
+	var mode: int = squad.fire_mode()
+	_retarget_timer -= delta
+	if mode != _mode or _retarget_timer <= 0.0:
+		_mode = mode
+		_retarget_timer = _rng.randf_range(0.2, 0.4) if _mode == FIRE_FOCUS else _rng.randf_range(0.35, 0.7)
+		_choose_aim()
 
+	var has_shot := target != null or _has_aim
 	var can_fire := false
 	match state:
 		State.FOLLOW:
@@ -331,14 +395,14 @@ func _update_combat(delta: float) -> void:
 		State.TO_COVER:
 			_set_crouch(false)
 		State.IN_COVER:
-			if target == null or not squad.auto_fire:
+			if not has_shot:
 				_peeking = false
-				_peek_timer = minf(_peek_timer, 0.8)
+				_peek_timer = minf(_peek_timer, 0.5)
 			_peek_timer -= delta
-			if _peek_timer <= 0.0 and target and squad.auto_fire:
+			if _peek_timer <= 0.0 and has_shot:
 				_peeking = not _peeking
 				var up_time := _rng.randf_range(1.0, 1.8) + (1.0 if _is_tall() else 0.0)  # leaning takes travel time
-				_peek_timer = up_time if _peeking else _rng.randf_range(1.0, 2.4)
+				_peek_timer = up_time if _peeking else _rng.randf_range(0.8, 2.0)
 				_peek_age = 0.0
 			_peek_age += delta
 			_set_crouch(not _peeking)
@@ -349,35 +413,40 @@ func _update_combat(delta: float) -> void:
 			else:
 				can_fire = _peeking and _peek_age > 0.25
 
-	if not squad.auto_fire or target == null:
+	if not has_shot:
 		can_fire = false
 
 	_fire_timer -= delta
 	if can_fire and _fire_timer <= 0.0:
 		if _burst_left <= 0:
-			_burst_left = _rng.randi_range(2, 4)
+			_burst_left = _rng.randi_range(2, 4) if _mode == FIRE_AT_WILL else _rng.randi_range(3, 6)
 		_shoot()
 		_burst_left -= 1
-		_fire_timer = 0.11 if _burst_left > 0 else _rng.randf_range(0.5, 1.1)
+		var pause := _rng.randf_range(0.5, 1.1) if _mode == FIRE_AT_WILL else _rng.randf_range(0.25, 0.55)
+		_fire_timer = 0.1 if _burst_left > 0 else pause
 
 
 func _shoot() -> void:
 	var from := _eye() - Vector3(0, 0.15, 0)
-	var aim := target.global_position + Vector3(0, 1.25, 0)
-	var spread := 0.02 * from.distance_to(aim) + (0.3 if _moving else 0.0)
+	var aim: Vector3 = target.global_position + Vector3(0, 1.25, 0) if target else _aim_point
+	var tight := 0.012 if _mode == FIRE_FOCUS else 0.02
+	var spread := tight * from.distance_to(aim) + (0.3 if _moving else 0.0)
 	aim += Vector3(_rng.randf_range(-1, 1), _rng.randf_range(-0.7, 0.7), _rng.randf_range(-1, 1)) * spread * 0.5
 	var dir := (aim - from).normalized()
-	var to := from + dir * 80.0
+	var to := from + dir * 120.0
 	var q := PhysicsRayQueryParameters3D.create(from, to, RAY_MASK)
 	var hit := get_world_3d().direct_space_state.intersect_ray(q)
 	var end := to
 	if not hit.is_empty():
 		end = hit["position"]
 		var c: Object = hit["collider"]
-		if c.has_method("take_hit"):
+		var hit_dummy := c.has_method("take_hit")
+		if hit_dummy:
 			c.take_hit()
 			main.hits += 1
+		main.spawn_impact(end, hit["normal"], hit_dummy)
 	shots += 1
 	main.spawn_tracer(_flash.global_position, end)
+	main.on_shot(_flash.global_position)
 	_flash.visible = true
 	_flash_timer = 0.05

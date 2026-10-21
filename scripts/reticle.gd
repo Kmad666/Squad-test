@@ -21,6 +21,7 @@ const PARAMS := {
 
 var p := {}
 var show_dims := true
+var focus_active := false   # brightens while focus firing
 var _t := 0.0
 var _font: Font
 
@@ -28,7 +29,7 @@ var _font: Font
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_font = ThemeDB.fallback_font
+	_font = get_theme_default_font()
 	reset_defaults(false)
 	_load()
 
@@ -80,10 +81,15 @@ func _draw() -> void:
 	var corner: float = minf(p["corner"], minf(hw, hh))
 	var th: float = p["thickness"]
 	var glow: float = p["glow"]
+	if focus_active:
+		glow = minf(1.0, glow + 0.4)
+		th += 1.0
 
 	# Analogue phosphor flicker: two out-of-phase waves so it never looks regular.
 	var wave := 0.5 + 0.5 * sin(_t * 53.0) * sin(_t * 7.3)
 	var a: float = p["opacity"] * (1.0 - p["flicker"] * 0.3 * wave)
+	if focus_active:
+		a = minf(1.0, a * 1.25) * (0.85 + 0.15 * sin(_t * 30.0))
 
 	for sx in [-1.0, 1.0]:
 		for sy in [-1.0, 1.0]:
