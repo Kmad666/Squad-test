@@ -6,7 +6,7 @@ extends CharacterBody3D
 enum State { FOLLOW, TO_COVER, IN_COVER }
 
 const BASE_SPEED := 5.6
-const RANGE := 45.0
+const RANGE := 70.0
 const EYE_HEIGHT := 1.45
 const RAY_MASK := 1 | 4     # world + dummies (soldiers are layer 2)
 const FIRE_HOLD := 0       # must match squad.gd
