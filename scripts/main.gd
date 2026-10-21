@@ -113,7 +113,7 @@ func _build_environment() -> void:
 	env.background_mode = Environment.BG_SKY
 	env.sky = sky
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
-	env.ambient_light_energy = 0.7
+	env.ambient_light_energy = 0.35
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 	var we := WorldEnvironment.new()
 	we.environment = env
@@ -121,7 +121,7 @@ func _build_environment() -> void:
 
 	var sun := DirectionalLight3D.new()
 	sun.rotation = Vector3(deg_to_rad(-55), deg_to_rad(35), 0)
-	sun.light_energy = 1.1
+	sun.light_energy = 0.75
 	sun.shadow_enabled = true
 	sun.directional_shadow_max_distance = 45.0
 	add_child(sun)
@@ -142,8 +142,8 @@ func _build_ground() -> void:
 	shader.code = """
 shader_type spatial;
 render_mode specular_disabled;
-uniform vec3 base_col : source_color = vec3(0.32, 0.55, 0.25);
-uniform vec3 line_col : source_color = vec3(0.27, 0.47, 0.21);
+uniform vec3 base_col : source_color = vec3(0.24, 0.40, 0.17);
+uniform vec3 line_col : source_color = vec3(0.20, 0.33, 0.14);
 varying vec3 wpos;
 void vertex() { wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz; }
 void fragment() {
@@ -180,9 +180,9 @@ void fragment() {
 
 func _build_boxes() -> void:
 	var low_mat := StandardMaterial3D.new()
-	low_mat.albedo_color = Color(0.70, 0.58, 0.38)
+	low_mat.albedo_color = Color(0.55, 0.43, 0.27)
 	var tall_mat := StandardMaterial3D.new()
-	tall_mat.albedo_color = Color(0.50, 0.38, 0.24)
+	tall_mat.albedo_color = Color(0.40, 0.29, 0.18)
 
 	for entry in BOX_LAYOUT:
 		var pos: Vector3 = entry[0]
