@@ -129,7 +129,9 @@ func _draw_dims(c: Vector2, hw: float, hh: float, corner: float, th: float) -> v
 
 
 func _text(pos: Vector2, s: String, col: Color, fs: int, centred: bool) -> void:
-	if centred:
-		draw_multiline_string(_font, pos - Vector2(300, 0), s, HORIZONTAL_ALIGNMENT_CENTER, 600, fs, -1, col)
-	else:
-		draw_multiline_string(_font, pos, s, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, -1, col)
+	var at := pos - Vector2(300, 0) if centred else pos
+	var align := HORIZONTAL_ALIGNMENT_CENTER if centred else HORIZONTAL_ALIGNMENT_LEFT
+	var w := 600.0 if centred else -1.0
+	var shadow := Color(0, 0.08, 0, 0.75)
+	draw_multiline_string_outline(_font, at, s, align, w, fs, -1, 4, shadow)
+	draw_multiline_string(_font, at, s, align, w, fs, -1, Color(col, 1.0))
