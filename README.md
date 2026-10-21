@@ -3,7 +3,7 @@
 Godot 4 third-person squad shooter prototype, playable in the browser (PC).
 You command a squad of six soldiers as one unit. Each soldier picks its own target and fires on its own.
 
-**Play:** https://kmad666.github.io/squad-test/
+**Play:** https://kmad666.github.io/Squad-test/
 
 ## Controls
 | Key | Action |
