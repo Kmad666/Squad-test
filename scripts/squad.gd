@@ -2,15 +2,21 @@ extends Node3D
 ## The squad as one unit: WASD moves an anchor point, soldiers hold a loose
 ## cluster around it, and the cover order sends each soldier to its own nearby
 ## cover spot on the far side of a box from the threat.
+## Teams waiting in the field join the squad when it walks up to them.
 
 const CoverUtil = preload("res://scripts/cover_util.gd")
 const SoldierScript = preload("res://scripts/soldier.gd")
+const UI_FONT = preload("res://fonts/ShareTechMono-Regular.ttf")
 
 const MOVE_SPEED := 5.0
 const CLUSTER_RADIUS := 2.8      # loose cluster spread around the anchor
 const COVER_SEARCH := 14.0       # how far from the squad a cover spot may be
 const COHESION_WEIGHT := 0.7     # how much cover choice favours staying grouped
 const MIN_COVER_GAP := 0.95      # two soldiers never share a spot
+const JOIN_DISTANCE := 7.0       # how close the squad must get to pick up a team
+
+## Starting squad: five riflemen and a grenadier.
+const START_ROLES := ["rifleman", "rifleman", "rifleman", "grenadier", "rifleman", "rifleman"]
 
 var main: Node3D
 var soldiers: Array = []
@@ -19,91 +25,147 @@ var slot_offsets: Array = []
 var in_cover := false
 var auto_fire := false            # F: permanent fire at will
 var forced_mode := -1              # tests can force a fire mode
+var forced_specials := false       # tests can force the specials order
+var pending_teams: Array = []      # [{members, center, label, name}]
 
 enum { HOLD, AT_WILL, FOCUS }
 var threat_dir := Vector3.FORWARD
 
-var _marker: MeshInstance3D
-var _marker_mat: StandardMaterial3D
-var _pointer: Node3D
 
 
-func setup(m: Node3D, start: Vector3, count: int) -> void:
+func setup(m: Node3D, start: Vector3) -> void:
 	main = m
 	anchor = start
-	_make_offsets(count)
-	for i in count:
-		var s: CharacterBody3D = SoldierScript.new()
-		s.squad = self
-		s.main = main
-		s.index = i
-		add_child(s)
+	_make_offsets(START_ROLES.size())
+	for i in START_ROLES.size():
+		var s := _new_soldier(START_ROLES[i], i)
 		s.global_position = anchor + slot_offsets[i]
 		s.move_target = s.global_position
 		soldiers.append(s)
-	_build_marker()
+
+
+func _new_soldier(role: String, idx: int) -> CharacterBody3D:
+	var s: CharacterBody3D = SoldierScript.new()
+	s.squad = self
+	s.main = main
+	s.index = idx
+	s.role = role
+	add_child(s)
+	return s
+
+
+## A team standing at `center`, waiting to be picked up by the squad.
+func spawn_waiting_team(team_name: String, center: Vector3, roles: Array) -> void:
+	var members: Array = []
+	for i in roles.size():
+		var a := float(i) / float(roles.size()) * TAU
+		var s := _new_soldier(roles[i], 100 + pending_teams.size() * 10 + i)
+		s.recruited = false
+		s.global_position = center + Vector3(cos(a), 0, sin(a)) * 1.2
+		s.home_pos = s.global_position
+		members.append(s)
+	var label := Label3D.new()
+	label.font = UI_FONT
+	label.font_size = 40
+	label.outline_size = 10
+	label.pixel_size = 0.006
+	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	label.no_depth_test = true
+	label.modulate = Color(0.45, 1.0, 0.3)
+	label.outline_modulate = Color(0, 0.08, 0, 0.8)
+	label.text = "%s\n%d x BURST RIFLE + ROCKETS\nMOVE UP TO LINK UP" % [team_name, roles.size()]
+	label.position = center + Vector3(0, 2.8, 0)
+	add_child(label)
+	pending_teams.append({"members": members, "center": center, "label": label, "name": team_name})
+
+
+func _check_joins() -> void:
+	for team in pending_teams.duplicate():
+		if anchor.distance_to(team["center"]) > JOIN_DISTANCE:
+			continue
+		for s in team["members"]:
+			s.recruited = true
+			s.index = soldiers.size()
+			soldiers.append(s)
+		team["label"].queue_free()
+		pending_teams.erase(team)
+		_make_offsets(soldiers.size())
+		if in_cover:
+			take_cover()
+		main.notify("%s JOINED THE SQUAD  (+%d)" % [team["name"], team["members"].size()])
 
 
 ## Loose cluster: sunflower spiral with a little per-soldier jitter so it
 ## doesn't look like a parade-ground pattern.
 func _make_offsets(count: int) -> void:
+	slot_offsets.clear()
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 4242
+	var radius := CLUSTER_RADIUS * sqrt(maxf(1.0, float(count) / 6.0))  # bigger squad, wider cluster
 	for i in count:
-		var r: float = CLUSTER_RADIUS * sqrt((float(i) + 0.6) / float(count))
+		var r: float = radius * sqrt((float(i) + 0.6) / float(count))
 		var a: float = float(i) * 2.39996 + 0.4
 		var jitter := Vector3(rng.randf_range(-0.35, 0.35), 0, rng.randf_range(-0.35, 0.35))
 		slot_offsets.append(Vector3(cos(a) * r, 0, sin(a) * r) + jitter)
 
 
-func _build_marker() -> void:
-	_marker = MeshInstance3D.new()
-	var torus := TorusMesh.new()
-	torus.inner_radius = 0.45
-	torus.outer_radius = 0.6
-	_marker.mesh = torus
-	_marker.scale = Vector3(1, 0.15, 1)
-	_marker_mat = StandardMaterial3D.new()
-	_marker_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	_marker_mat.albedo_color = Color(1.0, 0.85, 0.2)
-	_marker.material_override = _marker_mat
-	_marker.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	add_child(_marker)
-
-	# Flat arrow on the ground showing the facing the next cover order will use.
-	_pointer = Node3D.new()
-	add_child(_pointer)
-	var arrow := MeshInstance3D.new()
-	var prism := PrismMesh.new()
-	prism.size = Vector3(0.45, 0.5, 0.04)
-	arrow.mesh = prism
-	arrow.material_override = _marker_mat
-	arrow.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	arrow.rotation.x = -PI / 2.0
-	arrow.position = Vector3(0, 0, -0.95)
-	_pointer.add_child(arrow)
-
-
-## Left mouse held = focus fire on the reticle, right mouse held = fire at
-## will, otherwise fire at will only if auto fire (F) is on.
+## Primary weapons: left mouse held = focus fire on the reticle, otherwise
+## fire at will if auto fire (F) is on, else hold fire.
 func fire_mode() -> int:
 	if forced_mode >= 0:
 		return forced_mode
-	if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
-		if Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
-			return FOCUS
-		if Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT):
-			return AT_WILL
+	if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
+		return FOCUS
 	return AT_WILL if auto_fire else HOLD
 
 
+## Right mouse held = specialists use grenade launchers / rockets on the reticle.
+func specials_active() -> bool:
+	if forced_specials:
+		return true
+	return Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT)
+
+
 func fire_mode_text() -> String:
+	var t := "HOLD FIRE"
 	match fire_mode():
 		FOCUS:
-			return "FOCUS FIRE"
+			t = "FOCUS FIRE"
 		AT_WILL:
-			return "FIRE AT WILL"
-	return "HOLD FIRE"
+			t = "FIRE AT WILL"
+	if specials_active():
+		t += " + SPECIALS"
+	return t
+
+
+## Squad make-up plus the state of every special weapon.
+func roster_text() -> String:
+	var counts := {}
+	var gl := [0, 0]
+	var rk := [0, 0]
+	for s in soldiers:
+		counts[s.role] = counts.get(s.role, 0) + 1
+		if s.role == "grenadier":
+			gl[1] += 1
+			if s.secondary_cd <= 0.0:
+				gl[0] += 1
+		elif s.role == "anti_armor":
+			rk[1] += 1
+			if s.secondary_cd <= 0.0:
+				rk[0] += 1
+	var parts: Array = []
+	for r in [["rifleman", "RIFLE"], ["grenadier", "GREN"], ["anti_armor", "AT"]]:
+		if counts.has(r[0]):
+			parts.append("%d %s" % [counts[r[0]], r[1]])
+	var t := "%d MEN  (%s)" % [soldiers.size(), ", ".join(parts)]
+	var sp: Array = []
+	if gl[1] > 0:
+		sp.append("GL %d/%d READY" % gl)
+	if rk[1] > 0:
+		sp.append("ROCKETS %d/%d READY" % rk)
+	if sp.is_empty():
+		sp.append("NONE")
+	return t + "\nSPECIAL " + "   ".join(sp)
 
 
 func get_focus() -> Vector3:
@@ -148,11 +210,7 @@ func _physics_process(delta: float) -> void:
 			var p: Vector3 = anchor + slot_offsets[i]
 			soldiers[i].move_target = CoverUtil.push_out(main.cover_defs, p, 0.6)
 
-	_marker.global_position = anchor + Vector3(0, 0.03, 0)
-	_pointer.global_position = anchor + Vector3(0, 0.04, 0)
-	var face: Vector3 = threat_dir if in_cover else main.camera_forward()
-	_pointer.rotation.y = atan2(-face.x, -face.z)
-	_marker_mat.albedo_color = Color(0.3, 0.8, 1.0) if in_cover else Color(1.0, 0.85, 0.2)
+	_check_joins()
 
 
 ## Every soldier scrambles to the closest free cover spot that shields it from

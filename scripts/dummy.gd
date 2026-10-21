@@ -2,12 +2,15 @@ extends StaticBody3D
 ## Static practice target. Flashes when hit, tips over after enough hits,
 ## and pops back up a few seconds later.
 
-const MAX_HP := 8
+const MAX_HP := 8.0
 const RESPAWN_TIME := 5.0
 
 var main: Node3D
+var kind := "infantry"
+var size_factor := 1.0
+var radius := 0.35       # how far a deliberate miss must land from the centre
 var alive := true
-var hp := MAX_HP
+var hp: float = MAX_HP
 
 var _pivot: Node3D
 var _col: CollisionShape3D
@@ -76,14 +79,19 @@ func _add(mesh: Mesh, mat: Material, pos: Vector3, rot := Vector3.ZERO) -> MeshI
 	return mi
 
 
-func take_hit() -> void:
-	if not alive:
-		return
-	hp -= 1
+func aim_point() -> Vector3:
+	return global_position + Vector3(0, 1.25, 0)
+
+
+func take_damage(soft_dmg: float, _armor_dmg: float) -> bool:
+	if not alive or soft_dmg <= 0.0:
+		return false
+	hp -= soft_dmg
 	_plate.material_override = _hit_mat
 	_flash_timer = 0.08
-	if hp <= 0:
+	if hp <= 0.0:
 		_knock_down()
+	return true
 
 
 func _knock_down() -> void:

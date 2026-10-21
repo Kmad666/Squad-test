@@ -5,6 +5,7 @@ extends Node3D
 const CoverUtil = preload("res://scripts/cover_util.gd")
 const SquadScript = preload("res://scripts/squad.gd")
 const DummyScript = preload("res://scripts/dummy.gd")
+const VehicleScript = preload("res://scripts/vehicle.gd")
 const CameraRigScript = preload("res://scripts/camera_rig.gd")
 const ReticleScript = preload("res://scripts/reticle.gd")
 const ReticlePanelScript = preload("res://scripts/reticle_panel.gd")
@@ -14,7 +15,8 @@ const UI_FONT = preload("res://fonts/ShareTechMono-Regular.ttf")
 const NEON := Color(0.45, 1.0, 0.30)
 
 const NAV_HALF := 50.0          # playable half-size of the field (metres)
-const SQUAD_SIZE := 6
+const VEHICLE_SPOT := Vector3(3, 0, -45)
+const AT_TEAM_SPOT := Vector3(-26, 0, 14)   # anti-armor team waiting to link up
 const TRACER_COUNT := 48
 const TRACER_LIFE := 0.06
 const TALL_COVER := 1.6         # boxes taller than this need a lean-out to shoot
@@ -48,6 +50,8 @@ const DUMMY_SPOTS := [
 var cover_defs: Array = []      # [{xform, size}] used by CoverUtil
 var cover_points: Array = []    # [{pos, normal, height}]
 var dummies: Array = []
+var targets: Array = []         # everything the squad can shoot: dummies + vehicles
+var vehicles: Array = []
 var squad: Node3D
 var cam_rig: Node3D
 var nav_region: NavigationRegion3D
@@ -64,6 +68,10 @@ var _muzzle_light: OmniLight3D
 var _impacts: Array = []
 var _impact_idx := 0
 var _flicker_t := 0.0
+var _explosions: Array = []
+var _explosion_idx := 0
+var _notice := ""
+var _notice_t := 0.0
 var kills := 0
 
 var _tracers: Array = []
@@ -84,8 +92,15 @@ func _ready() -> void:
 	_bake_nav()
 	_build_cover_points()
 	_build_dummies()
+	var v: StaticBody3D = VehicleScript.new()
+	v.main = self
+	add_child(v)
+	v.global_position = VEHICLE_SPOT
+	vehicles.append(v)
+	targets.append(v)
 	_build_tracers()
 	_build_impacts()
+	_build_explosions()
 	_muzzle_light = OmniLight3D.new()
 	_muzzle_light.light_color = Color(1.0, 0.68, 0.32)
 	_muzzle_light.omni_range = 9.0
@@ -95,7 +110,8 @@ func _ready() -> void:
 	squad = SquadScript.new()
 	squad.name = "Squad"
 	add_child(squad)
-	squad.setup(self, Vector3(0, 0, 24), SQUAD_SIZE)
+	squad.setup(self, Vector3(0, 0, 24))
+	squad.spawn_waiting_team("ANTI-ARMOR TEAM", AT_TEAM_SPOT, ["anti_armor", "anti_armor", "anti_armor"])
 
 	cam_rig = CameraRigScript.new()
 	cam_rig.name = "CameraRig"
@@ -146,7 +162,7 @@ func _build_ground() -> void:
 	var shader := Shader.new()
 	shader.code = """
 shader_type spatial;
-// Rain-soaked field: dark wet grass, glossy puddles with rain ripples.
+// Rain-soaked field: dark wet grass and glossy puddles.
 uniform vec3 grass_col : source_color = vec3(0.10, 0.17, 0.08);
 uniform vec3 line_col : source_color = vec3(0.07, 0.12, 0.06);
 varying vec3 wpos;
@@ -168,18 +184,6 @@ void fragment() {
 	c = mix(c, c * 0.35, puddle);
 	bool outside = abs(wpos.x) > 50.0 || abs(wpos.z) > 50.0;
 	ALBEDO = outside ? c * 0.7 : c;
-
-	// Rain ripples: expanding rings in a jittered grid of cells.
-	vec2 cell = floor(wpos.xz / 0.7);
-	vec2 local = fract(wpos.xz / 0.7) - 0.5;
-	float ph = hash(cell);
-	vec2 ctr = vec2(hash(cell + 3.1), hash(cell + 7.7)) - 0.5;
-	vec2 dv = local - ctr * 0.5;
-	float t = fract(TIME * 1.3 + ph);
-	float ring = 1.0 - smoothstep(0.0, 0.05, abs(length(dv) - t * 0.45));
-	vec2 n = normalize(dv + 1e-4) * ring * (1.0 - t) * 0.9;
-	NORMAL_MAP = normalize(vec3(n * 0.5 + 0.5, 1.0));
-	NORMAL_MAP_DEPTH = mix(0.4, 1.0, puddle);
 
 	ROUGHNESS = mix(0.32, 0.03, puddle);
 	SPECULAR = 0.65;
@@ -298,6 +302,7 @@ func _build_dummies() -> void:
 		add_child(d)
 		d.global_position = p
 		dummies.append(d)
+		targets.append(d)
 
 
 func _build_tracers() -> void:
@@ -368,6 +373,141 @@ func spawn_impact(pos: Vector3, normal: Vector3, on_target: bool) -> void:
 	p.color = Color(1.6, 0.9, 0.35) if on_target else Color(0.75, 0.82, 0.95)  # sparks vs wet splash
 	p.restart()
 	p.emitting = true
+
+
+## Pool of explosion effects: fireball, sparks/debris, smoke and a light flash.
+func _build_explosions() -> void:
+	for i in 5:
+		var root := Node3D.new()
+		add_child(root)
+		var ball := MeshInstance3D.new()
+		var sm := SphereMesh.new()
+		sm.radius = 0.5
+		sm.height = 1.0
+		sm.radial_segments = 16
+		sm.rings = 8
+		ball.mesh = sm
+		var bm := StandardMaterial3D.new()
+		bm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		bm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		bm.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+		bm.disable_fog = true
+		bm.albedo_color = Color(1.0, 0.6, 0.2, 1.0)
+		ball.material_override = bm
+		ball.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		ball.visible = false
+		root.add_child(ball)
+
+		var debris := _burst(Color(1.5, 0.75, 0.3), 36, 0.6, 0.06, 8.0, 16.0, Vector3(0, -12, 0), false)
+		root.add_child(debris)
+		var smoke := _burst(Color(0.12, 0.12, 0.12, 0.55), 16, 2.2, 0.9, 0.8, 2.5, Vector3(0, 0.8, 0), true)
+		root.add_child(smoke)
+
+		var light := OmniLight3D.new()
+		light.light_color = Color(1.0, 0.6, 0.25)
+		light.omni_range = 14.0
+		light.visible = false
+		light.position.y = 1.0
+		root.add_child(light)
+		_explosions.append({"root": root, "ball": ball, "debris": debris, "smoke": smoke, "light": light, "tween": null})
+
+
+func _burst(color: Color, amount: int, life: float, size: float, vmin: float, vmax: float, grav: Vector3, billboard: bool) -> CPUParticles3D:
+	var p := CPUParticles3D.new()
+	p.emitting = false
+	p.one_shot = true
+	p.explosiveness = 0.95
+	p.amount = amount
+	p.lifetime = life
+	p.local_coords = false
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.vertex_color_use_as_albedo = true
+	if billboard:
+		var q := QuadMesh.new()
+		q.size = Vector2(size, size)
+		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+		q.material = mat
+		p.mesh = q
+		p.scale_amount_min = 1.0
+		p.scale_amount_max = 3.0
+	else:
+		var b := BoxMesh.new()
+		b.size = Vector3(size, size, size)
+		mat.disable_fog = true
+		b.material = mat
+		p.mesh = b
+	p.color = color
+	p.direction = Vector3.UP
+	p.spread = 70.0
+	p.initial_velocity_min = vmin
+	p.initial_velocity_max = vmax
+	p.gravity = grav
+	return p
+
+
+## Blast: splash damage with falloff to every target in the radius (a direct
+## hit always takes full damage), plus the big screen and light effects.
+func spawn_explosion(pos: Vector3, w: Dictionary, direct: Node3D) -> void:
+	var radius: float = w["radius"]
+	for t in targets:
+		if not t.alive:
+			continue
+		var f := 1.0
+		if t != direct:
+			var d: float = maxf(0.0, t.aim_point().distance_to(pos) - t.radius * 0.5)
+			if d > radius:
+				continue
+			f = lerpf(1.0, 0.25, d / radius)
+		t.take_damage(w["soft"] * f, w["armor"] * f)
+
+	var big: bool = w["kind"] == "rocket"
+	var e: Dictionary = _explosions[_explosion_idx]
+	_explosion_idx = (_explosion_idx + 1) % _explosions.size()
+	e["root"].global_position = pos
+	var ball: MeshInstance3D = e["ball"]
+	var light: OmniLight3D = e["light"]
+	ball.visible = true
+	ball.scale = Vector3.ONE * 0.3
+	(ball.material_override as StandardMaterial3D).albedo_color.a = 1.0
+	light.visible = true
+	light.light_energy = 9.0 if big else 6.0
+	for k in ["debris", "smoke"]:
+		e[k].restart()
+		e[k].emitting = true
+	if e["tween"]:
+		e["tween"].kill()
+	var tw := create_tween().set_parallel(true)
+	var size := radius * (0.9 if big else 0.7)
+	tw.tween_property(ball, "scale", Vector3.ONE * size * 2.0, 0.35).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_EXPO)
+	tw.tween_property(ball.material_override, "albedo_color:a", 0.0, 0.4)
+	tw.tween_property(light, "light_energy", 0.0, 0.5)
+	tw.chain().tween_callback(func():
+		ball.visible = false
+		light.visible = false)
+	e["tween"] = tw
+
+	# Shake harder the closer the blast is to the camera.
+	var cam_d: float = cam_rig.cam.global_position.distance_to(pos)
+	fire_heat = minf(1.0, fire_heat + (0.6 if big else 0.4) * clampf(40.0 / maxf(cam_d, 1.0), 0.4, 1.0))
+	flash = 1.0
+
+
+## Backblast / thump when a launcher fires.
+func on_launch(at: Vector3, w: Dictionary) -> void:
+	fire_heat = minf(1.0, fire_heat + (0.3 if w["kind"] == "rocket" else 0.15))
+	flash = minf(1.0, flash + 0.6)
+	_muzzle_light.global_position = at
+
+
+func on_vehicle_destroyed(v: Node3D) -> void:
+	notify("ENEMY %s DESTROYED" % v.vehicle_name)
+
+
+func notify(text: String) -> void:
+	_notice = text
+	_notice_t = 4.0
 
 
 ## Every shot heats up the screen effects; many at once = shake, blur, flash.
@@ -511,10 +651,13 @@ func _process(delta: float) -> void:
 
 	if hud_label:
 		var captured := Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
+		_notice_t = maxf(0.0, _notice_t - delta)
 		hud_label.text = "SQUAD TEST // FIELD TRIAL\n" \
 			+ "WASD  move squad     MOUSE  aim%s     WHEEL  zoom\n" % ("" if captured else " (click to grab)") \
-			+ "HOLD LMB  focus fire on reticle     HOLD RMB  fire at will\n" \
-			+ "C / SPACE  cover vs camera facing     F  auto fire     TAB  reticle\n\n" \
+			+ "HOLD LMB  focus fire on reticle     HOLD RMB  specialists fire GL / rockets\n" \
+			+ "C / SPACE  cover vs camera facing     F  auto fire (at will)     TAB  reticle\n\n" \
 			+ "SQUAD   %s\n" % squad.status_text() \
+			+ "UNIT    %s\n" % squad.roster_text() \
 			+ "FIRE    %s%s\n" % [squad.fire_mode_text(), "   (auto fire ON)" if squad.auto_fire else ""] \
-			+ "HITS    %d     DROPPED  %d" % [hits, kills]
+			+ "HITS    %d     DROPPED  %d" % [hits, kills] \
+			+ ("\n\n>> %s" % _notice if _notice_t > 0.0 else "")

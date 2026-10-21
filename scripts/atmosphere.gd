@@ -1,15 +1,12 @@
 extends Node3D
-## Night mood: dark, foggy, raining, with harsh light sources that bloom and
+## Night mood: dark, foggy, wet after rain, with harsh light sources that bloom and
 ## glare like they're blinding the lens. Builds:
 ##   - dark environment with fog, ACES tonemap and strong bloom (glow)
 ##   - a floodlight on a pole aimed at the target dummies
 ##   - a sodium street lamp over the cover area
 ##   - glare sprites + anamorphic streaks on each light, plus visible beams
-##   - rain streaks and ground splashes that follow the camera
 
 var cam_rig: Node3D
-var _rain: GPUParticles3D
-var _splash: GPUParticles3D
 var _glares: Array = []   # [{node, dir, base}] for view-dependent glare
 
 
@@ -21,7 +18,6 @@ func _ready() -> void:
 	# Street lamp hanging over the cover crates.
 	_build_light_pole(Vector3(-4.5, 0, 6.5), 5.5, Vector3(-1.5, 0, 5.5),
 		Color(1.0, 0.68, 0.36), 9.0, 62.0, 16.0, true, 2.2)
-	_build_rain()
 
 
 # ---------------------------------------------------------------- environment
@@ -252,75 +248,11 @@ func _build_glare(pos: Vector3, dir: Vector3, color: Color, size: float) -> void
 	_glares.append({"halo": halo, "streak": streak, "dir": dir, "pos": pos, "color": color})
 
 
-# ---------------------------------------------------------------- rain
-
-func _build_rain() -> void:
-	# Falling streaks.
-	_rain = GPUParticles3D.new()
-	_rain.amount = 2600
-	_rain.lifetime = 1.0
-	_rain.preprocess = 1.0
-	_rain.local_coords = false
-	_rain.visibility_aabb = AABB(Vector3(-30, -20, -30), Vector3(60, 40, 60))
-	var pm := ParticleProcessMaterial.new()
-	pm.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX
-	pm.emission_box_extents = Vector3(24, 0.5, 24)
-	pm.direction = Vector3(0.06, -1, 0)
-	pm.spread = 2.0
-	pm.initial_velocity_min = 20.0
-	pm.initial_velocity_max = 24.0
-	pm.gravity = Vector3(0, -4, 0)
-	_rain.process_material = pm
-	var streak := QuadMesh.new()
-	streak.size = Vector2(0.022, 0.75)
-	var rm := StandardMaterial3D.new()
-	rm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	rm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	rm.billboard_mode = BaseMaterial3D.BILLBOARD_FIXED_Y
-	rm.albedo_color = Color(0.72, 0.8, 0.9, 0.22)
-	streak.material = rm
-	_rain.draw_pass_1 = streak
-	add_child(_rain)
-
-	# Little splashes popping off the ground.
-	_splash = GPUParticles3D.new()
-	_splash.amount = 350
-	_splash.lifetime = 0.3
-	_splash.local_coords = false
-	_splash.visibility_aabb = AABB(Vector3(-25, -2, -25), Vector3(50, 4, 50))
-	var sm := ParticleProcessMaterial.new()
-	sm.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX
-	sm.emission_box_extents = Vector3(18, 0.0, 18)
-	sm.direction = Vector3(0, 1, 0)
-	sm.spread = 35.0
-	sm.initial_velocity_min = 1.2
-	sm.initial_velocity_max = 2.4
-	sm.gravity = Vector3(0, -12, 0)
-	sm.scale_min = 0.5
-	sm.scale_max = 1.0
-	_splash.process_material = sm
-	var dot := QuadMesh.new()
-	dot.size = Vector2(0.025, 0.025)
-	var dm := StandardMaterial3D.new()
-	dm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	dm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	dm.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
-	dm.albedo_color = Color(0.7, 0.8, 0.95, 0.25)
-	dot.material = dm
-	_splash.draw_pass_1 = dot
-	add_child(_splash)
-
-
 func _process(_delta: float) -> void:
 	if cam_rig == null or cam_rig.cam == null:
 		return
 	var cam: Camera3D = cam_rig.cam
 	var cpos := cam.global_position
-	var fwd := -cam.global_transform.basis.z
-	fwd.y = 0
-	fwd = fwd.normalized() * 10.0
-	_rain.global_position = Vector3(cpos.x + fwd.x, cpos.y + 10.0, cpos.z + fwd.z)
-	_splash.global_position = Vector3(cpos.x + fwd.x, 0.03, cpos.z + fwd.z)
 
 	# Glare gets harsher the more directly a lamp points at the camera.
 	for g in _glares:
