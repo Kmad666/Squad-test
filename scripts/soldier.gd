@@ -109,7 +109,7 @@ func _build_model() -> void:
 	var dark := _mat("dark", Color(0.22, 0.25, 0.16))
 	var skin := _mat("skin", Color(0.80, 0.64, 0.50))
 	var black := _mat("black", Color(0.08, 0.08, 0.08))
-	var ring := _mat("ring", Color(0.2, 0.75, 1.0), true)
+	var ring := _mat("ring", Color(0.06, 0.28, 0.36), true)
 	var flash := _mat("flash", Color(1.0, 0.9, 0.4), true)
 
 	var model := Node3D.new()

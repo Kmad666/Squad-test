@@ -37,6 +37,16 @@ func _ready() -> void:
 	_arm.add_child(cam)
 	cam.current = true
 
+	# Dim cold fill riding with the camera so the squad reads as shapes in the dark.
+	var fill := OmniLight3D.new()
+	fill.light_color = Color(0.55, 0.65, 0.85)
+	fill.light_energy = 0.9
+	fill.omni_range = 22.0
+	fill.omni_attenuation = 1.4
+	fill.light_specular = 0.4
+	fill.position = Vector3(0, 1.0, -4.0)
+	add_child(fill)
+
 
 func _unhandled_input(event: InputEvent) -> void:
 	var captured := Input.mouse_mode == Input.MOUSE_MODE_CAPTURED

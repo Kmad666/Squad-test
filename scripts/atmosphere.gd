@@ -59,7 +59,7 @@ func _build_environment() -> void:
 	var moon := DirectionalLight3D.new()
 	moon.rotation = Vector3(deg_to_rad(-40), deg_to_rad(-30), 0)
 	moon.light_color = Color(0.55, 0.65, 0.9)
-	moon.light_energy = 0.12
+	moon.light_energy = 0.28
 	moon.shadow_enabled = false
 	add_child(moon)
 
@@ -284,7 +284,7 @@ func _build_rain() -> void:
 
 	# Little splashes popping off the ground.
 	_splash = GPUParticles3D.new()
-	_splash.amount = 600
+	_splash.amount = 350
 	_splash.lifetime = 0.3
 	_splash.local_coords = false
 	_splash.visibility_aabb = AABB(Vector3(-25, -2, -25), Vector3(50, 4, 50))
@@ -300,12 +300,12 @@ func _build_rain() -> void:
 	sm.scale_max = 1.0
 	_splash.process_material = sm
 	var dot := QuadMesh.new()
-	dot.size = Vector2(0.05, 0.05)
+	dot.size = Vector2(0.025, 0.025)
 	var dm := StandardMaterial3D.new()
 	dm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	dm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	dm.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
-	dm.albedo_color = Color(0.8, 0.88, 1.0, 0.45)
+	dm.albedo_color = Color(0.7, 0.8, 0.95, 0.25)
 	dot.material = dm
 	_splash.draw_pass_1 = dot
 	add_child(_splash)
