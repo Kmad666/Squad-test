@@ -11,6 +11,7 @@ const NAV_HALF := 50.0          # playable half-size of the field (metres)
 const SQUAD_SIZE := 6
 const TRACER_COUNT := 48
 const TRACER_LIFE := 0.06
+const TALL_COVER := 1.6         # boxes taller than this need a lean-out to shoot
 
 ## Cover boxes: [ground position, size, yaw]. Low crates (1.1 m) can be shot over,
 ## tall crates (2.4 m) are hard cover.
@@ -240,10 +241,19 @@ func _build_cover_points() -> void:
 			for i in count:
 				var t: float = (float(i) + 0.5) / float(count) - 0.5
 				var local: Vector3 = face * (half_n + 0.6) + tangent * (t * span)
+				# Tall crates can't be shot over, so give the spot two lean-out
+				# positions just past each edge of the face (nearest edge first).
+				var peeks: Array = []
+				if size.y > TALL_COVER:
+					var first: float = 1.0 if t >= 0.0 else -1.0
+					for side in [first, -first]:
+						var lp: Vector3 = face * (half_n + 0.6) + tangent * (side * (span * 0.5 + 0.45))
+						peeks.append(CoverUtil.push_out(cover_defs, xf * lp, 0.5))
 				cover_points.append({
 					"pos": xf * local,
 					"normal": (xf.basis * face).normalized(),
 					"height": size.y,
+					"peeks": peeks,
 				})
 
 

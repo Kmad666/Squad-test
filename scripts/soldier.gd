@@ -20,6 +20,9 @@ var move_target := Vector3.ZERO
 var cover_pos := Vector3.ZERO
 var has_real_cover := false
 var target: Node3D = null
+var peeks: Array = []          # lean-out spots when behind tall cover
+var peek_pos := Vector3.ZERO
+var shots := 0
 
 var _agent: NavigationAgent3D
 var _upper: Node3D
@@ -153,8 +156,11 @@ func _set_crouch(on: bool) -> void:
 
 # ---------------------------------------------------------------- orders
 
-func go_to_cover(pos: Vector3, real: bool) -> void:
+func go_to_cover(pos: Vector3, real: bool, lean_spots: Array = []) -> void:
 	cover_pos = pos
+	peeks = lean_spots
+	if not peeks.is_empty():
+		peek_pos = peeks[0]
 	has_real_cover = real
 	state = State.TO_COVER
 	_cover_timer = 0.0
@@ -164,8 +170,13 @@ func go_to_cover(pos: Vector3, real: bool) -> void:
 
 func leave_cover() -> void:
 	state = State.FOLLOW
+	peeks = []
 	_peeking = false
 	_path_timer = 0.0
+
+
+func _is_tall() -> bool:
+	return not peeks.is_empty()
 
 
 func is_settled() -> bool:
@@ -176,6 +187,8 @@ func is_settled() -> bool:
 
 func _physics_process(delta: float) -> void:
 	var dest: Vector3 = move_target if state == State.FOLLOW else cover_pos
+	if state == State.IN_COVER and _peeking and _is_tall():
+		dest = peek_pos   # lean out past the edge of the crate
 	_path_timer -= delta
 	if _path_timer <= 0.0:
 		_agent.target_position = dest
@@ -199,7 +212,7 @@ func _physics_process(delta: float) -> void:
 			_moving = false
 			_peek_timer = _rng.randf_range(0.6, 1.6)
 	else:
-		_moving = dist > 0.35
+		_moving = dist > 0.2
 
 	var vel := Vector3.ZERO
 	if _moving:
@@ -260,20 +273,34 @@ func _eye() -> Vector3:
 	return global_position + Vector3(0, EYE_HEIGHT, 0)
 
 
-func _has_los(d: Node3D) -> bool:
-	var q := PhysicsRayQueryParameters3D.create(_eye(), d.global_position + Vector3(0, 1.25, 0), RAY_MASK)
+func _has_los(d: Node3D, from_ground := Vector3.INF) -> bool:
+	var origin: Vector3 = global_position if from_ground == Vector3.INF else from_ground
+	var q := PhysicsRayQueryParameters3D.create(origin + Vector3(0, EYE_HEIGHT, 0), d.global_position + Vector3(0, 1.25, 0), RAY_MASK)
 	var hit := get_world_3d().direct_space_state.intersect_ray(q)
 	return not hit.is_empty() and hit["collider"] == d
 
 
+## Behind tall cover, look for targets from each lean-out spot and remember
+## the first side that has a shot.
 func _find_target() -> Node3D:
+	if state != State.FOLLOW and _is_tall():
+		for p in peeks:
+			var t := _find_target_from(p)
+			if t:
+				peek_pos = p
+				return t
+		return null
+	return _find_target_from(global_position)
+
+
+func _find_target_from(origin: Vector3) -> Node3D:
 	var best: Node3D = null
 	var best_score := INF
 	for d in main.dummies:
 		if not d.alive:
 			continue
 		var dist: float = global_position.distance_to(d.global_position)
-		if dist > RANGE or not _has_los(d):
+		if dist > RANGE or not _has_los(d, origin):
 			continue
 		var score: float = dist + _rng.randf_range(0.0, 8.0)   # each picks their own
 		if score < best_score:
@@ -292,7 +319,8 @@ func _update_combat(delta: float) -> void:
 		target = null
 	if _retarget_timer <= 0.0:
 		_retarget_timer = _rng.randf_range(0.35, 0.7)
-		if target == null or not _has_los(target) or _rng.randf() < 0.15:
+		var from_spot: Vector3 = peek_pos if (state != State.FOLLOW and _is_tall()) else global_position
+		if target == null or not _has_los(target, from_spot) or _rng.randf() < 0.15:
 			target = _find_target()
 
 	var can_fire := false
@@ -309,11 +337,17 @@ func _update_combat(delta: float) -> void:
 			_peek_timer -= delta
 			if _peek_timer <= 0.0 and target and not squad.hold_fire:
 				_peeking = not _peeking
-				_peek_timer = _rng.randf_range(1.0, 1.8) if _peeking else _rng.randf_range(1.0, 2.4)
+				var up_time := _rng.randf_range(1.0, 1.8) + (1.0 if _is_tall() else 0.0)  # leaning takes travel time
+				_peek_timer = up_time if _peeking else _rng.randf_range(1.0, 2.4)
 				_peek_age = 0.0
 			_peek_age += delta
 			_set_crouch(not _peeking)
-			can_fire = _peeking and _peek_age > 0.25
+			if _is_tall():
+				var off := peek_pos - global_position
+				off.y = 0
+				can_fire = _peeking and off.length() < 0.3
+			else:
+				can_fire = _peeking and _peek_age > 0.25
 
 	if squad.hold_fire or target == null:
 		can_fire = false
@@ -343,6 +377,7 @@ func _shoot() -> void:
 		if c.has_method("take_hit"):
 			c.take_hit()
 			main.hits += 1
+	shots += 1
 	main.spawn_tracer(_flash.global_position, end)
 	_flash.visible = true
 	_flash_timer = 0.05

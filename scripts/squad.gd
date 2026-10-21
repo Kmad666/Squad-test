@@ -155,7 +155,7 @@ func take_cover() -> void:
 
 	for s in soldiers:
 		if assigned.has(s.index):
-			s.go_to_cover(assigned[s.index]["pos"], true)
+			s.go_to_cover(assigned[s.index]["pos"], true, assigned[s.index]["peeks"])
 		else:
 			s.go_to_cover(s.global_position, false)  # no spot: get low where you are
 
