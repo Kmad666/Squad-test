@@ -10,8 +10,11 @@ var _dims_check: CheckBox
 
 func _ready() -> void:
 	visible = false
-	set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	position = Vector2(-330, 12)
+	set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
+	offset_left = -330
+	offset_right = -12
+	offset_top = 12
+	grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	custom_minimum_size = Vector2(318, 0)
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = Color(0.02, 0.06, 0.02, 0.85)

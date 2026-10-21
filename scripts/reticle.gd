@@ -26,7 +26,7 @@ var _font: Font
 
 
 func _ready() -> void:
-	set_anchors_preset(Control.PRESET_FULL_RECT)
+	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_font = ThemeDB.fallback_font
 	reset_defaults(false)
@@ -101,8 +101,8 @@ func _draw() -> void:
 func _draw_dims(c: Vector2, hw: float, hh: float, corner: float, th: float) -> void:
 	var dim := Color(COLOR, 0.65)
 	var fs := 13
-	var sw := size.x
-	var sh := size.y
+	var sw := maxf(size.x, 1.0)
+	var sh := maxf(size.y, 1.0)
 
 	# Width: dashed measuring line above the top edge with end ticks.
 	var y := c.y - hh - 14.0
