@@ -331,11 +331,11 @@ func _update_combat(delta: float) -> void:
 		State.TO_COVER:
 			_set_crouch(false)
 		State.IN_COVER:
-			if target == null or squad.hold_fire:
+			if target == null or not squad.auto_fire:
 				_peeking = false
 				_peek_timer = minf(_peek_timer, 0.8)
 			_peek_timer -= delta
-			if _peek_timer <= 0.0 and target and not squad.hold_fire:
+			if _peek_timer <= 0.0 and target and squad.auto_fire:
 				_peeking = not _peeking
 				var up_time := _rng.randf_range(1.0, 1.8) + (1.0 if _is_tall() else 0.0)  # leaning takes travel time
 				_peek_timer = up_time if _peeking else _rng.randf_range(1.0, 2.4)
@@ -349,7 +349,7 @@ func _update_combat(delta: float) -> void:
 			else:
 				can_fire = _peeking and _peek_age > 0.25
 
-	if squad.hold_fire or target == null:
+	if not squad.auto_fire or target == null:
 		can_fire = false
 
 	_fire_timer -= delta

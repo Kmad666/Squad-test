@@ -17,11 +17,12 @@ var soldiers: Array = []
 var anchor := Vector3.ZERO
 var slot_offsets: Array = []
 var in_cover := false
-var hold_fire := false
+var auto_fire := true
 var threat_dir := Vector3.FORWARD
 
 var _marker: MeshInstance3D
 var _marker_mat: StandardMaterial3D
+var _pointer: Node3D
 
 
 func setup(m: Node3D, start: Vector3, count: int) -> void:
@@ -66,6 +67,19 @@ func _build_marker() -> void:
 	_marker.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(_marker)
 
+	# Flat arrow on the ground showing the facing the next cover order will use.
+	_pointer = Node3D.new()
+	add_child(_pointer)
+	var arrow := MeshInstance3D.new()
+	var prism := PrismMesh.new()
+	prism.size = Vector3(0.45, 0.5, 0.04)
+	arrow.mesh = prism
+	arrow.material_override = _marker_mat
+	arrow.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	arrow.rotation.x = -PI / 2.0
+	arrow.position = Vector3(0, 0, -0.95)
+	_pointer.add_child(arrow)
+
 
 func get_focus() -> Vector3:
 	return anchor
@@ -84,8 +98,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			leave_cover()
 		else:
 			take_cover()
-	elif event.is_action_pressed("hold_fire"):
-		hold_fire = not hold_fire
+	elif event.is_action_pressed("auto_fire"):
+		auto_fire = not auto_fire
 
 
 func _physics_process(delta: float) -> void:
@@ -110,6 +124,9 @@ func _physics_process(delta: float) -> void:
 			soldiers[i].move_target = CoverUtil.push_out(main.cover_defs, p, 0.6)
 
 	_marker.global_position = anchor + Vector3(0, 0.03, 0)
+	_pointer.global_position = anchor + Vector3(0, 0.04, 0)
+	var face: Vector3 = threat_dir if in_cover else main.camera_forward()
+	_pointer.rotation.y = atan2(-face.x, -face.z)
 	_marker_mat.albedo_color = Color(0.3, 0.8, 1.0) if in_cover else Color(1.0, 0.85, 0.2)
 
 
@@ -117,7 +134,7 @@ func _physics_process(delta: float) -> void:
 ## the threat, with a pull toward the squad so nobody runs off alone.
 func take_cover() -> void:
 	in_cover = true
-	threat_dir = main.threat_direction(anchor)
+	threat_dir = main.camera_forward()   # hide from whatever the camera faces
 
 	var candidates: Array = []
 	for cp in main.cover_points:

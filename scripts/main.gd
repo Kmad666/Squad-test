@@ -6,6 +6,8 @@ const CoverUtil = preload("res://scripts/cover_util.gd")
 const SquadScript = preload("res://scripts/squad.gd")
 const DummyScript = preload("res://scripts/dummy.gd")
 const CameraRigScript = preload("res://scripts/camera_rig.gd")
+const ReticleScript = preload("res://scripts/reticle.gd")
+const ReticlePanelScript = preload("res://scripts/reticle_panel.gd")
 
 const NAV_HALF := 50.0          # playable half-size of the field (metres)
 const SQUAD_SIZE := 6
@@ -46,6 +48,8 @@ var squad: Node3D
 var cam_rig: Node3D
 var nav_region: NavigationRegion3D
 var hud_label: Label
+var reticle: Control
+var reticle_panel: PanelContainer
 var hits := 0
 var kills := 0
 
@@ -88,7 +92,7 @@ func _setup_input() -> void:
 	_bind("move_left", [KEY_A, KEY_LEFT])
 	_bind("move_right", [KEY_D, KEY_RIGHT])
 	_bind("take_cover", [KEY_C, KEY_SPACE])
-	_bind("hold_fire", [KEY_F])
+	_bind("auto_fire", [KEY_F])
 
 
 func _bind(action: String, keys: Array) -> void:
@@ -299,25 +303,12 @@ func spawn_tracer(from: Vector3, to: Vector3) -> void:
 
 # ---------------------------------------------------------------- queries
 
-## Flat direction the squad should take cover against: toward the nearest
-## standing dummy, or where the camera looks if none are close.
-func threat_direction(from: Vector3) -> Vector3:
-	var best: Node3D = null
-	var best_d := 70.0
-	for d in dummies:
-		if not d.alive:
-			continue
-		var dist: float = from.distance_to(d.global_position)
-		if dist < best_d:
-			best_d = dist
-			best = d
-	var dir: Vector3
-	if best:
-		dir = best.global_position - from
-	else:
-		dir = cam_rig.get_yaw_basis() * Vector3.FORWARD
+## Flat direction the camera is looking. Cover orders shield the squad from
+## this direction (the box ends up between each soldier and where you look).
+func camera_forward() -> Vector3:
+	var dir: Vector3 = cam_rig.get_yaw_basis() * Vector3.FORWARD
 	dir.y = 0
-	return dir.normalized() if dir.length() > 0.01 else Vector3.FORWARD
+	return dir.normalized()
 
 
 func on_dummy_down() -> void:
@@ -329,6 +320,8 @@ func on_dummy_down() -> void:
 func _build_hud() -> void:
 	var layer := CanvasLayer.new()
 	add_child(layer)
+	reticle = ReticleScript.new()
+	layer.add_child(reticle)
 	var panel := PanelContainer.new()
 	panel.position = Vector2(12, 12)
 	var sb := StyleBoxFlat.new()
@@ -340,6 +333,16 @@ func _build_hud() -> void:
 	hud_label = Label.new()
 	hud_label.add_theme_font_size_override("font_size", 15)
 	panel.add_child(hud_label)
+
+	reticle_panel = ReticlePanelScript.new()
+	reticle_panel.reticle = reticle
+	layer.add_child(reticle_panel)
+
+
+func _input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_TAB:
+		reticle_panel.toggle()
+		get_viewport().set_input_as_handled()
 
 
 func _process(delta: float) -> void:
@@ -353,6 +356,7 @@ func _process(delta: float) -> void:
 		var captured := Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
 		hud_label.text = "SQUAD TEST\n" \
 			+ "WASD  move squad     Mouse  look%s     Wheel  zoom\n" % ("" if captured else " (click to grab)") \
-			+ "C / Space  take cover / leave cover     F  hold fire\n\n" \
+			+ "C / Space  take cover facing the camera / leave cover\n" \
+			+ "F  auto fire on/off     Tab  reticle settings\n\n" \
 			+ "Squad: %s\n" % squad.status_text() \
-			+ "Fire: %s     Hits: %d     Targets dropped: %d" % ["HOLD" if squad.hold_fire else "FREE", hits, kills]
+			+ "Auto fire: %s     Hits: %d     Targets dropped: %d" % ["ON" if squad.auto_fire else "OFF", hits, kills]

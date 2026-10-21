@@ -11,12 +11,13 @@ You command a squad of six soldiers as one unit. Each soldier picks its own targ
 | WASD / arrows | Move the squad (loose cluster around the yellow marker) |
 | Mouse | Orbit the camera (click to grab the mouse, Esc to release) |
 | Wheel | Zoom |
-| C / Space | Take cover / leave cover (moving also leaves cover) |
-| F | Toggle hold fire |
+| C / Space | Take cover against the direction the camera faces / leave cover (moving also leaves cover) |
+| F | Auto fire on/off |
+| Tab | Reticle settings (sizes are saved in your browser) |
 
 ## How cover works
-On the cover order, each soldier runs to the closest free spot behind a box, on the far side from the
-nearest target dummy (or from where the camera faces). The squad's center pulls the choice so the
+On the cover order, each soldier runs to the closest free spot behind a box, on the far side from where
+the camera is facing (the arrow at the squad marker shows that direction). The squad's center pulls the choice so the
 group stays together. In cover, soldiers crouch and pop up to fire over low crates. Behind tall crates they lean out past the edge to shoot, then duck back.
 
 Every push to `main` builds the web version and publishes it to GitHub Pages (gh-pages branch).
