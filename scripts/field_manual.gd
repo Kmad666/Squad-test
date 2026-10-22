@@ -36,6 +36,8 @@ func _ready() -> void:
 
 func _process(_delta: float) -> void:
 	var captured := Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
+	if captured != _was_captured:
+		print("[debug] manual sees captured=", captured, " open=", is_open, " expect=", _expect_release)
 	if _was_captured and not captured and not is_open:
 		if _expect_release:
 			_expect_release = false
@@ -60,6 +62,7 @@ func _input(event: InputEvent) -> void:
 
 
 func open() -> void:
+	print("[debug] manual open()")
 	is_open = true
 	_root.visible = true
 	get_tree().paused = true
