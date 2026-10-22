@@ -4,6 +4,8 @@ extends StaticBody3D
 ## Burns when destroyed, then rebuilds after a while for more testing.
 
 const UI_FONT = preload("res://fonts/ShareTechMono-Regular.ttf")
+const EnemyGunner = preload("res://scripts/enemy_gunner.gd")
+const Weapons = preload("res://scripts/weapons.gd")
 
 const MAX_HP := 360.0
 const RESPAWN_TIME := 20.0
@@ -14,6 +16,9 @@ var vehicle_name := "APC"
 var armor_class := "HEAVY"
 var size_factor := 1.7     # big target: easier to hit
 var radius := 2.2          # how far a deliberate miss must land from the centre
+var mark_height := 2.8
+var gunners: Array = []
+var _turret: Node3D
 var alive := true
 var hp := MAX_HP
 
@@ -55,7 +60,11 @@ func _ready() -> void:
 
 	_add_box(Vector3(3.0, 1.3, 6.0), Vector3(0, 1.15, 0))            # hull
 	_add_box(Vector3(2.6, 0.5, 1.2), Vector3(0, 1.55, 2.6), -0.5)     # sloped glacis (front faces +Z)
-	_add_box(Vector3(1.6, 0.65, 1.9), Vector3(0, 2.12, -0.3))        # turret
+	# Turret swivels to track its target; carries a machine gun and a cannon.
+	_turret = Node3D.new()
+	_turret.position = Vector3(0, 1.8, -0.3)
+	add_child(_turret)
+	_add_box(Vector3(1.6, 0.65, 1.9), Vector3(0, 0.32, 0), 0.0, _turret)
 	var barrel := MeshInstance3D.new()
 	var bm := CylinderMesh.new()
 	bm.top_radius = 0.07
@@ -63,10 +72,26 @@ func _ready() -> void:
 	bm.height = 2.0
 	barrel.mesh = bm
 	barrel.material_override = _hull_mat
-	barrel.position = Vector3(0, 2.15, 1.5)
+	barrel.position = Vector3(0, 0.35, 1.8)
 	barrel.rotation.x = PI / 2.0
-	add_child(barrel)
+	_turret.add_child(barrel)
 	_parts.append(barrel)
+	_add_box(Vector3(0.1, 0.12, 0.7), Vector3(0.55, 0.45, 1.1), 0.0, _turret)   # coax MG
+
+	var mg: Node3D = EnemyGunner.new()
+	mg.main = main
+	mg.host = self
+	mg.weapon = Weapons.APC_MG
+	mg.turret = _turret
+	mg.position = Vector3(0.55, 0.45, 1.5)
+	_turret.add_child(mg)
+	var cannon: Node3D = EnemyGunner.new()
+	cannon.main = main
+	cannon.host = self
+	cannon.weapon = Weapons.APC_CANNON
+	cannon.position = Vector3(0, 0.35, 2.9)
+	_turret.add_child(cannon)
+	gunners = [mg, cannon]
 	for x in [-1.55, 1.55]:
 		for z in [-2.0, 0.0, 2.0]:
 			var w := MeshInstance3D.new()
@@ -103,7 +128,7 @@ func _ready() -> void:
 	add_child(_fire_light)
 
 
-func _add_box(size: Vector3, pos: Vector3, tilt := 0.0) -> void:
+func _add_box(size: Vector3, pos: Vector3, tilt := 0.0, parent: Node3D = null) -> void:
 	var mi := MeshInstance3D.new()
 	var bm := BoxMesh.new()
 	bm.size = size
@@ -111,7 +136,7 @@ func _add_box(size: Vector3, pos: Vector3, tilt := 0.0) -> void:
 	mi.material_override = _hull_mat
 	mi.position = pos
 	mi.rotation.x = tilt
-	add_child(mi)
+	(parent if parent else self).add_child(mi)
 	_parts.append(mi)
 
 
@@ -145,13 +170,17 @@ func _make_emitter(color: Color, amount: int, life: float, size: float, gravity:
 	return p
 
 
+func suppression_level() -> float:
+	return gunners[0].suppression if not gunners.is_empty() else 0.0
+
+
 func aim_point() -> Vector3:
 	return global_position + Vector3(0, 1.3, 0)
 
 
 func _update_label() -> void:
 	if alive:
-		_label.text = "ENEMY VEHICLE\n%s  ARMOR: %s\nHP %d / %d\nWEAK TO: ROCKETS" % [vehicle_name, armor_class, ceili(hp), int(MAX_HP)]
+		_label.text = "ENEMY VEHICLE\n%s  ARMOR: %s\nHP %d / %d\nMG + CANNON   WEAK TO: ROCKETS" % [vehicle_name, armor_class, ceili(hp), int(MAX_HP)]
 	else:
 		_label.text = "ENEMY VEHICLE\n%s  DESTROYED" % vehicle_name
 

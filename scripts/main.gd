@@ -72,6 +72,9 @@ var _explosions: Array = []
 var _explosion_idx := 0
 var _notice := ""
 var _notice_t := 0.0
+var hurt := 0.0               # red screen-edge flash when a soldier is hit
+var _friendly_tracer_mat: StandardMaterial3D
+var _enemy_tracer_mat: StandardMaterial3D
 var kills := 0
 
 var _tracers: Array = []
@@ -110,7 +113,7 @@ func _ready() -> void:
 	squad = SquadScript.new()
 	squad.name = "Squad"
 	add_child(squad)
-	squad.setup(self, Vector3(0, 0, 24))
+	squad.setup(self, Vector3(0, 0, 30))   # just outside enemy rifle range
 	squad.spawn_waiting_team("ANTI-ARMOR TEAM", AT_TEAM_SPOT, ["anti_armor", "anti_armor", "anti_armor"])
 
 	cam_rig = CameraRigScript.new()
@@ -310,6 +313,9 @@ func _build_tracers() -> void:
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	mat.albedo_color = Color(1.0, 0.82, 0.4)
 	mat.disable_fog = true
+	_friendly_tracer_mat = mat
+	_enemy_tracer_mat = mat.duplicate()
+	_enemy_tracer_mat.albedo_color = Color(1.3, 0.25, 0.15)   # enemy rounds burn red
 	var bm := BoxMesh.new()
 	bm.size = Vector3(0.04, 0.04, 1.0)
 	for i in TRACER_COUNT:
@@ -323,13 +329,14 @@ func _build_tracers() -> void:
 		_tracer_life.append(0.0)
 
 
-func spawn_tracer(from: Vector3, to: Vector3) -> void:
+func spawn_tracer(from: Vector3, to: Vector3, hostile := false) -> void:
 	var v := to - from
 	var length := v.length()
 	if length < 0.05:
 		return
 	var up := Vector3.UP if absf(v.normalized().y) < 0.99 else Vector3.RIGHT
 	var t: MeshInstance3D = _tracers[_tracer_idx]
+	t.material_override = _enemy_tracer_mat if hostile else _friendly_tracer_mat
 	t.global_transform = Transform3D(Basis.looking_at(v, up), (from + to) * 0.5)
 	t.scale = Vector3(1, 1, length)
 	t.visible = true
@@ -365,12 +372,14 @@ func _build_impacts() -> void:
 		_impacts.append(p)
 
 
-func spawn_impact(pos: Vector3, normal: Vector3, on_target: bool) -> void:
+func spawn_impact(pos: Vector3, normal: Vector3, on_target: bool, tint := Color(0, 0, 0, 0)) -> void:
 	var p: CPUParticles3D = _impacts[_impact_idx]
 	_impact_idx = (_impact_idx + 1) % _impacts.size()
 	p.global_position = pos + normal * 0.03
 	p.direction = normal
 	p.color = Color(1.6, 0.9, 0.35) if on_target else Color(0.75, 0.82, 0.95)  # sparks vs wet splash
+	if tint.a > 0.0:
+		p.color = tint
 	p.restart()
 	p.emitting = true
 
@@ -449,9 +458,19 @@ func _burst(color: Color, amount: int, life: float, size: float, vmin: float, vm
 
 ## Blast: splash damage with falloff to every target in the radius (a direct
 ## hit always takes full damage), plus the big screen and light effects.
-func spawn_explosion(pos: Vector3, w: Dictionary, direct: Node3D) -> void:
+func spawn_explosion(pos: Vector3, w: Dictionary, direct: Node3D, hostile := false) -> void:
 	var radius: float = w["radius"]
-	for t in targets:
+	if hostile:
+		_blast_soldiers(pos, w, direct)
+	else:
+		for t in targets:
+			if not t.alive or not ("gunners" in t):
+				continue
+			var sd: float = t.aim_point().distance_to(pos)
+			if sd < radius * 2.5:
+				for g in t.gunners:
+					g.add_suppression(0.6 * (1.0 - sd / (radius * 2.5)))
+	for t in ([] if hostile else targets):
 		if not t.alive:
 			continue
 		var f := 1.0
@@ -462,7 +481,7 @@ func spawn_explosion(pos: Vector3, w: Dictionary, direct: Node3D) -> void:
 			f = lerpf(1.0, 0.25, d / radius)
 		t.take_damage(w["soft"] * f, w["armor"] * f)
 
-	var big: bool = w["kind"] == "rocket"
+	var big: bool = w["kind"] != "grenade"
 	var e: Dictionary = _explosions[_explosion_idx]
 	_explosion_idx = (_explosion_idx + 1) % _explosions.size()
 	e["root"].global_position = pos
@@ -492,6 +511,62 @@ func spawn_explosion(pos: Vector3, w: Dictionary, direct: Node3D) -> void:
 	var cam_d: float = cam_rig.cam.global_position.distance_to(pos)
 	fire_heat = minf(1.0, fire_heat + (0.6 if big else 0.4) * clampf(40.0 / maxf(cam_d, 1.0), 0.4, 1.0))
 	flash = 1.0
+
+
+## Enemy shell landing: damage with falloff, cut to 30% if a crate is between
+## the blast and the soldier, and heavy suppression around it.
+func _blast_soldiers(pos: Vector3, w: Dictionary, direct: Node3D) -> void:
+	var radius: float = w["radius"]
+	var space := get_world_3d().direct_space_state
+	for s in squad.soldiers.duplicate():
+		var p: Vector3 = s.exposed_point()
+		var d: float = p.distance_to(pos)
+		if d < radius * 2.5:
+			s.add_suppression(w["suppress"] * (1.0 - d / (radius * 2.5)))
+		if s != direct and d > radius:
+			continue
+		var f := 1.0 if s == direct else lerpf(1.0, 0.2, d / radius)
+		var q := PhysicsRayQueryParameters3D.create(pos + Vector3(0, 0.3, 0), p, 1)
+		if not space.intersect_ray(q).is_empty():
+			f *= 0.3
+		s.take_damage(w["soft"] * f, pos)
+
+
+## Distance from point p to the segment a-b.
+func _seg_dist(a: Vector3, b: Vector3, p: Vector3) -> float:
+	var ab := b - a
+	var t := clampf((p - a).dot(ab) / maxf(ab.length_squared(), 0.0001), 0.0, 1.0)
+	return p.distance_to(a + ab * t)
+
+
+## Our rounds snapping past enemies pin them down.
+func suppress_enemies(from: Vector3, end: Vector3, amount: float) -> void:
+	for t in targets:
+		if not t.alive or not ("gunners" in t):
+			continue
+		var reach: float = 2.5 + t.radius
+		var d := _seg_dist(from, end, t.aim_point())
+		if d < reach:
+			for g in t.gunners:
+				g.add_suppression(amount * (1.0 - d / reach))
+
+
+## Enemy rounds snapping past soldiers rattle them.
+func suppress_squad(from: Vector3, end: Vector3, amount: float) -> void:
+	for s in squad.soldiers:
+		var d := _seg_dist(from, end, s.global_position + Vector3(0, 1.1, 0))
+		if d < 2.0:
+			s.add_suppression(amount * (1.0 - d / 2.0))
+
+
+func on_soldier_hit(_s: Node3D) -> void:
+	hurt = 1.0
+	fire_heat = minf(1.0, fire_heat + 0.15)
+
+
+func on_enemy_cannon(at: Vector3) -> void:
+	var d: float = cam_rig.cam.global_position.distance_to(at)
+	fire_heat = minf(1.0, fire_heat + clampf(20.0 / maxf(d, 1.0), 0.05, 0.3))
 
 
 ## Backblast / thump when a launcher fires.
@@ -619,6 +694,11 @@ func _build_hud() -> void:
 	ui_root.add_child(reticle_panel)
 
 
+func _unhandled_key_input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_R:
+		get_tree().reload_current_scene()
+
+
 func _input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_TAB:
 		reticle_panel.toggle()
@@ -637,8 +717,11 @@ func _process(delta: float) -> void:
 	flash = move_toward(flash, 0.0, delta * 9.0)
 	_muzzle_light.light_energy = flash * 5.0
 	_muzzle_light.visible = flash > 0.03
+	hurt = move_toward(hurt, 0.0, delta * 2.5)
 	if postfx:
-		postfx.set_fx(fire_heat, flash)
+		postfx.set_fx(fire_heat, flash, squad.avg_suppression(), hurt)
+	if reticle:
+		reticle.marks = _target_marks()
 
 	# Neon tube flicker on all UI: a steady hum plus the odd brown-out.
 	_flicker_t += delta
@@ -655,9 +738,45 @@ func _process(delta: float) -> void:
 		hud_label.text = "SQUAD TEST // FIELD TRIAL\n" \
 			+ "WASD  move squad     MOUSE  aim%s     WHEEL  zoom\n" % ("" if captured else " (click to grab)") \
 			+ "HOLD LMB  focus fire on reticle     HOLD RMB  specialists fire GL / rockets\n" \
-			+ "C / SPACE  cover vs camera facing     F  auto fire (at will)     TAB  reticle\n\n" \
+			+ "C / SPACE  cover vs camera facing     F  auto fire (at will)     TAB  reticle     R  restart\n\n" \
 			+ "SQUAD   %s\n" % squad.status_text() \
 			+ "UNIT    %s\n" % squad.roster_text() \
 			+ "FIRE    %s%s\n" % [squad.fire_mode_text(), "   (auto fire ON)" if squad.auto_fire else ""] \
+			+ "UNDER FIRE  %s\n" % _supp_bar(squad.avg_suppression()) \
 			+ "HITS    %d     DROPPED  %d" % [hits, kills] \
 			+ ("\n\n>> %s" % _notice if _notice_t > 0.0 else "")
+
+
+func _supp_bar(v: float) -> String:
+	var n := roundi(v * 10.0)
+	var tag := "  PINNED" if v > 0.85 else ("  SUPPRESSED" if v > 0.4 else "")
+	return "[" + "#".repeat(n) + "-".repeat(10 - n) + "]" + tag
+
+
+## Empty squares over every live enemy inside the reticle, sized to the
+## enemy on screen, with their suppression level. Thicker = being engaged.
+func _target_marks() -> Array:
+	var marks: Array = []
+	var cam: Camera3D = cam_rig.cam
+	var rr := reticle_rect()
+	var engaged := {}
+	for s in squad.soldiers:
+		if s.target:
+			engaged[s.target] = true
+	for t in targets:
+		if not t.alive:
+			continue
+		var c: Vector3 = t.aim_point()
+		if cam.is_position_behind(c) or not rr.has_point(cam.unproject_position(c)):
+			continue
+		var top := cam.unproject_position(t.global_position + Vector3(0, t.mark_height, 0))
+		var bottom := cam.unproject_position(t.global_position)
+		var side := clampf(absf(bottom.y - top.y) * 1.15, 14.0, 220.0)
+		var centre := (top + bottom) * 0.5
+		marks.append({
+			"rect": Rect2(centre - Vector2(side, side) * 0.5, Vector2(side, side)),
+			"supp": t.suppression_level(),
+			"engaged": engaged.has(t),
+			"vehicle": t.kind == "vehicle",
+		})
+	return marks

@@ -15,6 +15,7 @@ You command a squad of six soldiers as one unit. Each soldier picks its own targ
 | F | Auto fire toggle: fire at will (each soldier picks any target he can see) |
 | C / Space | Take cover against the direction the camera faces / leave cover (moving also leaves cover) |
 | Tab | Reticle settings (sizes are saved in your browser) |
+| R | Restart |
 | Wheel | Zoom |
 
 ## How cover works
@@ -45,3 +46,22 @@ Every shot rolls to hit. Chance = weapon accuracy x range falloff x target size 
 Modifiers: beyond effective range accuracy falls to 30% at max range; vehicle targets x1.7 (big); shooter moving x0.6;
 aimed fire (focus fire, launchers) x1.15; follow-up rounds in a burst x0.85. Missed launcher shots land a few metres off,
 so the blast can still catch the target.
+
+## Enemy fire, health and suppression
+- Dummies are enemy riflemen and shoot back (red tracers). The APC's turret tracks you with a machine gun and fires
+  explosive cannon shells. Enemies need line of sight: a soldier crouched behind a low crate is hidden.
+- Soldiers have 100 HP. Below 50 they're **wounded** (slower, less accurate); at 0 they're **down** and leave the squad.
+- **Suppression** (both sides): rounds snapping past within ~2 m build it up; it fades ~1.5 s after the fire stops.
+  Suppressed soldiers peek less and shoot worse; **pinned** soldiers stay down. Suppressed enemies fire slower and
+  worse; pinned enemies stop firing. Focus fire is how you pin a target, then flank or blow it up.
+- Squares over enemies inside the reticle show what the squad will engage (thicker = currently being shot at),
+  with an amber suppression bar underneath.
+
+| Enemy weapon | Accuracy | Effective / max range | Damage |
+|---|---|---|---|
+| Enemy rifle | 32% | 30 / 58 m | 16 |
+| APC machine gun | 30% | 40 / 65 m | 14 |
+| APC cannon | 50% | 45 / 70 m | 55, 3.5 m blast (x0.3 behind cover), 7 s reload |
+
+Enemy hit chance: weapon accuracy x range falloff x0.75 vs moving soldiers x0.6 vs soldiers fighting from cover
+x(1 - 0.75 x the shooter's suppression).

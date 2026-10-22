@@ -7,6 +7,10 @@ extends CharacterBody3D
 ## anti_armor (burst rifle + rocket launcher). Specialists fire their
 ## secondary weapon while the squad's "specials" order (right mouse) is held.
 ## Soldiers not yet recruited stand at their post until the squad reaches them.
+##
+## Health 100: below 50 he's wounded (slower, less accurate), at 0 he's down.
+## Suppression 0..1 builds from enemy rounds snapping past: suppressed
+## soldiers peek less and shoot worse; pinned (>0.85) they stay down in cover.
 
 const Weapons = preload("res://scripts/weapons.gd")
 const ProjectileScript = preload("res://scripts/projectile.gd")
@@ -19,6 +23,7 @@ const RAY_MASK := 1 | 4     # world + targets (soldiers are layer 2)
 const FIRE_HOLD := 0       # must match squad.gd
 const FIRE_AT_WILL := 1
 const FIRE_FOCUS := 2
+const MAX_HP := 100.0
 
 static var _mats := {}
 
@@ -40,6 +45,9 @@ var specials_fired := 0
 var primary: Dictionary
 var secondary: Dictionary
 var secondary_cd := 0.0        # reload countdown for the secondary weapon
+var hp := MAX_HP
+var dead := false
+var suppression := 0.0
 
 var _agent: NavigationAgent3D
 var _upper: Node3D
@@ -60,6 +68,12 @@ var _peek_timer := 0.0
 var _peek_age := 0.0
 var _flash_timer := 0.0
 var _cover_timer := 0.0
+var _since_incoming := 99.0
+var _hurt_t := 0.0
+var _cap: CapsuleShape3D
+var _col: CollisionShape3D
+var _torso: MeshInstance3D
+var _model: Node3D
 
 
 func _ready() -> void:
@@ -72,13 +86,13 @@ func _ready() -> void:
 	collision_mask = 1
 	floor_snap_length = 0.3
 
-	var col := CollisionShape3D.new()
-	var cap := CapsuleShape3D.new()
-	cap.radius = 0.32
-	cap.height = 1.8
-	col.shape = cap
-	col.position.y = 0.9
-	add_child(col)
+	_col = CollisionShape3D.new()
+	_cap = CapsuleShape3D.new()
+	_cap.radius = 0.32
+	_cap.height = 1.8
+	_col.shape = _cap
+	_col.position.y = 0.9
+	add_child(_col)
 
 	_build_model()
 
@@ -101,6 +115,14 @@ static func _mat(key: String, color: Color, unshaded := false) -> StandardMateri
 		m.metallic_specular = 0.7
 		if unshaded:
 			m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		elif key != "dead":
+			# A touch of self-light + rim so your own men read in the dark.
+			m.emission_enabled = true
+			m.emission = color
+			m.emission_energy_multiplier = 0.22
+			m.rim_enabled = true
+			m.rim = 0.5
+			m.rim_tint = 0.6
 		_mats[key] = m
 	return _mats[key]
 
@@ -144,6 +166,7 @@ func _build_model() -> void:
 	var model := Node3D.new()
 	model.name = "Model"
 	add_child(model)
+	_model = model
 
 	_legs = Node3D.new()
 	model.add_child(_legs)
@@ -152,7 +175,7 @@ func _build_model() -> void:
 
 	_upper = Node3D.new()
 	model.add_child(_upper)
-	_part(_upper, _box(Vector3(0.48, 0.62, 0.28)), uniform, Vector3(0, 1.16, 0))         # torso
+	_torso = _part(_upper, _box(Vector3(0.48, 0.62, 0.28)), uniform, Vector3(0, 1.16, 0))  # torso
 	_part(_upper, _box(Vector3(0.34, 0.42, 0.16)), dark, Vector3(0, 1.20, 0.2))          # backpack
 	var head := SphereMesh.new()
 	head.radius = 0.13
@@ -198,6 +221,69 @@ func _set_crouch(on: bool) -> void:
 	_crouched = on
 	_legs.scale.y = 0.5 if on else 1.0
 	_upper.position.y = -0.45 if on else 0.0
+	# Shrink the hitbox too, so a crouched man really is hidden behind a crate.
+	_cap.height = 1.25 if on else 1.8
+	_col.position.y = 0.625 if on else 0.9
+
+
+# ---------------------------------------------------------------- health & suppression
+
+## The part of him an enemy can see and aim at.
+func exposed_point() -> Vector3:
+	return global_position + Vector3(0, 0.95 if _crouched else 1.35, 0)
+
+
+func is_moving() -> bool:
+	return _moving
+
+
+func is_in_cover() -> bool:
+	return state == State.IN_COVER
+
+
+func pinned() -> bool:
+	return suppression > 0.85
+
+
+func add_suppression(amount: float) -> void:
+	if dead or not recruited:
+		return
+	suppression = minf(1.0, suppression + amount)
+	_since_incoming = 0.0
+
+
+func take_damage(dmg: float, _from: Vector3) -> bool:
+	if dead or not recruited:
+		return false
+	hp -= dmg
+	add_suppression(0.35)
+	_hurt_t = 0.12
+	_torso.material_override = _mat("hurt", Color(1.0, 0.15, 0.1), true)
+	main.on_soldier_hit(self)
+	if hp <= 0.0:
+		_die()
+	return true
+
+
+func role_name() -> String:
+	return {"rifleman": "RIFLEMAN", "grenadier": "GRENADIER", "anti_armor": "ROCKETMAN"}.get(role, "SOLDIER")
+
+
+## Static "down" pose: lies flat where he fell, no collision, no glow.
+func _die() -> void:
+	dead = true
+	hp = 0.0
+	target = null
+	_set_crouch(false)
+	collision_layer = 0
+	_flash.visible = false
+	_model.rotation.x = -PI / 2.0
+	_model.position.y = 0.2
+	var dead_mat := _mat("dead", Color(0.12, 0.13, 0.09))
+	for mi in _model.find_children("*", "MeshInstance3D", true, false):
+		mi.material_override = dead_mat
+	set_physics_process(false)
+	squad.on_soldier_killed(self)
 
 
 # ---------------------------------------------------------------- orders
@@ -235,6 +321,13 @@ func _physics_process(delta: float) -> void:
 	if not recruited:
 		_idle(delta)
 		return
+	_since_incoming += delta
+	if _since_incoming > 1.5:
+		suppression = maxf(0.0, suppression - 0.2 * delta)
+	if _hurt_t > 0.0:
+		_hurt_t -= delta
+		if _hurt_t <= 0.0:
+			_torso.material_override = _mat("tan", Color(0.44, 0.40, 0.28)) if role == "anti_armor" else _mat("olive", Color(0.36, 0.40, 0.24))
 	var dest: Vector3 = move_target if state == State.FOLLOW else cover_pos
 	if state == State.IN_COVER and _peeking and _is_tall():
 		dest = peek_pos   # lean out past the edge of the crate
@@ -272,6 +365,8 @@ func _physics_process(delta: float) -> void:
 			dir = to_dest
 		dir = dir.normalized()
 		var spd := BASE_SPEED * _speed_mul
+		if hp < MAX_HP * 0.5:
+			spd *= 0.75        # wounded
 		if state == State.TO_COVER:
 			spd *= 1.35        # scramble!
 		elif dist > 5.0:
@@ -480,14 +575,16 @@ func _update_combat(delta: float) -> void:
 		State.TO_COVER:
 			_set_crouch(false)
 		State.IN_COVER:
-			if not has_shot:
-				_peeking = false
-				_peek_timer = minf(_peek_timer, 0.5)
+			if not has_shot or pinned():
+				_peeking = false          # pinned: keep your head down
+				_peek_timer = maxf(minf(_peek_timer, 0.5), 0.3 if pinned() else 0.0)
 			_peek_timer -= delta
-			if _peek_timer <= 0.0 and has_shot:
+			if _peek_timer <= 0.0 and has_shot and not pinned():
 				_peeking = not _peeking
-				var up_time := _rng.randf_range(1.0, 1.8) + (1.0 if _is_tall() else 0.0)  # leaning takes travel time
-				_peek_timer = up_time if _peeking else _rng.randf_range(0.8, 2.0)
+				# Under fire: shorter looks, longer time ducked.
+				var up_time := (_rng.randf_range(1.0, 1.8) + (1.0 if _is_tall() else 0.0)) * (1.0 - 0.5 * suppression)
+				var down_time := _rng.randf_range(0.8, 2.0) * (1.0 + 1.5 * suppression)
+				_peek_timer = up_time if _peeking else down_time
 				_peek_age = 0.0
 			_peek_age += delta
 			_set_crouch(not _peeking)
@@ -521,6 +618,14 @@ func _update_combat(delta: float) -> void:
 		_fire_timer = primary["cycle"] if _burst_left > 0 else pause
 
 
+## Suppressed or wounded soldiers shoot worse.
+func _fight_mod() -> float:
+	var m := 1.0 - 0.5 * suppression
+	if hp < MAX_HP * 0.5:
+		m *= 0.85
+	return m
+
+
 ## Where a deliberate miss lands: just off the target, sideways or high/low.
 func _miss_point(t: Node3D, from: Vector3) -> Vector3:
 	var c: Vector3 = t.aim_point()
@@ -537,7 +642,7 @@ func _shoot() -> void:
 	var aim: Vector3
 	if target:
 		var c: Vector3 = target.aim_point()
-		var chance := Weapons.hit_chance(primary, target, from.distance_to(c), _moving, _mode == FIRE_FOCUS, _burst_idx > 0)
+		var chance := Weapons.hit_chance(primary, target, from.distance_to(c), _moving, _mode == FIRE_FOCUS, _burst_idx > 0) * _fight_mod()
 		if _rng.randf() < chance:
 			aim = c + Vector3(_rng.randf_range(-0.12, 0.12), _rng.randf_range(-0.15, 0.15), _rng.randf_range(-0.12, 0.12))
 		else:
@@ -560,6 +665,7 @@ func _shoot() -> void:
 			spark = true
 			c.take_damage(primary["soft"], primary["armor"])
 		main.spawn_impact(end, hit["normal"], spark)
+	main.suppress_enemies(from, end, 0.09)
 	shots += 1
 	main.spawn_tracer(_flash.global_position, end)
 	main.on_shot(_flash.global_position)
@@ -577,7 +683,7 @@ func _fire_secondary() -> void:
 		var c: Vector3 = target.aim_point()
 		if grenade:
 			c = target.global_position + Vector3(0, 0.3, 0)
-		var chance := Weapons.hit_chance(secondary, target, from.distance_to(c), _moving, true, false)
+		var chance := Weapons.hit_chance(secondary, target, from.distance_to(c), _moving, true, false) * _fight_mod()
 		if _rng.randf() < chance:
 			to = c
 		else:

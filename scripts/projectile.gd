@@ -1,6 +1,7 @@
 extends Node3D
-## Rocket (straight, fast, smoke trail) or grenade (lobbed arc, can drop over
-## cover). Explodes on contact with anything, or when its fuse runs out.
+## Rocket (straight, fast, smoke trail), enemy cannon shell (straight, fast)
+## or grenade (lobbed arc, can drop over cover). Hostile projectiles hit
+## soldiers; friendly ones pass through them. Explodes on contact with anything, or when its fuse runs out.
 
 const GRENADE_GRAVITY := -12.0
 
@@ -8,6 +9,7 @@ var main: Node3D
 var weapon: Dictionary
 var vel := Vector3.ZERO
 var direct_target: Node3D = null
+var hostile := false
 
 var _gravity := 0.0
 var _life := 5.0
@@ -22,9 +24,10 @@ func setup(m: Node3D, w: Dictionary, from: Vector3, to: Vector3, rng: RandomNumb
 	main = m
 	weapon = w
 	position = from
-	if w["kind"] == "rocket":
+	if w["kind"] in ["rocket", "shell"]:
 		vel = (to - from).normalized() * float(w["speed"])
-		_wobble = Vector2(rng.randf_range(0.3, 0.8), rng.randf_range(7.0, 11.0))
+		if w["kind"] == "rocket":
+			_wobble = Vector2(rng.randf_range(0.3, 0.8), rng.randf_range(7.0, 11.0))
 	else:
 		# Solve the launch velocity for a lob that lands on `to`.
 		var flight := clampf(from.distance_to(to) / float(w["speed"]), 0.5, 2.6)
@@ -35,6 +38,7 @@ func setup(m: Node3D, w: Dictionary, from: Vector3, to: Vector3, rng: RandomNumb
 
 func _ready() -> void:
 	var rocket: bool = weapon["kind"] == "rocket"
+	var is_shell: bool = weapon["kind"] == "shell"
 	_body = Node3D.new()
 	add_child(_body)
 
@@ -66,13 +70,15 @@ func _ready() -> void:
 	var gmat := StandardMaterial3D.new()
 	gmat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	gmat.albedo_color = Color(1.0, 0.75, 0.35) if rocket else Color(1.0, 0.35, 0.15)
+	if is_shell:
+		gmat.albedo_color = Color(1.6, 0.4, 0.2)   # hot enemy tracer round
 	gmat.disable_fog = true
 	glow.material_override = gmat
 	glow.position = Vector3(0, 0, 0.3) if rocket else Vector3.ZERO
 	_body.add_child(glow)
 
 	_trail = CPUParticles3D.new()
-	_trail.amount = 70 if rocket else 24
+	_trail.amount = 70 if rocket else (12 if is_shell else 24)
 	_trail.lifetime = 1.2 if rocket else 0.5
 	_trail.local_coords = false
 	var q := QuadMesh.new()
@@ -110,7 +116,7 @@ func _physics_process(delta: float) -> void:
 		step += side * sin(_t * _wobble.y) * _wobble.x * delta + Vector3.UP * cos(_t * _wobble.y * 0.8) * _wobble.x * 0.5 * delta
 	var next := prev + step
 
-	var q := PhysicsRayQueryParameters3D.create(prev, next, 1 | 4)
+	var q := PhysicsRayQueryParameters3D.create(prev, next, (1 | 2) if hostile else (1 | 4))
 	var hit := get_world_3d().direct_space_state.intersect_ray(q)
 	if not hit.is_empty():
 		var c: Object = hit["collider"]
@@ -129,7 +135,7 @@ func _physics_process(delta: float) -> void:
 func _explode(at: Vector3) -> void:
 	_done = true
 	global_position = at
-	main.spawn_explosion(at, weapon, direct_target)
+	main.spawn_explosion(at, weapon, direct_target, hostile)
 	for c in _body.get_children():
 		if c != _trail:
 			c.visible = false

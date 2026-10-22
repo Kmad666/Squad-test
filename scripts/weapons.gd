@@ -65,3 +65,46 @@ static func hit_chance(w: Dictionary, target: Node3D, dist: float, moving: bool,
 	if followup:
 		p *= 0.85
 	return clampf(p, 0.03, 0.95)
+
+
+# ---------------------------------------------------------------- enemy weapons
+# "soft" is damage to a soldier (100 HP). "suppress" is how much a round
+# passing close to a soldier rattles him (hits rattle more).
+
+const ENEMY_RIFLE := {
+	"name": "ENEMY RIFLE", "kind": "bullet",
+	"acc": 0.32, "eff": 30.0, "max": 58.0,
+	"soft": 16.0, "armor": 0.0, "suppress": 0.1,
+	"burst_min": 2, "burst_max": 3, "cycle": 0.12, "pause_min": 1.4, "pause_max": 2.6,
+}
+
+const APC_MG := {
+	"name": "APC MACHINE GUN", "kind": "bullet",
+	"acc": 0.3, "eff": 40.0, "max": 65.0,
+	"soft": 14.0, "armor": 0.0, "suppress": 0.14,
+	"burst_min": 4, "burst_max": 7, "cycle": 0.09, "pause_min": 1.2, "pause_max": 2.0,
+}
+
+const APC_CANNON := {
+	"name": "APC CANNON", "kind": "shell",
+	"acc": 0.5, "eff": 45.0, "max": 70.0,
+	"soft": 55.0, "armor": 0.0, "radius": 3.5, "suppress": 0.5,
+	"reload": 7.0, "speed": 60.0,
+}
+
+
+## Enemy shots at a soldier: weapon accuracy x range falloff,
+## x0.75 if the soldier is moving, x0.6 if he's fighting from cover
+## (only part of him shows), x(1 - 0.75 x the shooter's own suppression).
+static func enemy_hit_chance(w: Dictionary, soldier: Node3D, dist: float, own_suppression: float) -> float:
+	if dist > w["max"]:
+		return 0.0
+	var p: float = w["acc"]
+	if dist > w["eff"]:
+		p *= lerpf(1.0, 0.3, clampf((dist - w["eff"]) / (w["max"] - w["eff"]), 0.0, 1.0))
+	if soldier.is_moving():
+		p *= 0.75
+	if soldier.is_in_cover():
+		p *= 0.6
+	p *= 1.0 - 0.75 * own_suppression
+	return clampf(p, 0.02, 0.9)

@@ -27,6 +27,7 @@ var auto_fire := false            # F: permanent fire at will
 var forced_mode := -1              # tests can force a fire mode
 var forced_specials := false       # tests can force the specials order
 var pending_teams: Array = []      # [{members, center, label, name}]
+var kia := 0
 
 enum { HOLD, AT_WILL, FOCUS }
 var threat_dir := Vector3.FORWARD
@@ -157,7 +158,15 @@ func roster_text() -> String:
 	for r in [["rifleman", "RIFLE"], ["grenadier", "GREN"], ["anti_armor", "AT"]]:
 		if counts.has(r[0]):
 			parts.append("%d %s" % [counts[r[0]], r[1]])
+	var wounded := 0
+	for s in soldiers:
+		if s.hp < s.MAX_HP * 0.5:
+			wounded += 1
 	var t := "%d MEN  (%s)" % [soldiers.size(), ", ".join(parts)]
+	if wounded > 0:
+		t += "   %d WOUNDED" % wounded
+	if kia > 0:
+		t += "   %d KIA" % kia
 	var sp: Array = []
 	if gl[1] > 0:
 		sp.append("GL %d/%d READY" % gl)
@@ -203,7 +212,8 @@ func _physics_process(delta: float) -> void:
 		var lim: float = main.NAV_HALF - 2.0
 		anchor.x = clampf(anchor.x, -lim, lim)
 		anchor.z = clampf(anchor.z, -lim, lim)
-		anchor = CoverUtil.push_out(main.cover_defs, anchor, 0.7)
+		# The anchor is a ghost point with no collision: it passes straight
+		# through crates, and each soldier finds his own way around.
 
 	if not in_cover:
 		for i in soldiers.size():
@@ -258,6 +268,27 @@ func take_cover() -> void:
 			s.go_to_cover(assigned[s.index]["pos"], true, assigned[s.index]["peeks"])
 		else:
 			s.go_to_cover(s.global_position, false)  # no spot: get low where you are
+
+
+func on_soldier_killed(s: Node3D) -> void:
+	soldiers.erase(s)
+	kia += 1
+	for i in soldiers.size():
+		soldiers[i].index = i
+	_make_offsets(maxi(1, soldiers.size()))
+	if soldiers.is_empty():
+		main.notify("SQUAD WIPED OUT  -  PRESS R TO RESTART")
+	else:
+		main.notify("%s DOWN" % s.role_name())
+
+
+func avg_suppression() -> float:
+	if soldiers.is_empty():
+		return 0.0
+	var t := 0.0
+	for s in soldiers:
+		t += s.suppression
+	return t / float(soldiers.size())
 
 
 func leave_cover() -> void:

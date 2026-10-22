@@ -1,14 +1,18 @@
 extends StaticBody3D
-## Static practice target. Flashes when hit, tips over after enough hits,
-## and pops back up a few seconds later.
+## Static enemy rifleman target. Shoots back at the squad (enemy_gunner.gd),
+## flashes when hit, tips over after enough hits and pops back up later.
 
 const MAX_HP := 8.0
-const RESPAWN_TIME := 5.0
+const RESPAWN_TIME := 15.0
+const EnemyGunner = preload("res://scripts/enemy_gunner.gd")
+const Weapons = preload("res://scripts/weapons.gd")
 
 var main: Node3D
 var kind := "infantry"
 var size_factor := 1.0
 var radius := 0.35       # how far a deliberate miss must land from the centre
+var mark_height := 1.95  # for the on-screen target square
+var gunners: Array = []
 var alive := true
 var hp: float = MAX_HP
 
@@ -63,6 +67,21 @@ func _ready() -> void:
 	bull.bottom_radius = 0.14
 	bull.height = 0.02
 	_add(bull, red, Vector3(0, 1.22, 0.07), Vector3(PI / 2, 0, 0))
+	# Rifle sticking out of the target's shoulder: this one shoots back.
+	var gun := BoxMesh.new()
+	gun.size = Vector3(0.06, 0.08, 0.7)
+	var gun_mat := StandardMaterial3D.new()
+	gun_mat.albedo_color = Color(0.06, 0.06, 0.06)
+	gun_mat.roughness = 0.2
+	_add(gun, gun_mat, Vector3(0.22, 1.4, 0.3))
+	var g: Node3D = EnemyGunner.new()
+	g.main = main
+	g.host = self
+	g.weapon = Weapons.ENEMY_RIFLE
+	g.position = Vector3(0.22, 1.4, 0.7)
+	add_child(g)
+	gunners.append(g)
+
 	var head := SphereMesh.new()
 	head.radius = 0.15
 	head.height = 0.3
@@ -77,6 +96,10 @@ func _add(mesh: Mesh, mat: Material, pos: Vector3, rot := Vector3.ZERO) -> MeshI
 	mi.rotation = rot
 	_pivot.add_child(mi)
 	return mi
+
+
+func suppression_level() -> float:
+	return gunners[0].suppression if not gunners.is_empty() else 0.0
 
 
 func aim_point() -> Vector3:

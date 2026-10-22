@@ -22,6 +22,7 @@ const PARAMS := {
 var p := {}
 var show_dims := true
 var focus_active := false   # brightens while focus firing
+var marks: Array = []       # target squares, set by main each frame
 var _t := 0.0
 var _font: Font
 
@@ -100,8 +101,25 @@ func _draw() -> void:
 					draw_polyline(pts, Color(COLOR, a * 0.13 * glow), th + float(i + 1) * 4.0 * glow)
 			draw_polyline(pts, Color(COLOR, a), th)
 
+	_draw_marks(a)
+
 	if show_dims:
 		_draw_dims(c, hw, hh, corner, th)
+
+
+## Empty squares over enemies inside the reticle; a bar under each shows how
+## suppressed it is (amber), PINNED when it has stopped shooting.
+func _draw_marks(a: float) -> void:
+	for m in marks:
+		var r: Rect2 = m["rect"]
+		var col := Color(1.0, 0.55, 0.25, a) if m["vehicle"] else Color(COLOR, a)
+		draw_rect(r, col, false, 2.5 if m["engaged"] else 1.2)
+		var supp: float = m["supp"]
+		if supp > 0.02:
+			var bar := Rect2(r.position + Vector2(0, r.size.y + 4.0), Vector2(r.size.x * supp, 3.0))
+			draw_rect(bar, Color(1.0, 0.75, 0.2, a))
+			if supp > 0.85:
+				_text(r.position + Vector2(0, r.size.y + 20.0), "PINNED", Color(1.0, 0.75, 0.2, a), 11, false)
 
 
 func _draw_dims(c: Vector2, hw: float, hh: float, corner: float, th: float) -> void:
