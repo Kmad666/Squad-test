@@ -157,7 +157,19 @@ func _run() -> void:
 	_check(m2._gait_w == 0.0, "gait never settled after stopping")
 	m2.free()
 
-	# Corpses.
+	# Corpses, HD and RETRO bodies.
+	for retro in [false, true]:
+		SoldierModel.retro = retro
+		_corpses(retro)
+	SoldierModel.retro = false
+	# Triangle budget (weak integrated GPUs, in a browser): per soldier,
+	# close-up and far meshes.
+	_budget()
+	print("model checks: %d, failures: %d" % [checks, fails])
+	quit(1 if fails > 0 else 0)
+
+
+func _corpses(retro: bool) -> void:
 	for role in ["rifleman", "grenadier", "anti_armor"]:
 		for face_up in [false, true]:
 			if face_up and role == "anti_armor":
@@ -173,22 +185,17 @@ func _run() -> void:
 					d.rotation.y = 0.7
 					d.position = Vector3(3, 0, -2)
 					d.lay_down(face_up)
-					var label := "dead %s face_up=%s crouched=%s moving=%s" % [role, face_up, crouched, moving]
-					var low := INF
-					for mi in d._meshes:
-						if mi.get_parent() == d._rifle:
-							continue
-						var bb: AABB = mi.get_aabb()
-						for c in 8:
-							low = minf(low, (mi.global_transform * bb.get_endpoint(c)).y)
+					var label := "dead %s face_up=%s crouched=%s moving=%s retro=%s" % [role, face_up, crouched, moving, retro]
+					var low: float = d.lowest_point()      # real vertices, not box corners
 					_check(absf(low) < 0.02, "%s: body not on the ground (lowest %.3f)" % [label, low])
 					var hips_y: float = d._hips.global_position.y
 					_check(hips_y < 0.35, "%s: body floating (hips at %.2f)" % [label, hips_y])
 					var ry: float = d._rifle.global_position.y
 					_check(ry > 0.0 and ry < 0.08, "%s: rifle not on the ground (%.3f)" % [label, ry])
 					d.free()
-	# Triangle budget (weak integrated GPUs, in a browser): per soldier,
-	# close-up and far meshes.
+
+
+func _budget() -> void:
 	for cfg in [["rifleman", "friendly"], ["grenadier", "friendly"], ["anti_armor", "friendly"], ["rifleman", "enemy"]]:
 		var bm: Node3D = SoldierModel.new()
 		root.add_child(bm)
@@ -200,6 +207,12 @@ func _run() -> void:
 		_check(tris[0] <= 16000, "%s/%s close-up mesh over budget: %d triangles" % [cfg[0], cfg[1], tris[0]])
 		_check(tris[1] <= 5000, "%s/%s far mesh over budget: %d triangles" % [cfg[0], cfg[1], tris[1]])
 		_check(tris[1] < tris[0] * 0.5, "%s/%s far mesh not much cheaper (%d vs %d)" % [cfg[0], cfg[1], tris[1], tris[0]])
+		var rt := 0
+		for mi in bm._retro_meshes:
+			if mi.mesh.get_surface_count() > 0:
+				rt += mi.mesh.surface_get_array_index_len(0) / 3
+		print("%s/%s triangles: close-up %d, far %d, retro %d" % [cfg[0], cfg[1], tris[0], tris[1], rt])
+		_check(rt <= 1200, "%s/%s retro mesh over budget: %d triangles" % [cfg[0], cfg[1], rt])
 		bm.free()
 	print("model checks: %d, failures: %d" % [checks, fails])
 	quit(1 if fails > 0 else 0)

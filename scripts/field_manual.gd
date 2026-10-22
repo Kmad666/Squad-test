@@ -214,6 +214,7 @@ const PAGES := [
   {k}F1{/k}             Controls panel on/off
   {k}TAB{/k}            Reticle settings
   {k}G{/k}              Graphics HIGH / LOW
+  {k}V{/k}              Retro graphics on / off
   {k}M{/k}              Next map
   {k}R{/k}              Restart
 """],
@@ -371,6 +372,9 @@ Every variant of the universal soldier on a turntable: rifleman, sergeant, grena
 ["SETTINGS", """{h}GRAPHICS  ({k}G{/k}){/h}
 HIGH: shadows, bloom, anti-aliasing, full-resolution 3D, full screen effects.
 LOW: no shadows or bloom, 3D drawn at 70% resolution, lighter screen effects. For weaker machines; remembered in your browser.
+
+{h}RETRO  ({k}V{/k}){/h}
+A late-90s console look, on top of HIGH or LOW: chunky low-poly soldiers with flat colours and slightly wobbly vertices, chunky screen pixels and 15-bit dithered colour. The HD soldiers come back when you switch it off. Remembered in your browser.
 
 {h}RETICLE  ({k}TAB{/k}){/h}
 Sliders for width, height, corner length, line thickness, vertical offset, glow, opacity and flicker; a switch to show the measurements; reset to defaults. Saved in your browser.

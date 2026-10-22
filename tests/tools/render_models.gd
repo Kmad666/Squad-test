@@ -61,6 +61,8 @@ func _initialize() -> void:
 	if args.size() > 0:
 		out = args[0]
 	DirAccess.make_dir_recursive_absolute(out)
+	if OS.get_environment("RETRO") == "1":
+		SoldierModel.retro = true          # render the RETRO soldiers
 	_run.call_deferred(out)
 
 

@@ -35,12 +35,49 @@ class Builder:
 	var cols := PackedColorArray()
 	var idx := PackedInt32Array()
 	var lod := 0            # 0 = full detail, 1 = far (fewer segments)
+	var flat := false       # faceted: every triangle gets its own face normal (retro look)
+	var bake := 0.0         # flat only: bake a top-down light into the vertex colours
+	var brighten := 1.0     # flat only: overall colour lift
 
-	func _init(p_lod := 0) -> void:
+	func _init(p_lod := 0, p_flat := false) -> void:
 		lod = p_lod
+		flat = p_flat
 
 	func seg(n: int) -> int:
+		if flat:
+			return maxi(3, n)          # retro shapes ask for their exact (low) counts
 		return maxi(4, n if lod == 0 else int(n * 0.5))
+
+	## Box with half-extents `h` (flat faces).
+	func box(h: Vector3, xf: Transform3D, c: Color, id: float) -> void:
+		tbox(Vector2(h.x, h.z), Vector2(h.x, h.z), h.y * 2.0, xf, c, id)
+
+	## Tapered box (frustum): bottom half-size `bot` (x, z) at y = -height/2,
+	## top half-size `top` at +height/2; `shift` slides the top face in z.
+	## The chunky building block of the retro soldier.
+	func tbox(bot: Vector2, top: Vector2, height: float, xf: Transform3D, c: Color, id: float, shift := 0.0) -> void:
+		var hh := height * 0.5
+		var p := [
+			Vector3(-bot.x, -hh, -bot.y), Vector3(bot.x, -hh, -bot.y), Vector3(bot.x, -hh, bot.y), Vector3(-bot.x, -hh, bot.y),
+			Vector3(-top.x, hh, -top.y + shift), Vector3(top.x, hh, -top.y + shift), Vector3(top.x, hh, top.y + shift), Vector3(-top.x, hh, top.y + shift),
+		]
+		var faces := [[0, 1, 2, 3], [4, 5, 6, 7], [0, 1, 5, 4], [1, 2, 6, 5], [2, 3, 7, 6], [3, 0, 4, 7]]
+		var center := Vector3(0, 0, shift * 0.5)
+		var col := _col(c, id)
+		var nb := xf.basis.inverse().transposed()
+		for f in faces:
+			var fc := Vector3.ZERO
+			for i in f:
+				fc += p[i]
+			fc /= 4.0
+			var n := (nb * (fc - center)).normalized()
+			var base := verts.size()
+			for i in f:
+				verts.append(xf * (p[i] as Vector3))
+				norms.append(n)
+				cols.append(col)
+			_tri(base, base + 1, base + 2)
+			_tri(base, base + 2, base + 3)
 
 	func _col(c: Color, id: float) -> Color:
 		return Color(c.r, c.g, c.b, id)
@@ -304,7 +341,35 @@ class Builder:
 	func triangles() -> int:
 		return idx.size() / 3
 
+	## Unwelds the mesh so each triangle shades flat with its own normal.
+	func _flatten() -> void:
+		var v2 := PackedVector3Array()
+		var n2 := PackedVector3Array()
+		var c2 := PackedColorArray()
+		var i2 := PackedInt32Array()
+		for t in range(0, idx.size(), 3):
+			var a: Vector3 = verts[idx[t]]
+			var b: Vector3 = verts[idx[t + 1]]
+			var c: Vector3 = verts[idx[t + 2]]
+			# _tri wound it clockwise-front, so the outward normal is -(b-a)x(c-a)
+			var fn := -(b - a).cross(c - a).normalized()
+			# baked lighting, the way old console art painted it into vertices:
+			# tops a touch brighter, undersides darker
+			var shade := brighten * (1.0 + bake * (0.22 * fn.y - 0.08 * (1.0 - absf(fn.y))))
+			for k in 3:
+				i2.append(v2.size())
+				v2.append(verts[idx[t + k]])
+				n2.append(fn)
+				var col: Color = cols[idx[t + k]]
+				c2.append(Color(col.r * shade, col.g * shade, col.b * shade, col.a))
+		verts = v2
+		norms = n2
+		cols = c2
+		idx = i2
+
 	func build() -> ArrayMesh:
+		if flat:
+			_flatten()
 		var arrays := []
 		arrays.resize(Mesh.ARRAY_MAX)
 		arrays[Mesh.ARRAY_VERTEX] = verts

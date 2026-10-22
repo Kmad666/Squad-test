@@ -24,7 +24,7 @@ func _physics_process(_d):
 			3: sq.forced_mode = rng.randi_range(0, 2)
 			4: sq.forced_specials = not sq.forced_specials
 			5: main.cam_rig.yaw = rng.randf_range(-PI, PI)
-			6: main.toggle_quality()
+			6: main.toggle_quality() if rng.randf() < 0.5 else main.toggle_retro()
 			7: sq.anchor = Vector3(rng.randf_range(-45, 45), 0, rng.randf_range(-45, 45))
 			8: sq.join_teams() if sq.split else sq.split_teams()
 			9: sq.switch_team()

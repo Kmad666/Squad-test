@@ -22,13 +22,7 @@ func _check(ok: bool, what: String) -> void:
 
 
 func _on_ground(model: Node3D, label: String) -> void:
-	var low := INF
-	for mi in model._meshes:
-		if mi.get_parent() == model._rifle:
-			continue
-		var bb: AABB = mi.get_aabb()
-		for c in 8:
-			low = minf(low, (mi.global_transform * bb.get_endpoint(c)).y)
+	var low: float = model.lowest_point()     # real vertices of the drawn body
 	var ground: float = model.get_parent().global_position.y
 	_check(absf(low - ground) < 0.03, "%s corpse not on the ground (lowest %.3f, ground %.3f)" % [label, low, ground])
 	var ry: float = model._rifle.global_position.y - ground

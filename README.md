@@ -26,6 +26,7 @@ You command a squad of six soldiers as one unit. Each soldier picks its own targ
 | M | Next map (remembered) |
 | Tab | Reticle settings (sizes are saved in your browser) |
 | G | Graphics LOW / HIGH (LOW: no shadows or bloom, 70% 3D resolution, lighter screen effects; remembered) |
+| V | RETRO graphics on / off (chunky low-poly soldiers, vertex wobble, pixelated dithered screen; remembered) |
 | R | Restart |
 | Wheel | Zoom |
 
@@ -127,6 +128,10 @@ baked into one vertex-coloured mesh per bone; the vertex alpha is a material ID 
 (camo fabric with procedural blotches and weave bump, webbing, rubber, metal, glass; mask lenses glow at night).
 Each bone carries a close-up mesh (~13k triangles per soldier) and a far one (~4k) that swap at 14 m (4 m on LOW
 graphics, which also drops the camo/bump noise); meshes are cached per kit variant.
+RETRO graphics (V) swap in `soldier_parts_retro.gd`: an original late-90s console-style version of the same soldier
+on the same bones (~950 faceted triangles, chunky proportions, baked vertex lighting, bold lens colours), drawn with
+`shaders/soldier_retro.gdshader` (per-vertex lighting, vertices snapped to a 3-pixel screen grid); the post effect
+adds 3x3 screen pixels and 5-bit-per-channel ordered dithering.
 Variants: friendlies in dark grey with charcoal / black / wolf-grey kit mixed per man and green lenses; the rocket
 team with coyote pack, pouches and tube; enemies in olive-brown camo, black kit, red lenses and a red armband.
 Grenade launcher and magnified optic for the grenadier, recoilless rifle slung on the rocketman's back, amber

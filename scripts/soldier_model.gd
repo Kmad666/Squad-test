@@ -11,7 +11,9 @@ extends Node3D
 
 const Atmosphere = preload("res://scripts/atmosphere.gd")
 const Parts = preload("res://scripts/soldier_parts.gd")
+const RetroParts = preload("res://scripts/soldier_parts_retro.gd")
 const SHADER = preload("res://shaders/soldier.gdshader")
+const RETRO_SHADER = preload("res://shaders/soldier_retro.gdshader")
 
 ## Body measurements (metres; origin between the feet).
 const HIP_Y := 0.985          # hips high enough that the legs stand almost straight
@@ -31,6 +33,7 @@ const AIM_PITCH := 0.4
 
 static var _mats := {}
 static var low_quality := false
+static var retro := false     # RETRO graphics: chunky low-poly soldiers (V)
 const LOD_DIST := 14.0        # beyond this (metres from the camera) the far mesh shows
 
 var upper: Node3D            # chest, head, arms, rifle (moves down when crouched)
@@ -40,7 +43,8 @@ var launch_tip: Node3D       # grenade launcher / rocket tube exit, if any
 var crouched := false
 
 var _palette: Dictionary
-var _meshes: Array = []      # every merged mesh instance (for tints)
+var _meshes: Array = []      # HD mesh instances, close-up and far (for tints)
+var _retro_meshes: Array = []   # RETRO mesh instances
 var _hips: Node3D
 var _legs := {}              # side -> {thigh, shin, foot}
 var _arms := {}              # side -> {upper, fore}
@@ -77,6 +81,7 @@ var _demo_fire_t := 0.0
 ## `variant` mixes kit tones per man.
 func build(role: String, side := "friendly", variant := 0) -> void:
 	set_process(false)
+	add_to_group("soldier_models")
 	_palette = Parts.palette(side, role, variant)
 	_hips = Node3D.new()
 	_hips.name = "Hips"
@@ -129,8 +134,14 @@ func build(role: String, side := "friendly", variant := 0) -> void:
 	_solve_arms()
 
 
-## Hangs the close-up and far meshes of one part on a bone node.
+## Hangs the close-up, far and retro meshes of one part on a bone node.
 func _attach(node: Node3D, part: String, extra := "") -> void:
+	var rm := MeshInstance3D.new()
+	rm.mesh = RetroParts.get_mesh(part, _palette, extra)
+	rm.material_override = _retro_material("normal")
+	rm.visible = retro
+	node.add_child(rm)
+	_retro_meshes.append(rm)
 	for lod in 2:
 		var mi := MeshInstance3D.new()
 		mi.mesh = Parts.get_mesh(part, _palette, lod, extra)
@@ -142,6 +153,7 @@ func _attach(node: Node3D, part: String, extra := "") -> void:
 		else:
 			mi.visibility_range_begin = d
 			mi.visibility_range_begin_margin = 1.0
+		mi.visible = not retro
 		node.add_child(mi)
 		_meshes.append(mi)
 
@@ -164,7 +176,71 @@ static func _material(tint: String) -> ShaderMaterial:
 	return _mats[key]
 
 
+static func _retro_material(tint: String) -> ShaderMaterial:
+	var key := "retro_" + tint + ("_n" if Atmosphere.night else "_d")
+	if not _mats.has(key):
+		var m := ShaderMaterial.new()
+		m.shader = RETRO_SHADER
+		m.set_shader_parameter("night", 1.0 if Atmosphere.night else 0.0)
+		match tint:
+			"hurt":
+				m.set_shader_parameter("tint", Color(2.2, 0.5, 0.4))
+			"dead":
+				m.set_shader_parameter("tint", Color(0.45, 0.45, 0.45))
+			_:
+				m.set_shader_parameter("tint", Color(1, 1, 1))
+		_mats[key] = m
+	return _mats[key]
+
+
+## RETRO graphics on / off for every soldier in the scene.
+static func set_retro(on: bool, tree: SceneTree) -> void:
+	retro = on
+	for m in tree.get_nodes_in_group("soldier_models"):
+		m._show_retro(on)
+
+
+func _show_retro(on: bool) -> void:
+	for mi in _meshes:
+		mi.visible = not on
+	for mi in _retro_meshes:
+		mi.visible = on
+
+
+## World height of the lowest vertex of the drawn body (rifle excluded).
+func lowest_point() -> float:
+	var low := INF
+	for mi in shown_meshes():
+		if mi.get_parent() == _rifle or mi.mesh.get_surface_count() == 0:
+			continue
+		var xf: Transform3D = mi.global_transform
+		for v in mi.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]:
+			low = minf(low, (xf * v).y)
+	return low
+
+
+## The mesh instances currently drawn (HD or retro).
+func shown_meshes() -> Array:
+	return _retro_meshes if retro else _meshes
+
+
 ## Low graphics: no camo noise / fabric bump, and the far mesh from 4 m.
+static var _rest_cache := {}
+
+
+## A thinned set of a mesh's vertices (every few), cached per mesh.
+static func _rest_points(mesh: Mesh) -> PackedVector3Array:
+	if not _rest_cache.has(mesh):
+		var out := PackedVector3Array()
+		if mesh.get_surface_count() > 0:
+			var v: PackedVector3Array = mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+			var step := maxi(1, v.size() / 120)
+			for i in range(0, v.size(), step):
+				out.append(v[i])
+		_rest_cache[mesh] = out
+	return _rest_cache[mesh]
+
+
 static func set_low_quality(on: bool) -> void:
 	low_quality = on
 	for m in _mats.values():
@@ -176,6 +252,9 @@ func set_tint(tint: String) -> void:
 	var m := _material(tint)
 	for mi in _meshes:
 		mi.material_override = m
+	var rm := _retro_material(tint)
+	for mi in _retro_meshes:
+		mi.material_override = rm
 
 
 ## Rifle at low ready across the body: M4-pattern carbine for your men (the
@@ -626,17 +705,20 @@ func lay_down(face_up: bool) -> void:
 	var inv_u := upper.global_transform.affine_inverse()
 	var pts_u := PackedVector3Array()   # upper space
 	var pts_l := PackedVector3Array()   # model space
-	for mi in _meshes:
+	# Resting points: real (thinned) vertices of the shown body, using the
+	# light far mesh for HD. Bounding-box corners would invent points that
+	# aren't on the body (full shoulder width and full pack depth at once).
+	var rest_meshes: Array = _retro_meshes if retro else _meshes.filter(func(m): return m.visibility_range_begin > 0.0)
+	for mi in rest_meshes:
 		if mi.get_parent() == _rifle:
 			continue
 		var is_upper: bool = upper.is_ancestor_of(mi)
 		var xf: Transform3D = (inv_u if is_upper else inv) * mi.global_transform
-		var bb: AABB = mi.get_aabb()
-		for c in 8:
+		for v in _rest_points(mi.mesh):
 			if is_upper:
-				pts_u.append(xf * bb.get_endpoint(c))
+				pts_u.append(xf * v)
 			else:
-				pts_l.append(xf * bb.get_endpoint(c))
+				pts_l.append(xf * v)
 	var r := Basis(Vector3.RIGHT, -PI / 2.0)
 	if face_up:
 		r = Basis(Vector3.RIGHT, PI / 2.0) * Basis(Vector3.UP, 1.3)    # on his back, rolled onto his side
@@ -665,7 +747,12 @@ func lay_down(face_up: bool) -> void:
 	upper.transform = Transform3D(bend, on_hips + waist - bend * waist)
 	head.rotation.x = -0.35 if face_up else 0.25      # head lolls back / turned down
 	basis = r
-	position.y = -minf(ll, best_lu)
+	position.y = 0.0
+	# Final contact from every vertex actually drawn (exact, one pass).
+	var floor_y := global_position.y
+	var lowest := lowest_point()
+	if lowest < INF:
+		position.y = floor_y - lowest
 	# Rifle flat on the ground at his right side, along the body.
 	var along := global_basis.y
 	along.y = 0.0

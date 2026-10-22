@@ -29,6 +29,8 @@ func _initialize():
 
 func _process(_d) -> bool:
 	frame += 1
+	if frame == 5 and OS.get_environment("RETRO") == "1" and not main.retro:
+		main.toggle_retro()
 	if frame == 20:
 		main.cam_rig.dist = 4.0 if mode == "run" else 5.0
 		if mode == "idle":

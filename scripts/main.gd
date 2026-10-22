@@ -68,6 +68,7 @@ var _friendly_tracer_mat: StandardMaterial3D
 var _enemy_tracer_mat: StandardMaterial3D
 var kills := 0
 var low_quality := false     # G: LOW graphics for weaker machines (remembered)
+var retro := false           # V: RETRO graphics, late-90s console look (remembered)
 const SETTINGS_PATH := "user://settings.cfg"
 var debug_reticle_all := false   # headless tests: treat everything as inside the reticle
 
@@ -81,10 +82,12 @@ func _ready() -> void:
 	var cfg := ConfigFile.new()
 	if cfg.load(SETTINGS_PATH) == OK:
 		low_quality = bool(cfg.get_value("graphics", "low", false))
+		retro = bool(cfg.get_value("graphics", "retro", false))
 		map_index = clampi(int(cfg.get_value("game", "map", 0)), 0, MAPS.size() - 1)
 	if forced_map >= 0:
 		map_index = forced_map
 	load("res://scripts/soldier_model.gd").low_quality = low_quality    # before soldiers are built
+	load("res://scripts/soldier_model.gd").retro = retro
 	map = MAPS[map_index]
 	AtmosphereScript.night = map.NIGHT
 	atmosphere = AtmosphereScript.new()
@@ -138,11 +141,13 @@ func _apply_quality() -> void:
 	vp.msaa_3d = Viewport.MSAA_DISABLED if low_quality else Viewport.MSAA_2X
 	vp.scaling_3d_scale = 0.7 if low_quality else 1.0
 	postfx.set_cheap(low_quality)
+	postfx.set_retro(retro)
 
 
 func _save_settings() -> void:
 	var cfg := ConfigFile.new()
 	cfg.set_value("graphics", "low", low_quality)
+	cfg.set_value("graphics", "retro", retro)
 	cfg.set_value("game", "map", map_index)
 	cfg.save(SETTINGS_PATH)
 
@@ -159,6 +164,16 @@ func toggle_quality() -> void:
 	_apply_quality()
 	_save_settings()
 	notify("GRAPHICS: %s" % ("LOW" if low_quality else "HIGH"))
+
+
+## V: RETRO graphics: chunky low-poly soldiers with wobbly vertex snapping,
+## and a pixelated, dithered screen. Works with HIGH or LOW.
+func toggle_retro() -> void:
+	retro = not retro
+	load("res://scripts/soldier_model.gd").set_retro(retro, get_tree())
+	postfx.set_retro(retro)
+	_save_settings()
+	notify("RETRO GRAPHICS: %s" % ("ON" if retro else "OFF"))
 
 
 # ---------------------------------------------------------------- input
@@ -1162,7 +1177,7 @@ func _build_hud() -> void:
 	help_label.text = "WASD move   MOUSE aim   WHEEL zoom   E move to reticle   C / SPACE cover\n" \
 		+ "LMB focus fire   RMB throw / fire special   1-4 pick special   X next special\n" \
 		+ "F auto fire   T split / join teams   Q switch team   B bound   H hold + scout\n" \
-		+ "ESC field manual (pause)   TAB reticle   G graphics   M map   R restart   F1 help"
+		+ "ESC manual   TAB reticle   G graphics   V retro   M map   R restart   F1 help"
 	help_panel.add_child(help_label)
 
 	# Squad health: one line per man (bottom right).
@@ -1273,6 +1288,8 @@ func _unhandled_key_input(event: InputEvent) -> void:
 			get_tree().reload_current_scene()
 		elif event.physical_keycode == KEY_G:
 			toggle_quality()
+		elif event.physical_keycode == KEY_V:
+			toggle_retro()
 		elif event.physical_keycode == KEY_M:
 			next_map()
 
@@ -1330,7 +1347,7 @@ func _process(delta: float) -> void:
 			+ "FIRE    %s%s\n" % [squad.fire_mode_text(), "   (auto fire ON)" if squad.auto_fire else ""] \
 			+ "FIRE ON US  %s\n" % _supp_bar(squad.avg_suppression()) \
 			+ "ENEMY   %s\n" % areas_text() \
-			+ "HITS    %d     KILLS  %d     GFX %s" % [hits, kills, "LOW" if low_quality else "HIGH"] \
+			+ "HITS    %d     KILLS  %d     GFX %s" % [hits, kills, ("LOW" if low_quality else "HIGH") + (" RETRO" if retro else "")] \
 			+ ("\n\n>> %s" % _notice if _notice_t > 0.0 else "")
 
 

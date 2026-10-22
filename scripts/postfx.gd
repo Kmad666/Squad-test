@@ -22,9 +22,26 @@ uniform float flash = 0.0;
 uniform float danger = 0.0;   // squad suppression: drains colour, closes in
 uniform float hurt = 0.0;     // red edge flash when a soldier is hit
 uniform bool cheap = false;   // LOW graphics: skip the 18-sample blur and the grain
+uniform bool retro = false;   // RETRO graphics: chunky pixels, 15-bit colour, ordered dither
+
+// 4x4 Bayer matrix, 0..1
+float bayer(vec2 p) {
+	int x = int(mod(p.x, 4.0));
+	int y = int(mod(p.y, 4.0));
+	int i = x + y * 4;
+	float m[16] = float[16](0.0, 8.0, 2.0, 10.0, 12.0, 4.0, 14.0, 6.0, 3.0, 11.0, 1.0, 9.0, 15.0, 7.0, 13.0, 5.0);
+	return m[i] / 16.0;
+}
 
 void fragment() {
 	vec2 uv = SCREEN_UV;
+	vec2 cell = vec2(0.0);
+	if (retro) {
+		// sample the 3D view in chunky 3x3 screen-pixel blocks
+		vec2 px = 1.0 / SCREEN_PIXEL_SIZE;
+		cell = floor(uv * px / 3.0);
+		uv = (cell * 3.0 + 1.5) / px;
+	}
 	vec2 c = uv - 0.5;
 	float d = length(c);
 	vec3 col;
@@ -48,7 +65,10 @@ void fragment() {
 	col += vec3(0.7, 0.02, 0.0) * hurt * smoothstep(0.3, 0.75, d);
 	float vig = smoothstep(0.9, 0.22, d + heat * 0.14 + danger * 0.18);
 	col *= mix(0.45, 1.0, vig);
-	if (!cheap) {
+	if (retro) {
+		// 5 bits per channel with ordered dithering, like the old consoles
+		col = floor(col * 31.0 + bayer(cell)) / 31.0;
+	} else if (!cheap) {
 		float n = fract(sin(dot(uv * (TIME + 1.7), vec2(12.9898, 78.233))) * 43758.5453);
 		col += (n - 0.5) * 0.04;
 	}
@@ -63,6 +83,10 @@ void fragment() {
 
 func set_cheap(on: bool) -> void:
 	_mat.set_shader_parameter("cheap", on)
+
+
+func set_retro(on: bool) -> void:
+	_mat.set_shader_parameter("retro", on)
 
 
 func set_fx(heat: float, flash: float, danger := 0.0, hurt := 0.0) -> void:
