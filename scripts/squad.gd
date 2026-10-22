@@ -41,7 +41,6 @@ var forced_mode := -1              # tests can force a fire mode
 var forced_specials := false       # tests: use a special every 1.5 s automatically
 var selected_special := 0          # index into Weapons.SPECIAL_ORDER (keys 1-4, X)
 var _forced_special_t := 0.0
-var _rmb_was_down := true         # right click fires once per fresh press
 var pending_teams: Array = []      # [{members, center, label, name}]
 var kia := 0
 
@@ -310,6 +309,17 @@ func fire_mode_text() -> String:
 
 # ---------------------------------------------------------------- orders
 
+## Right click = one special. Caught in _input (before any UI), so a click
+## is never swallowed or missed, even at a low frame rate. The click that
+## grabs the mouse doesn't count.
+func _input(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_RIGHT:
+		print("[debug] RMB pressed=", event.pressed, " captured=", Input.mouse_mode == Input.MOUSE_MODE_CAPTURED)
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_RIGHT:
+		if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+			use_special()
+
+
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("take_cover"):
 		if in_cover:
@@ -566,15 +576,6 @@ func _physics_process(delta: float) -> void:
 		(_ping.material_override as StandardMaterial3D).albedo_color.a = clampf(_ping_t / 1.5, 0.0, 1.0) * 0.8
 		if _ping_t <= 0.0:
 			_ping.visible = false
-
-	# Right click: one special per fresh press (polled, so no UI can swallow it).
-	# Until the mouse is grabbed the button counts as held, so the click that
-	# grabs the mouse never throws anything.
-	var captured := Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
-	var rmb := Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT)
-	if captured and rmb and not _rmb_was_down:
-		use_special()
-	_rmb_was_down = rmb or not captured
 
 	if forced_specials:
 		_forced_special_t -= delta
