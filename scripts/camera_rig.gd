@@ -46,7 +46,7 @@ func _ready() -> void:
 	fill.light_energy = 0.9
 	fill.omni_range = 22.0
 	fill.omni_attenuation = 1.4
-	fill.light_specular = 0.4
+	fill.light_specular = 0.0   # no shiny hotspot on the wet road
 	fill.position = Vector3(0, 1.0, -4.0)
 	add_child(fill)
 

@@ -180,10 +180,12 @@ func fire_mode() -> int:
 	return AT_WILL if auto_fire else HOLD
 
 
-## The team you're not commanding is the base of fire: it fires at will.
+## The team you're not commanding is the base of fire: once a fight is on
+## (any enemy area alerted, or you're shooting), it fires at will. It won't
+## start a fight on its own.
 func fire_mode_for(s: Node3D) -> int:
 	if split and s.team != active:
-		return AT_WILL
+		return AT_WILL if (main.any_area_alerted() or fire_mode() != HOLD) else HOLD
 	return fire_mode()
 
 

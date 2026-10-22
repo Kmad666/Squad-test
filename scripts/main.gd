@@ -593,6 +593,13 @@ func on_enemy_killed(e: Node3D) -> void:
 				notify(map.COMPLETE if all_clear else "AREA %s CLEARED" % area["name"], 8.0 if all_clear else 4.0)
 
 
+func any_area_alerted() -> bool:
+	for a in areas:
+		if a["alerted"] and _alive_in(a) > 0:
+			return true
+	return false
+
+
 func areas_text() -> String:
 	var parts: Array = []
 	for a in areas:
