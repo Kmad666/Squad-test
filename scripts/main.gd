@@ -100,6 +100,8 @@ var hurt := 0.0               # red screen-edge flash when a soldier is hit
 var _friendly_tracer_mat: StandardMaterial3D
 var _enemy_tracer_mat: StandardMaterial3D
 var kills := 0
+var low_quality := false     # G: LOW graphics for weaker machines (remembered)
+const SETTINGS_PATH := "user://settings.cfg"
 var debug_reticle_all := false   # headless tests: treat everything as inside the reticle
 
 var _tracers: Array = []
@@ -146,6 +148,29 @@ func _ready() -> void:
 	add_child(postfx)
 
 	_build_hud()
+	var cfg := ConfigFile.new()
+	if cfg.load(SETTINGS_PATH) == OK:
+		low_quality = bool(cfg.get_value("graphics", "low", false))
+	_apply_quality()
+
+
+## LOW: no shadows, no bloom, no MSAA, 3D drawn at 70% resolution, cheap
+## screen effects. HIGH: everything on.
+func _apply_quality() -> void:
+	atmosphere.set_low_quality(low_quality)
+	var vp := get_viewport()
+	vp.msaa_3d = Viewport.MSAA_DISABLED if low_quality else Viewport.MSAA_2X
+	vp.scaling_3d_scale = 0.7 if low_quality else 1.0
+	postfx.set_cheap(low_quality)
+
+
+func toggle_quality() -> void:
+	low_quality = not low_quality
+	_apply_quality()
+	var cfg := ConfigFile.new()
+	cfg.set_value("graphics", "low", low_quality)
+	cfg.save(SETTINGS_PATH)
+	notify("GRAPHICS: %s" % ("LOW" if low_quality else "HIGH"))
 
 
 # ---------------------------------------------------------------- input
@@ -828,7 +853,7 @@ func _build_hud() -> void:
 	help_label.add_theme_font_size_override("font_size", 12)
 	help_label.text = "WASD move   MOUSE aim   WHEEL zoom   E move to reticle\n" \
 		+ "LMB focus fire   RMB specials (GL / rockets)   F auto fire\n" \
-		+ "C / SPACE cover vs camera facing   TAB reticle   R restart"
+		+ "C / SPACE cover vs camera facing   TAB reticle   G graphics   R restart"
 	help.add_child(help_label)
 
 	reticle_panel = ReticlePanelScript.new()
@@ -837,8 +862,11 @@ func _build_hud() -> void:
 
 
 func _unhandled_key_input(event: InputEvent) -> void:
-	if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_R:
-		get_tree().reload_current_scene()
+	if event is InputEventKey and event.pressed and not event.echo:
+		if event.physical_keycode == KEY_R:
+			get_tree().reload_current_scene()
+		elif event.physical_keycode == KEY_G:
+			toggle_quality()
 
 
 func _input(event: InputEvent) -> void:
@@ -883,7 +911,7 @@ func _process(delta: float) -> void:
 			+ "FIRE    %s%s\n" % [squad.fire_mode_text(), "   (auto fire ON)" if squad.auto_fire else ""] \
 			+ "FIRE ON US  %s\n" % _supp_bar(squad.avg_suppression()) \
 			+ "ENEMY   %s\n" % areas_text() \
-			+ "HITS    %d     KILLS  %d" % [hits, kills] \
+			+ "HITS    %d     KILLS  %d     GFX %s" % [hits, kills, "LOW" if low_quality else "HIGH"] \
 			+ ("\n\n>> %s" % _notice if _notice_t > 0.0 else "")
 
 

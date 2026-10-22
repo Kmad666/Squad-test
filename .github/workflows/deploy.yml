@@ -46,6 +46,10 @@ jobs:
             -d ~/.local/share/godot/export_templates/${GODOT_VERSION}.stable/
           rm Godot_v${GODOT_VERSION}-stable_export_templates.tpz
 
+      - name: Run headless tests (a failure stops the deploy)
+        run: |
+          GODOT=~/godot/Godot_v${GODOT_VERSION}-stable_linux.x86_64 MINUTES=2 tests/run_all.sh
+
       - name: Export for web
         run: |
           GODOT=~/godot/Godot_v${GODOT_VERSION}-stable_linux.x86_64

@@ -318,11 +318,44 @@ func take_cover() -> void:
 		if assigned.size() == soldiers.size():
 			break
 
+	# Lean-out spots: two men on neighbouring sides of a tall crate would
+	# otherwise lean out at the same corner. Each man claims his own.
+	var taken_leans: Array = []
 	for s in soldiers:
-		if assigned.has(s.index):
-			s.go_to_cover(assigned[s.index]["pos"], true, assigned[s.index]["peeks"])
-		else:
+		if not assigned.has(s.index):
 			s.go_to_cover(s.global_position, false)  # no spot: get low where you are
+			continue
+		var cp: Dictionary = assigned[s.index]
+		var leans: Array = []
+		for lp in cp["peeks"]:
+			var clear := true
+			for c in claimed:
+				if c != cp["pos"] and c.distance_to(lp) < 1.0:
+					clear = false
+			for t in taken_leans:
+				if t.distance_to(lp) < 1.0:
+					clear = false
+			if clear:
+				leans.append(lp)
+		if leans.is_empty() and not cp["peeks"].is_empty():
+			leans = [_least_crowded(cp["peeks"], claimed + taken_leans, cp["pos"])]
+		taken_leans.append_array(leans)
+		s.go_to_cover(cp["pos"], true, leans)
+
+
+## The lean spot furthest from everyone else's spots.
+func _least_crowded(options: Array, others: Array, own: Vector3) -> Vector3:
+	var best: Vector3 = options[0]
+	var best_d := -1.0
+	for o in options:
+		var d := INF
+		for x in others:
+			if x != own:
+				d = minf(d, o.distance_to(x))
+		if d > best_d:
+			best_d = d
+			best = o
+	return best
 
 
 func on_soldier_killed(s: Node3D) -> void:

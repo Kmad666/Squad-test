@@ -16,6 +16,7 @@ You command a squad of six soldiers as one unit. Each soldier picks its own targ
 | E | Move the squad to the spot under the reticle (WASD cancels) |
 | C / Space | Take cover against the direction the camera faces / leave cover (moving also leaves cover) |
 | Tab | Reticle settings (sizes are saved in your browser) |
+| G | Graphics LOW / HIGH (LOW: no shadows or bloom, 70% 3D resolution, lighter screen effects; remembered) |
 | R | Restart |
 | Wheel | Zoom |
 
@@ -76,3 +77,14 @@ The anti-armor team waits north-west of the start. Enemies stand at their posts 
 or take fire; then the whole area alerts. Alerted riflemen run to cover that shields them from your squad, peek
 to shoot (leaning around tall crates), stay down when pinned, move when you flank them, and fall back when wounded.
 The APC stops patrolling to fight. Night lighting is still in the code (`NIGHT` in `scripts/atmosphere.gd`).
+
+## Tests
+Headless tests live in `tests/` (not included in the web build). Every push runs them on GitHub before deploying;
+if they fail, the live game stays on the last good version.
+
+```
+GODOT=/path/to/godot tests/run_all.sh          # MINUTES=10 for longer soak runs
+```
+- `battle_test.gd`: scripted advance through all three areas, prints squad health and enemy states every 10 s.
+- `lean_spot_test.gd`: checks no two soldiers share a lean-out spot at tall crates.
+- `soak_test.gd`: random orders, cover, fire modes, specials, graphics toggles and restarts; fails on any script error.

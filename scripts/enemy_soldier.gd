@@ -334,6 +334,23 @@ func _update_stance(delta: float) -> void:
 			_set_crouch(not _peeking)
 
 
+## Lean-out corner for tall cover: one a mate isn't already using.
+func _choose_peek_spot() -> void:
+	if not _tall():
+		return
+	_peek_spot = _cover["peeks"][0]
+	for lp in _cover["peeks"]:
+		var free := true
+		for m in area["members"]:
+			if m == self or not m.alive or not ("_peek_spot" in m) or not m._tall():
+				continue
+			if m._peek_spot.distance_to(lp) < 1.0 or m._cover["pos"].distance_to(lp) < 1.0:
+				free = false
+		if free:
+			_peek_spot = lp
+			return
+
+
 func _tall() -> bool:
 	return not _cover.is_empty() and not _cover["peeks"].is_empty()
 
@@ -341,7 +358,7 @@ func _tall() -> bool:
 func _move(delta: float) -> void:
 	var dest := _dest
 	if state == State.IN_COVER and _peeking and _tall():
-		dest = _cover["peeks"][0]
+		dest = _peek_spot
 	elif state == State.POST:
 		dest = post
 	_path_timer -= delta
@@ -366,6 +383,7 @@ func _move(delta: float) -> void:
 	elif state == State.MOVING:
 		state = State.IN_COVER
 		_peek_timer = _rng.randf_range(0.6, 1.4)
+		_choose_peek_spot()
 
 	# Keep a little space from his mates.
 	for m in area["members"]:

@@ -11,6 +11,8 @@ const NIGHT := false
 
 var cam_rig: Node3D
 var _glares: Array = []   # [{node, dir, base}] for view-dependent glare
+var environment: Environment
+var shadow_lights: Array = []   # lights whose shadows the LOW graphics setting turns off
 
 
 func _ready() -> void:
@@ -24,6 +26,14 @@ func _ready() -> void:
 	# Street lamp hanging over the cover crates.
 	_build_light_pole(Vector3(-4.5, 0, 6.5), 5.5, Vector3(-1.5, 0, 5.5),
 		Color(1.0, 0.68, 0.36), 9.0, 62.0, 16.0, true, 2.2)
+
+
+## LOW graphics: no shadows, no bloom. HIGH restores both.
+func set_low_quality(low: bool) -> void:
+	for l in shadow_lights:
+		l.shadow_enabled = not low
+	if environment:
+		environment.glow_enabled = not low
 
 
 # ---------------------------------------------------------------- day
@@ -51,6 +61,7 @@ func _build_day() -> void:
 	env.fog_light_color = Color(0.68, 0.75, 0.84)
 	env.fog_density = 0.004
 	env.fog_sky_affect = 0.3
+	environment = env
 	var we := WorldEnvironment.new()
 	we.environment = env
 	add_child(we)
@@ -62,6 +73,7 @@ func _build_day() -> void:
 	sun.shadow_enabled = true
 	sun.directional_shadow_max_distance = 70.0
 	add_child(sun)
+	shadow_lights.append(sun)
 
 
 # ---------------------------------------------------------------- environment
@@ -91,6 +103,7 @@ func _build_environment() -> void:
 	env.fog_density = 0.022
 	env.fog_sky_affect = 1.0
 
+	environment = env
 	var we := WorldEnvironment.new()
 	we.environment = env
 	add_child(we)
@@ -177,6 +190,8 @@ func _build_light_pole(base: Vector3, height: float, aim: Vector3, color: Color,
 	spot.spot_attenuation = 0.8
 	spot.light_specular = 1.6       # strong highlights on the wet surfaces
 	spot.shadow_enabled = shadows
+	if shadows:
+		shadow_lights.append(spot)
 	spot.global_transform = Transform3D(head_basis, head_pos + dir * 0.3)
 	add_child(spot)
 

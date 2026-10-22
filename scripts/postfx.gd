@@ -21,13 +21,14 @@ uniform float heat = 0.0;
 uniform float flash = 0.0;
 uniform float danger = 0.0;   // squad suppression: drains colour, closes in
 uniform float hurt = 0.0;     // red edge flash when a soldier is hit
+uniform bool cheap = false;   // LOW graphics: skip the 18-sample blur and the grain
 
 void fragment() {
 	vec2 uv = SCREEN_UV;
 	vec2 c = uv - 0.5;
 	float d = length(c);
 	vec3 col;
-	if (heat > 0.02) {
+	if (heat > 0.02 && !cheap) {
 		float amt = heat * 0.045;
 		float split = heat * 0.006;
 		vec3 acc = vec3(0.0);
@@ -47,8 +48,10 @@ void fragment() {
 	col += vec3(0.7, 0.02, 0.0) * hurt * smoothstep(0.3, 0.75, d);
 	float vig = smoothstep(0.9, 0.22, d + heat * 0.14 + danger * 0.18);
 	col *= mix(0.45, 1.0, vig);
-	float n = fract(sin(dot(uv * (TIME + 1.7), vec2(12.9898, 78.233))) * 43758.5453);
-	col += (n - 0.5) * 0.04;
+	if (!cheap) {
+		float n = fract(sin(dot(uv * (TIME + 1.7), vec2(12.9898, 78.233))) * 43758.5453);
+		col += (n - 0.5) * 0.04;
+	}
 	COLOR = vec4(col, 1.0);
 }
 """
@@ -56,6 +59,10 @@ void fragment() {
 	_mat.shader = shader
 	_rect.material = _mat
 	add_child(_rect)
+
+
+func set_cheap(on: bool) -> void:
+	_mat.set_shader_parameter("cheap", on)
 
 
 func set_fx(heat: float, flash: float, danger := 0.0, hurt := 0.0) -> void:
