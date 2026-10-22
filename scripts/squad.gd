@@ -260,7 +260,7 @@ func use_special() -> void:
 		for step in range(1, Weapons.SPECIAL_ORDER.size()):
 			var idx := (selected_special + step) % Weapons.SPECIAL_ORDER.size()
 			if special_count(Weapons.SPECIAL_ORDER[idx]) > 0:
-				main.notify("%s OUT  -  SWITCHED TO %s" % [Weapons.SPECIALS[kind][1], Weapons.SPECIALS[Weapons.SPECIAL_ORDER[idx]][1]], 2.0)
+				main.special_msg("%s OUT  -  SWITCHED TO %s" % [Weapons.SPECIALS[kind][1], Weapons.SPECIALS[Weapons.SPECIAL_ORDER[idx]][1]], 2.0)
 				selected_special = idx
 				kind = Weapons.SPECIAL_ORDER[idx]
 				break
@@ -285,7 +285,7 @@ func use_special() -> void:
 			best_d = d
 			best = s
 	if best == null:
-		main.notify(("TOO FAR FOR %s  (%d m)" % [Weapons.SPECIALS[kind][1], int(w["max"])]) if any_ready else "%s RELOADING" % Weapons.SPECIALS[kind][1], 1.5)
+		main.special_msg(("TOO FAR FOR %s  (%d m)" % [Weapons.SPECIALS[kind][1], int(w["max"])]) if any_ready else "%s RELOADING" % Weapons.SPECIALS[kind][1], 1.5)
 		return
 	best.order_special(aim["target"], point)
 	main.on_special_used(kind, best)

@@ -39,6 +39,8 @@ var hud_label: Label
 var unit_label: RichTextLabel     # squad health panel (bottom right)
 var special_label: RichTextLabel  # special-weapon selector bar (bottom centre)
 var _no_explosives_t := 0.0
+var _special_msg := ""          # special callouts / warnings, shown under the special bar
+var _special_msg_t := 0.0
 var help_label: Label
 var help_panel: PanelContainer
 var _help_t := 25.0            # controls panel auto-hides after this; F1 toggles it
@@ -987,18 +989,25 @@ func special_target(kind: String) -> Dictionary:
 	return {"target": null, "point": p}
 
 
+## Short special-weapon messages appear right under the special bar.
+func special_msg(text: String, seconds := 1.2) -> void:
+	_special_msg = text
+	_special_msg_t = seconds
+	_notice = text          # also kept as the last notice (tests read it)
+
+
 func on_special_selected(kind: String, count: int) -> void:
-	notify("%s SELECTED  (%d LEFT)" % [Weapons.SPECIALS[kind][1], count], 1.2)
+	special_msg("%s SELECTED  -  %d LEFT" % [Weapons.SPECIALS[kind][1], count], 1.0)
 
 
 func on_special_used(kind: String, _who: Node3D) -> void:
 	var callout := {"frag": "FRAG OUT!", "flash": "FLASHBANG OUT!", "gl": "GRENADE AWAY!", "rocket": "ROCKET AWAY!"}
-	notify(callout.get(kind, ""), 1.0)
+	special_msg(callout.get(kind, ""), 1.0)
 
 
 func on_no_explosives() -> void:
 	_no_explosives_t = 1.6
-	notify("NO EXPLOSIVES LEFT", 1.6)
+	special_msg("NO EXPLOSIVES LEFT", 1.6)
 
 
 ## Backblast / thump when a launcher fires.
@@ -1125,14 +1134,14 @@ func _build_hud() -> void:
 	hud_label.add_theme_font_size_override("font_size", 14)
 	panel.add_child(hud_label)
 
-	# Controls reference, bottom-left. Hides itself after a while (F1 toggles)
+	# Controls reference, top-right. Hides itself after a while (F1 toggles)
 	# so the screen stays clear for the fight.
 	help_panel = PanelContainer.new()
 	help_panel.add_theme_stylebox_override("panel", sb)
-	help_panel.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
-	help_panel.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	help_panel.offset_left = 12
-	help_panel.offset_bottom = -12
+	help_panel.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
+	help_panel.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	help_panel.offset_right = -12
+	help_panel.offset_top = 12
 	ui_root.add_child(help_panel)
 	help_label = Label.new()
 	help_label.add_theme_font_size_override("font_size", 12)
@@ -1228,6 +1237,9 @@ func _special_text() -> String:
 	if squad.total_specials() == 0:
 		var blink := _no_explosives_t <= 0.0 or fmod(_no_explosives_t, 0.3) < 0.18
 		t += "\n[color=%s]%s[/color]" % [C_BAD, "NO EXPLOSIVES LEFT" if blink else " "]
+	elif _special_msg_t > 0.0:
+		var warn := _special_msg.begins_with("TOO FAR") or _special_msg.ends_with("RELOADING") or _special_msg.contains("OUT  -")
+		t += "\n[color=%s]%s[/color]" % [C_WARN if warn else "#ffffff", _special_msg]
 	return t + "[/center]"
 
 
@@ -1278,6 +1290,7 @@ func _process(delta: float) -> void:
 		reticle.focus_active = squad.fire_mode() == squad.FOCUS
 
 	_no_explosives_t = maxf(0.0, _no_explosives_t - delta)
+	_special_msg_t = maxf(0.0, _special_msg_t - delta)
 	if _help_t > 0.0:
 		_help_t -= delta
 		if _help_t <= 0.0:
