@@ -959,10 +959,10 @@ func _flashbang(pos: Vector3, w: Dictionary) -> void:
 
 # ---------------------------------------------------------------- specials
 
-## What a special goes at: the best enemy inside the reticle for that kind
-## (rockets: vehicles first; grenades and flashbangs: infantry first), nearest
-## to the reticle centre; otherwise the ground under the reticle.
-func special_target(kind: String) -> Dictionary:
+## What a special goes at: the best enemy inside the reticle that the special
+## can reach (rockets: vehicles first; grenades and flashbangs: infantry
+## first), nearest the reticle centre; otherwise the ground under the reticle.
+func special_target(kind: String, from := Vector3.INF, reach := INF) -> Dictionary:
 	var cam: Camera3D = cam_rig.cam
 	var centre := reticle_rect().get_center()
 	var best: Node3D = null
@@ -970,6 +970,8 @@ func special_target(kind: String) -> Dictionary:
 	for t in targets:
 		if not t.alive or not in_reticle(t.aim_point()):
 			continue
+		if from != Vector3.INF and from.distance_to(t.global_position) > reach + 2.0:
+			continue   # out of range for this special: don't pick it
 		var score := 0.0
 		if not debug_reticle_all and not cam.is_position_behind(t.aim_point()):
 			score = cam.unproject_position(t.aim_point()).distance_to(centre)

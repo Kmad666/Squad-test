@@ -252,7 +252,6 @@ func cycle_special() -> void:
 
 
 func use_special() -> void:
-	print("[debug] use_special total=", total_specials(), " kind=", selected_kind(), " count=", special_count(selected_kind()), " users=", _special_users().size())
 	if total_specials() == 0:
 		main.on_no_explosives()
 		return
@@ -266,31 +265,38 @@ func use_special() -> void:
 				kind = Weapons.SPECIAL_ORDER[idx]
 				break
 	var w: Dictionary = Weapons.SPECIALS[kind][0]
-	var aim: Dictionary = main.special_target(kind)
+	var users := _special_users()
+	var from := Vector3.ZERO
+	for u in users:
+		from += u.global_position
+	from /= float(maxi(1, users.size()))
+	var aim: Dictionary = main.special_target(kind, from, w["max"])
 	var point: Vector3 = aim["point"]
-	print("[debug] aim target=", aim["target"], " point=", point)
-	# The nearest ready man carrying this kind who can reach the spot throws.
+	var tgt: Node3D = aim["target"]
+	# The nearest ready man carrying this kind throws / fires.
 	var best: Node3D = null
 	var best_d := INF
-	var any_ready := false
-	for s in _special_users():
+	for s in users:
 		if s.special_kind != kind or not s.special_ready():
 			continue
-		any_ready = true
 		var d: float = s.global_position.distance_to(point)
-		if d > w["max"]:
-			continue
 		# Rockets fly straight: prefer a man with a clear line to the target.
-		if kind == "rocket" and not _clear_shot(s, aim["target"], point):
+		if kind == "rocket" and not _clear_shot(s, tgt, point):
 			d += 100.0
 		if d < best_d:
 			best_d = d
 			best = s
-	print("[debug] best=", best, " any_ready=", any_ready)
 	if best == null:
-		main.special_msg(("TOO FAR FOR %s  (%d m)" % [Weapons.SPECIALS[kind][1], int(w["max"])]) if any_ready else "%s RELOADING" % Weapons.SPECIALS[kind][1], 1.5)
+		main.special_msg("%s RELOADING" % Weapons.SPECIALS[kind][1], 1.2)
 		return
-	best.order_special(aim["target"], point)
+	# Aimed further than he can throw / lob: it goes as far as it can that way.
+	var reach: float = best.global_position.distance_to(point)
+	if kind != "rocket" and reach > w["max"]:
+		var dir := point - best.global_position
+		dir.y = 0
+		point = best.global_position + dir.normalized() * w["max"] * 0.95
+		tgt = null
+	best.order_special(tgt, point)
 	main.on_special_used(kind, best)
 
 
@@ -316,8 +322,6 @@ func fire_mode_text() -> String:
 ## is never swallowed or missed, even at a low frame rate. The click that
 ## grabs the mouse doesn't count.
 func _input(event: InputEvent) -> void:
-	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_RIGHT:
-		print("[debug] RMB pressed=", event.pressed, " captured=", Input.mouse_mode == Input.MOUSE_MODE_CAPTURED)
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_RIGHT:
 		if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 			use_special()
