@@ -4,19 +4,19 @@ extends Control
 ## parameter; with "show dimensions" on, the sizes are drawn next to it.
 ## Settings are saved in the browser so tweaks stick between sessions.
 
-const SAVE_PATH := "user://reticle.cfg"
+const SAVE_PATH := "user://reticle_v2.cfg"   # v2: new defaults replace older saved tweaks
 const COLOR := Color(0.45, 1.0, 0.30)
 
 ## name -> [default, min, max, step, label]
 const PARAMS := {
-	"width":     [360.0, 40.0, 1200.0, 2.0, "Width (px)"],
-	"height":    [220.0, 40.0, 800.0, 2.0, "Height (px)"],
-	"corner":    [40.0, 4.0, 200.0, 1.0, "Corner length (px)"],
-	"thickness": [3.0, 1.0, 12.0, 0.5, "Line thickness (px)"],
-	"offset_y":  [0.0, -300.0, 300.0, 1.0, "Vertical offset (px)"],
+	"width":     [250.0, 40.0, 1200.0, 2.0, "Width (px)"],
+	"height":    [140.0, 40.0, 800.0, 2.0, "Height (px)"],
+	"corner":    [20.0, 4.0, 200.0, 1.0, "Corner length (px)"],
+	"thickness": [1.0, 1.0, 12.0, 0.5, "Line thickness (px)"],
+	"offset_y":  [-95.0, -300.0, 300.0, 1.0, "Vertical offset (px)"],
 	"glow":      [0.5, 0.0, 1.0, 0.05, "Glow"],
-	"opacity":   [0.9, 0.1, 1.0, 0.05, "Opacity"],
-	"flicker":   [0.3, 0.0, 1.0, 0.05, "Flicker"],
+	"opacity":   [0.5, 0.1, 1.0, 0.05, "Opacity"],
+	"flicker":   [0.65, 0.0, 1.0, 0.05, "Flicker"],
 }
 
 var p := {}
