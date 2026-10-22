@@ -335,7 +335,7 @@ accuracy x range x target size x modifiers, always between 3% and 95%.
   APC cannon        50%       45 / 70 m     55 damage, 3.5 m blast (x0.3 behind cover), 7 s reload
 Enemy hit chance is lower against men who are moving (x0.75) or fighting from cover (x0.6), and drops as the shooter gets suppressed.
 """],
-["ENEMIES", """{h}RIFLEMEN{/h}  {d}(grey uniform, red armband){/d}
+["ENEMIES", """{h}RIFLEMEN{/h}  {d}(olive-brown camo, red armband, red mask lenses that glow at night){/d}
 They guard an area. Until alerted they stand at their post and only notice you within {h}45 m in daylight, 35 m at night{/h}, or when they're shot at. Once one spots you, the whole area goes on alert (CONTACT in the HUD).
 Alerted riflemen:
   - run to cover in their area that shields them from your squad
@@ -349,7 +349,7 @@ Alerted riflemen:
 Heavy armor, 360 HP. Patrols a short route; stops the moment it sees you or takes fire. The turret tracks you with a machine gun and fires explosive cannon shells. Bullets ricochet, so use rockets (3 hits), or grenades for a little damage. Once destroyed it burns and stays down.
 
 {h}WAITING TEAMS{/h}
-The {h}anti-armor team{/h} (tan uniforms, green label) waits to link up. Walk the squad within about 7 m and they join, bringing 3 burst rifles and 6 rockets.
+The {h}anti-armor team{/h} (coyote-brown packs and kit, green label) waits to link up. Walk the squad within about 7 m and they join, bringing 3 burst rifles and 6 rockets.
 """],
 ["MISSIONS", """{h}OPERATION LAMPLIGHTER{/h}  {d}(night){/d}
 {h}Objective:{/h} secure the compound at the end of the road.

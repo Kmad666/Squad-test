@@ -19,8 +19,11 @@ func _initialize():
 		mode = args[1]
 	if mode == "fight":
 		shots = [70, 76, 82, 88, 94, 100]
+	elif mode == "idle":
+		shots = [40]
 	DirAccess.make_dir_recursive_absolute(out)
-	load("res://scripts/main.gd").forced_map = 1
+	var mp := OS.get_environment("MAP")
+	load("res://scripts/main.gd").forced_map = int(mp) if mp != "" else 1
 	main = load("res://main.tscn").instantiate()
 	root.add_child(main)
 
@@ -28,9 +31,14 @@ func _process(_d) -> bool:
 	frame += 1
 	if frame == 20:
 		main.cam_rig.dist = 4.0 if mode == "run" else 5.0
-	if frame == 30:
+		if mode == "idle":
+			main.cam_rig.dist = 3.2
+			main.cam_rig.yaw = PI * 0.85
+	if frame == 30 and mode != "idle":
 		main.squad.forced_mode = 1
-		if mode == "fight":
+		if mode == "fight" and OS.get_environment("MAP") == "0":
+			main.squad.move_to(Vector3(-3, 0, 18))       # up the street toward the roadblock
+		elif mode == "fight":
 			main.squad.move_to(Vector3(-12, 0, 8))
 		else:
 			main.squad.move_to(main.squad.soldiers[0].global_position + Vector3(0, 0, -25))

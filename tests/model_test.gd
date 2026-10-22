@@ -187,5 +187,19 @@ func _run() -> void:
 					var ry: float = d._rifle.global_position.y
 					_check(ry > 0.0 and ry < 0.08, "%s: rifle not on the ground (%.3f)" % [label, ry])
 					d.free()
+	# Triangle budget (weak integrated GPUs, in a browser): per soldier,
+	# close-up and far meshes.
+	for cfg in [["rifleman", "friendly"], ["grenadier", "friendly"], ["anti_armor", "friendly"], ["rifleman", "enemy"]]:
+		var bm: Node3D = SoldierModel.new()
+		root.add_child(bm)
+		bm.build(cfg[0], cfg[1], 0)
+		var tris := [0, 0]
+		for mi in bm._meshes:
+			if mi.mesh.get_surface_count() > 0:
+				tris[0 if mi.visibility_range_begin == 0.0 else 1] += mi.mesh.surface_get_array_index_len(0) / 3
+		_check(tris[0] <= 16000, "%s/%s close-up mesh over budget: %d triangles" % [cfg[0], cfg[1], tris[0]])
+		_check(tris[1] <= 5000, "%s/%s far mesh over budget: %d triangles" % [cfg[0], cfg[1], tris[1]])
+		_check(tris[1] < tris[0] * 0.5, "%s/%s far mesh not much cheaper (%d vs %d)" % [cfg[0], cfg[1], tris[1], tris[0]])
+		bm.free()
 	print("model checks: %d, failures: %d" % [checks, fails])
 	quit(1 if fails > 0 else 0)

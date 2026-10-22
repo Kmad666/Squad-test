@@ -40,7 +40,7 @@ Font: Share Tech Mono (SIL Open Font License, see `fonts/OFL.txt`).
 
 ## Units
 - **Starting squad:** 5 riflemen + 1 grenadier (rifle with under-barrel grenade launcher).
-- **Anti-armor team (tan uniforms):** 3 men with burst rifles and shoulder rocket launchers, waiting west of the start.
+- **Anti-armor team (coyote packs and kit):** 3 men with burst rifles and shoulder rocket launchers, waiting west of the start.
   Walk the squad up to them and they join.
 - **Enemy APC** (behind the dummies): heavy armor, 360 HP. Bullets ricochet, grenades do 15, rockets do 120. Rebuilds 20 s after it's destroyed.
 
@@ -59,7 +59,7 @@ aimed fire (focus fire, launchers) x1.15; follow-up rounds in a burst x0.85. Mis
 so the blast can still catch the target.
 
 ## Enemy fire, health and suppression
-- Enemy riflemen (grey, red armband) and the APC shoot back (red tracers). The APC's turret tracks you with a machine gun and fires explosive cannon shells. Enemies need line of sight: a soldier crouched behind a low crate is hidden.
+- Enemy riflemen (olive-brown camo, red armband, red mask lenses) and the APC shoot back (red tracers). The APC's turret tracks you with a machine gun and fires explosive cannon shells. Enemies need line of sight: a soldier crouched behind a low crate is hidden.
 - Soldiers have 100 HP. Below 50 they're **wounded** (slower, less accurate); at 0 they're **down** and leave the squad.
 - **Suppression** (both sides): rounds snapping past within ~2 m build it up; it fades ~1.5 s after the fire stops.
   Suppressed soldiers peek less and shoot worse; **pinned** soldiers stay down. Suppressed enemies fire slower and
@@ -117,9 +117,20 @@ GODOT=/path/to/godot tests/run_all.sh          # MINUTES=10 for longer soak runs
 
 ## Soldier model
 One universal soldier (`soldier_model.gd`) is built for everyone, friend and foe: a jointed body (hips, torso, head,
-two-bone IK arms and legs) merged into one vertex-coloured mesh per part, so it stays cheap on integrated GPUs.
-Variants only change colours and kit: uniform/armband per side, skin tone, grenade launcher under the grenadier's
-rifle, tube launcher and carbine for the rocketman, amber chevrons and a radio antenna for the sergeant.
+two-bone IK arms and legs). The look (`soldier_parts.gd`): urban-camo fatigues, full gas mask (lenses, rims, side
+filter, exhale valve, harness straps) over a balaclava, headset, high-cut helmet with cover, NVG mount, side rails and
+counterweight pouch, plate carrier with MOLLE, mag / frag / radio / admin pouches, battle belt with holster, IFAK and
+dump pouch, assault pack with hydration tube, elbow and knee pads, gloves, boots; M4-pattern carbines (holo sight,
+rail, M-LOK) for your men, AK-pattern rifles for the enemy.
+Shapes come from a small procedural kit (`model_kit.gd`: superellipsoids, lofted limbs, a cut helmet shell, tubes)
+baked into one vertex-coloured mesh per bone; the vertex alpha is a material ID read by `shaders/soldier.gdshader`
+(camo fabric with procedural blotches and weave bump, webbing, rubber, metal, glass; mask lenses glow at night).
+Each bone carries a close-up mesh (~13k triangles per soldier) and a far one (~4k) that swap at 14 m (4 m on LOW
+graphics, which also drops the camo/bump noise); meshes are cached per kit variant.
+Variants: friendlies in dark grey with charcoal / black / wolf-grey kit mixed per man and green lenses; the rocket
+team with coyote pack, pouches and tube; enemies in olive-brown camo, black kit, red lenses and a red armband.
+Grenade launcher and magnified optic for the grenadier, recoilless rifle slung on the rocketman's back, amber
+chevrons and a whip antenna for the sergeant.
 Movement: a procedural gait driven by each body's real velocity (`animate()`, called every physics frame):
 feet alternate planted / swinging steps along the direction of travel, stride and cadence scale with speed,
 running adds a forward lean, lower hips and a heel kick, crouching gives short low steps, and when strafing or

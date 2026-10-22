@@ -9,6 +9,14 @@ const SoldierModel = preload("res://scripts/soldier_model.gd")
 
 ## [name, role, side, sergeant, crouched, gesture, yaw (model), cam_dir, cam_height, dist, look_y]
 var SHOTS := [
+	["head_front", "rifleman", "friendly", false, false, "", 0.0, Vector3(0, 0, -1), 1.78, 0.75, 1.74],
+	["head_34", "rifleman", "friendly", false, false, "", 0.0, Vector3(-0.7, 0, -0.7), 1.8, 0.75, 1.74],
+	["head_side", "rifleman", "friendly", false, false, "", 0.0, Vector3(1, 0, 0), 1.76, 0.75, 1.74],
+	["head_back", "rifleman", "friendly", true, false, "", 0.0, Vector3(0.4, 0, 1), 1.85, 0.8, 1.74],
+	["chest_front", "rifleman", "friendly", false, false, "", 0.0, Vector3(-0.25, 0, -1), 1.35, 1.2, 1.25],
+	["rifle_close", "rifleman", "friendly", false, false, "", 0.0, Vector3(0.4, 0.0, -1), 1.15, 0.9, 1.05],
+	["enemy_head", "rifleman", "enemy", false, false, "", 0.0, Vector3(-0.6, 0, -0.8), 1.78, 0.8, 1.72],
+	["legs_34", "rifleman", "friendly", false, false, "", 0.0, Vector3(-0.7, 0, -0.7), 0.6, 1.5, 0.45],
 	["rifle_front", "rifleman", "friendly", false, false, "", 0.0, Vector3(0, 0, -1), 1.2, 2.6, 1.0],
 	["rifle_34", "rifleman", "friendly", false, false, "", 0.0, Vector3(-0.7, 0, -0.7), 1.2, 2.6, 1.0],
 	["rifle_side", "rifleman", "friendly", false, false, "", 0.0, Vector3(1, 0, 0), 1.1, 2.6, 1.0],
@@ -71,6 +79,10 @@ func _run(out: String) -> void:
 	sun.rotation = Vector3(-0.9, 0.6, 0)
 	sun.shadow_enabled = true
 	world.add_child(sun)
+	var fill := DirectionalLight3D.new()       # soft fill from the front-left
+	fill.rotation = Vector3(-0.35, -2.4, 0)
+	fill.light_energy = 0.45
+	world.add_child(fill)
 	var floor_mi := MeshInstance3D.new()
 	var pm := PlaneMesh.new()
 	pm.size = Vector2(6, 6)

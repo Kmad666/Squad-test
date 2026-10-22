@@ -84,6 +84,7 @@ func _ready() -> void:
 		map_index = clampi(int(cfg.get_value("game", "map", 0)), 0, MAPS.size() - 1)
 	if forced_map >= 0:
 		map_index = forced_map
+	load("res://scripts/soldier_model.gd").low_quality = low_quality    # before soldiers are built
 	map = MAPS[map_index]
 	AtmosphereScript.night = map.NIGHT
 	atmosphere = AtmosphereScript.new()
@@ -132,6 +133,7 @@ func _ready() -> void:
 ## screen effects. HIGH: everything on.
 func _apply_quality() -> void:
 	atmosphere.set_low_quality(low_quality)
+	load("res://scripts/soldier_model.gd").set_low_quality(low_quality)
 	var vp := get_viewport()
 	vp.msaa_3d = Viewport.MSAA_DISABLED if low_quality else Viewport.MSAA_2X
 	vp.scaling_3d_scale = 0.7 if low_quality else 1.0
