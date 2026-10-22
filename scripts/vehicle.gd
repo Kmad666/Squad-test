@@ -1,7 +1,8 @@
 extends StaticBody3D
 ## Enemy test vehicle: low-poly armored personnel carrier.
 ## Heavy armor: small arms ricochet, grenades scratch it, rockets kill it.
-## Burns when destroyed, then rebuilds after a while for more testing.
+## Patrols between waypoints until it spots the squad or takes fire, then
+## stops to fight. Burns when destroyed (rebuilds later only if `respawns`).
 
 const UI_FONT = preload("res://fonts/ShareTechMono-Regular.ttf")
 const EnemyGunner = preload("res://scripts/enemy_gunner.gd")
@@ -19,6 +20,11 @@ var radius := 2.2          # how far a deliberate miss must land from the centre
 var mark_height := 2.8
 var gunners: Array = []
 var _turret: Node3D
+var area: Dictionary = {}
+var waypoints: Array = []
+var respawns := true
+var patrol_speed := 3.5
+var _wp := 0
 var alive := true
 var hp := MAX_HP
 
@@ -186,9 +192,46 @@ func _update_label() -> void:
 
 
 ## Returns true if the hit actually hurt (false = ricochet off the armor).
+func on_spotted() -> void:
+	_alert()
+
+
+func _alert() -> void:
+	if not area.is_empty() and not area.get("alerted", false):
+		area["alerted"] = true
+		if main:
+			main.on_area_alerted(area)
+
+
+## Patrol: drive waypoint to waypoint, nose first. Stops while it has a
+## target or is under fire, so the gunners can work.
+func _physics_process(delta: float) -> void:
+	if not alive or waypoints.size() < 2:
+		return
+	var busy := false
+	for g in gunners:
+		if g.target != null or g.suppression > 0.05:
+			busy = true
+	if busy:
+		_alert()
+		return
+	var goal: Vector3 = waypoints[_wp]
+	var to_goal := goal - global_position
+	to_goal.y = 0
+	if to_goal.length() < 0.5:
+		_wp = (_wp + 1) % waypoints.size()
+		return
+	var want := atan2(to_goal.x, to_goal.z)
+	rotation.y = lerp_angle(rotation.y, want, clampf(1.5 * delta, 0.0, 1.0))
+	# Only roll forward once roughly pointed the right way.
+	if absf(angle_difference(rotation.y, want)) < 0.5:
+		global_position += Vector3(sin(rotation.y), 0, cos(rotation.y)) * patrol_speed * delta
+
+
 func take_damage(_soft: float, armor_dmg: float) -> bool:
 	if not alive:
 		return false
+	_alert()
 	if armor_dmg <= 0.0:
 		return false
 	hp -= armor_dmg
@@ -216,7 +259,9 @@ func _destroy() -> void:
 	_fire_light.visible = true
 	if main:
 		main.on_vehicle_destroyed(self)
-	get_tree().create_timer(RESPAWN_TIME).timeout.connect(_rebuild)
+		main.on_enemy_killed(self)
+	if respawns:
+		get_tree().create_timer(RESPAWN_TIME).timeout.connect(_rebuild)
 
 
 func _rebuild() -> void:

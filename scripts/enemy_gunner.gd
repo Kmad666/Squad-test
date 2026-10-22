@@ -14,6 +14,9 @@ var turret: Node3D = null   # optional: swivels toward the target (APC)
 var suppression := 0.0      # 0..1
 var target: Node3D = null
 var shots := 0
+var reaction_min := 0.6     # seconds to bring the gun onto a new target
+var reaction_max := 1.4
+var spot_range := 45.0      # an unalerted sentry only notices you this close
 
 var _rng := RandomNumberGenerator.new()
 var _retarget := 0.0
@@ -75,7 +78,9 @@ func _physics_process(delta: float) -> void:
 		var t: Node3D = target if keep else _pick_target()
 		if t != target:
 			target = t
-			_reaction = _rng.randf_range(0.6, 1.4)   # time to bring the gun onto a new target
+			_reaction = _rng.randf_range(reaction_min, reaction_max)
+			if t and host.has_method("on_spotted"):
+				host.on_spotted()
 	if target == null or not is_instance_valid(target) or target.dead:
 		target = null
 		return
@@ -86,6 +91,8 @@ func _physics_process(delta: float) -> void:
 
 	_reaction -= delta
 	if _reaction > 0.0 or pinned():
+		return
+	if host.has_method("can_fire") and not host.can_fire():
 		return
 	_fire_timer -= delta
 	if _fire_timer > 0.0:
@@ -104,9 +111,12 @@ func _physics_process(delta: float) -> void:
 func _pick_target() -> Node3D:
 	var best: Node3D = null
 	var best_score := INF
+	var reach: float = weapon["max"]
+	if "area" in host and not host.area.is_empty() and not host.area.get("alerted", false):
+		reach = minf(reach, spot_range)
 	for s in main.squad.soldiers:
 		var d := global_position.distance_to(s.global_position)
-		if d > weapon["max"] or not _can_see(s):
+		if d > reach or not _can_see(s):
 			continue
 		var score := d + _rng.randf_range(0.0, 10.0)
 		if score < best_score:

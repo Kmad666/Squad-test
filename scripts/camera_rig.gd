@@ -5,6 +5,7 @@ extends Node3D
 ## Click to grab the mouse, Esc to release, wheel to zoom.
 ## Shake and FOV kick come from main.fire_heat (how hard the squad is firing).
 
+const Atmosphere = preload("res://scripts/atmosphere.gd")
 const PIVOT_HEIGHT := 1.9     # pivot above the squad's anchor
 const CAM_LIFT := 1.7         # extra camera height above the pivot line
 
@@ -38,6 +39,8 @@ func _ready() -> void:
 	cam.current = true
 
 	# Dim cold fill riding with the camera so the squad reads as shapes in the dark.
+	if not Atmosphere.NIGHT:
+		return
 	var fill := OmniLight3D.new()
 	fill.light_color = Color(0.55, 0.65, 0.85)
 	fill.light_energy = 0.9

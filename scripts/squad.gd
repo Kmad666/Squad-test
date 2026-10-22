@@ -28,6 +28,9 @@ var forced_mode := -1              # tests can force a fire mode
 var forced_specials := false       # tests can force the specials order
 var pending_teams: Array = []      # [{members, center, label, name}]
 var kia := 0
+var order_target: Variant = null   # E: point the squad is moving to
+var _ping: MeshInstance3D
+var _ping_t := 0.0
 
 enum { HOLD, AT_WILL, FOCUS }
 var threat_dir := Vector3.FORWARD
@@ -196,11 +199,47 @@ func _unhandled_input(event: InputEvent) -> void:
 			take_cover()
 	elif event.is_action_pressed("auto_fire"):
 		auto_fire = not auto_fire
+	elif event.is_action_pressed("move_order"):
+		var p: Variant = main.reticle_ground_point()
+		if p != null:
+			move_to(p)
+
+
+## Send the squad to a point. They break cover and move as a group;
+## WASD cancels the order.
+func move_to(p: Vector3) -> void:
+	var lim: float = main.NAV_HALF - 2.0
+	order_target = Vector3(clampf(p.x, -lim, lim), 0, clampf(p.z, -lim, lim))
+	if in_cover:
+		leave_cover()
+	_show_ping(order_target)
+
+
+## Brief fading ring where the move order lands.
+func _show_ping(p: Vector3) -> void:
+	if _ping == null:
+		_ping = MeshInstance3D.new()
+		var t := TorusMesh.new()
+		t.inner_radius = 0.8
+		t.outer_radius = 1.0
+		_ping.mesh = t
+		var m := StandardMaterial3D.new()
+		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		m.albedo_color = Color(0.45, 1.0, 0.3, 0.8)
+		_ping.material_override = m
+		_ping.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(_ping)
+	_ping.global_position = p + Vector3(0, 0.05, 0)
+	_ping.scale = Vector3(1, 0.1, 1)
+	_ping.visible = true
+	_ping_t = 1.5
 
 
 func _physics_process(delta: float) -> void:
 	var input := Input.get_vector("move_left", "move_right", "move_forward", "move_back")
 	if input.length() > 0.05:
+		order_target = null
 		if in_cover:
 			leave_cover()
 		var dir: Vector3 = main.cam_rig.get_yaw_basis() * Vector3(input.x, 0, input.y)
@@ -214,6 +253,22 @@ func _physics_process(delta: float) -> void:
 		anchor.z = clampf(anchor.z, -lim, lim)
 		# The anchor is a ghost point with no collision: it passes straight
 		# through crates, and each soldier finds his own way around.
+
+	elif order_target != null:
+		var to: Vector3 = order_target - anchor
+		to.y = 0
+		if to.length() < 0.4:
+			order_target = null
+		else:
+			var lag := anchor.distance_to(centroid())
+			var speed := MOVE_SPEED * clampf(1.0 - (lag - 3.0) / 4.0, 0.3, 1.0)
+			anchor += to.normalized() * minf(speed * delta, to.length())
+
+	if _ping and _ping.visible:
+		_ping_t -= delta
+		(_ping.material_override as StandardMaterial3D).albedo_color.a = clampf(_ping_t / 1.5, 0.0, 1.0) * 0.8
+		if _ping_t <= 0.0:
+			_ping.visible = false
 
 	if not in_cover:
 		for i in soldiers.size():

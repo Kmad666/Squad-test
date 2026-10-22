@@ -1,16 +1,22 @@
 extends Node3D
-## Night mood: dark, foggy, wet after rain, with harsh light sources that bloom and
-## glare like they're blinding the lens. Builds:
+## Scene lighting. NIGHT = false gives the daytime test field (sun, sky, light
+## haze). NIGHT = true restores the night mood: dark, foggy, wet after rain,
+## with harsh light sources that bloom and glare like they're blinding the lens:
 ##   - dark environment with fog, ACES tonemap and strong bloom (glow)
 ##   - a floodlight on a pole aimed at the target dummies
 ##   - a sodium street lamp over the cover area
 ##   - glare sprites + anamorphic streaks on each light, plus visible beams
+
+const NIGHT := false
 
 var cam_rig: Node3D
 var _glares: Array = []   # [{node, dir, base}] for view-dependent glare
 
 
 func _ready() -> void:
+	if not NIGHT:
+		_build_day()
+		return
 	_build_environment()
 	# Floodlight beside the range, aimed at the middle of the dummies.
 	_build_light_pole(Vector3(14, 0, -21), 7.5, Vector3(-3, 0.8, -36),
@@ -18,6 +24,44 @@ func _ready() -> void:
 	# Street lamp hanging over the cover crates.
 	_build_light_pole(Vector3(-4.5, 0, 6.5), 5.5, Vector3(-1.5, 0, 5.5),
 		Color(1.0, 0.68, 0.36), 9.0, 62.0, 16.0, true, 2.2)
+
+
+# ---------------------------------------------------------------- day
+
+func _build_day() -> void:
+	var sky_mat := ProceduralSkyMaterial.new()
+	sky_mat.sky_top_color = Color(0.32, 0.52, 0.82)
+	sky_mat.sky_horizon_color = Color(0.70, 0.78, 0.86)
+	sky_mat.ground_horizon_color = Color(0.62, 0.66, 0.6)
+	sky_mat.ground_bottom_color = Color(0.3, 0.33, 0.26)
+	sky_mat.sun_angle_max = 20.0
+	var sky := Sky.new()
+	sky.sky_material = sky_mat
+	var env := Environment.new()
+	env.background_mode = Environment.BG_SKY
+	env.sky = sky
+	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
+	env.ambient_light_energy = 0.75
+	env.tonemap_mode = Environment.TONE_MAPPER_ACES
+	env.tonemap_exposure = 1.0
+	env.glow_enabled = true            # gentle bloom on muzzle flashes / explosions
+	env.glow_intensity = 0.35
+	env.glow_hdr_threshold = 1.0
+	env.fog_enabled = true             # light distance haze
+	env.fog_light_color = Color(0.68, 0.75, 0.84)
+	env.fog_density = 0.004
+	env.fog_sky_affect = 0.3
+	var we := WorldEnvironment.new()
+	we.environment = env
+	add_child(we)
+
+	var sun := DirectionalLight3D.new()
+	sun.rotation = Vector3(deg_to_rad(-50), deg_to_rad(30), 0)
+	sun.light_color = Color(1.0, 0.96, 0.88)
+	sun.light_energy = 1.15
+	sun.shadow_enabled = true
+	sun.directional_shadow_max_distance = 70.0
+	add_child(sun)
 
 
 # ---------------------------------------------------------------- environment
@@ -249,7 +293,7 @@ func _build_glare(pos: Vector3, dir: Vector3, color: Color, size: float) -> void
 
 
 func _process(_delta: float) -> void:
-	if cam_rig == null or cam_rig.cam == null:
+	if _glares.is_empty() or cam_rig == null or cam_rig.cam == null:
 		return
 	var cam: Camera3D = cam_rig.cam
 	var cpos := cam.global_position

@@ -14,6 +14,7 @@ extends CharacterBody3D
 
 const Weapons = preload("res://scripts/weapons.gd")
 const ProjectileScript = preload("res://scripts/projectile.gd")
+const Atmosphere = preload("res://scripts/atmosphere.gd")
 
 enum State { FOLLOW, TO_COVER, IN_COVER }
 
@@ -111,7 +112,7 @@ static func _mat(key: String, color: Color, unshaded := false) -> StandardMateri
 	if not _mats.has(key):
 		var m := StandardMaterial3D.new()
 		m.albedo_color = color
-		m.roughness = 0.28   # rain-soaked
+		m.roughness = 0.28 if Atmosphere.NIGHT else 0.75   # rain-soaked at night
 		m.metallic_specular = 0.7
 		if unshaded:
 			m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
@@ -119,7 +120,7 @@ static func _mat(key: String, color: Color, unshaded := false) -> StandardMateri
 			# A touch of self-light + rim so your own men read in the dark.
 			m.emission_enabled = true
 			m.emission = color
-			m.emission_energy_multiplier = 0.22
+			m.emission_energy_multiplier = 0.22 if Atmosphere.NIGHT else 0.06
 			m.rim_enabled = true
 			m.rim = 0.5
 			m.rim_tint = 0.6
@@ -661,11 +662,11 @@ func _shoot() -> void:
 		var c: Object = hit["collider"]
 		var spark := false
 		if c.has_method("take_damage"):
-			main.hits += 1
 			spark = true
-			c.take_damage(primary["soft"], primary["armor"])
+			if c.take_damage(primary["soft"], primary["armor"]):
+				main.hits += 1   # only hits that hurt (ricochets off armor don't count)
 		main.spawn_impact(end, hit["normal"], spark)
-	main.suppress_enemies(from, end, 0.09)
+	main.suppress_enemies(from, end, 0.08)
 	shots += 1
 	main.spawn_tracer(_flash.global_position, end)
 	main.on_shot(_flash.global_position)

@@ -15,14 +15,14 @@ extends RefCounted
 
 const RIFLE := {
 	"name": "RIFLE", "kind": "bullet",
-	"acc": 0.55, "eff": 30.0, "max": 70.0,
+	"acc": 0.55, "eff": 30.0, "max": 60.0,
 	"soft": 1.0, "armor": 0.0,
 	"burst_min": 2, "burst_max": 4, "cycle": 0.1, "pause_min": 0.5, "pause_max": 1.1,
 }
 
 const BURST_RIFLE := {
 	"name": "BURST RIFLE", "kind": "bullet",
-	"acc": 0.65, "eff": 40.0, "max": 75.0,
+	"acc": 0.65, "eff": 40.0, "max": 65.0,
 	"soft": 1.2, "armor": 0.0,
 	"burst_min": 3, "burst_max": 3, "cycle": 0.07, "pause_min": 0.55, "pause_max": 0.9,
 }
@@ -73,7 +73,7 @@ static func hit_chance(w: Dictionary, target: Node3D, dist: float, moving: bool,
 
 const ENEMY_RIFLE := {
 	"name": "ENEMY RIFLE", "kind": "bullet",
-	"acc": 0.32, "eff": 30.0, "max": 58.0,
+	"acc": 0.32, "eff": 30.0, "max": 60.0,
 	"soft": 16.0, "armor": 0.0, "suppress": 0.1,
 	"burst_min": 2, "burst_max": 3, "cycle": 0.12, "pause_min": 1.4, "pause_max": 2.6,
 }

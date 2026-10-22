@@ -1,10 +1,10 @@
 extends Node3D
-## Squad Test - builds the practice field (ground, cover boxes, target dummies),
-## the squad, the camera, the HUD and a shared pool of bullet tracers.
+## Squad Test - builds the test field (ground, cover, three defended enemy
+## areas), the squad, the camera, the HUD and the shared effect pools.
 
 const CoverUtil = preload("res://scripts/cover_util.gd")
 const SquadScript = preload("res://scripts/squad.gd")
-const DummyScript = preload("res://scripts/dummy.gd")
+const EnemySoldierScript = preload("res://scripts/enemy_soldier.gd")
 const VehicleScript = preload("res://scripts/vehicle.gd")
 const CameraRigScript = preload("res://scripts/camera_rig.gd")
 const ReticleScript = preload("res://scripts/reticle.gd")
@@ -15,42 +15,65 @@ const UI_FONT = preload("res://fonts/ShareTechMono-Regular.ttf")
 const NEON := Color(0.45, 1.0, 0.30)
 
 const NAV_HALF := 50.0          # playable half-size of the field (metres)
-const VEHICLE_SPOT := Vector3(3, 0, -45)
-const AT_TEAM_SPOT := Vector3(-26, 0, 14)   # anti-armor team waiting to link up
+const AT_TEAM_SPOT := Vector3(-36, 0, 32)   # anti-armor team waiting to link up
+const SQUAD_START := Vector3(0, 0, 42)      # outside enemy rifle range
 const TRACER_COUNT := 48
 const TRACER_LIFE := 0.06
 const TALL_COVER := 1.6         # boxes taller than this need a lean-out to shoot
 
-## Cover boxes: [ground position, size, yaw]. Low crates (1.1 m) can be shot over,
-## tall crates (2.4 m) are hard cover.
+## Cover: [ground position, size, yaw, type]. "crate" and "wall" are low cover
+## (1.1 m, shoot over it), "tall" crates (2.4 m) are hard cover you lean around.
 const BOX_LAYOUT := [
-	[Vector3(-6, 0, 10), Vector3(3.0, 1.1, 1.0), 0.0],
-	[Vector3(2, 0, 8), Vector3(2.5, 1.1, 1.0), 0.2],
-	[Vector3(8, 0, 11), Vector3(1.6, 2.4, 1.6), 0.4],
-	[Vector3(0, 0, 16), Vector3(1.2, 1.1, 1.2), 0.0],
-	[Vector3(-2, 0, 2), Vector3(4.0, 1.1, 1.0), 0.0],
-	[Vector3(-11, 0, 3), Vector3(1.6, 2.4, 1.6), 0.0],
-	[Vector3(6, 0, 0), Vector3(3.0, 1.1, 1.0), -0.3],
-	[Vector3(12, 0, -2), Vector3(1.0, 1.1, 3.0), 0.0],
-	[Vector3(-7, 0, -5), Vector3(2.5, 1.1, 1.0), 0.5],
-	[Vector3(0, 0, -8), Vector3(1.6, 2.4, 1.6), 0.8],
-	[Vector3(4, 0, -12), Vector3(4.0, 1.1, 1.0), 0.0],
-	[Vector3(-4, 0, -14), Vector3(2.0, 1.1, 1.0), -0.2],
-	[Vector3(-14, 0, -10), Vector3(3.0, 1.1, 1.0), 0.3],
-	[Vector3(14, 0, -14), Vector3(1.6, 2.4, 1.6), 0.2],
-	[Vector3(-16, 0, 14), Vector3(3.0, 1.1, 1.0), 1.2],
-	[Vector3(17, 0, 6), Vector3(2.5, 1.1, 1.0), -1.0],
+	# Start zone
+	[Vector3(-4, 0, 36), Vector3(3.0, 1.1, 1.0), 0.0, "crate"],
+	[Vector3(5, 0, 37), Vector3(2.5, 1.1, 1.0), 0.2, "crate"],
+	# Midfield: cover to advance through
+	[Vector3(-14, 0, 24), Vector3(5.0, 1.1, 0.5), 0.1, "wall"],
+	[Vector3(-6, 0, 20), Vector3(1.6, 2.4, 1.6), 0.0, "tall"],
+	[Vector3(2, 0, 22), Vector3(3.0, 1.1, 1.0), 0.0, "crate"],
+	[Vector3(12, 0, 18), Vector3(4.5, 1.1, 0.5), -0.2, "wall"],
+	[Vector3(20, 0, 12), Vector3(2.5, 1.1, 1.0), 0.4, "crate"],
+	[Vector3(-24, 0, 10), Vector3(3.0, 1.1, 1.0), -0.3, "crate"],
+	[Vector3(-34, 0, 4), Vector3(1.6, 2.4, 1.6), 0.0, "tall"],
+	[Vector3(-4, 0, 8), Vector3(4.0, 1.1, 0.5), 0.0, "wall"],
+	[Vector3(8, 0, 4), Vector3(2.0, 1.1, 1.0), 0.6, "crate"],
+	[Vector3(17, 0, -2), Vector3(1.6, 2.4, 1.6), 0.3, "tall"],
+	[Vector3(32, 0, -6), Vector3(3.0, 1.1, 1.0), 1.2, "crate"],
+	[Vector3(-13, 0, -1), Vector3(3.5, 1.1, 0.5), 0.4, "wall"],
+	[Vector3(-6, 0, -8), Vector3(2.0, 1.1, 1.0), -0.4, "crate"],
+	# Area ALPHA (west): sandbag line with a tall crate behind it
+	[Vector3(-24, 0, -13), Vector3(5.0, 1.1, 0.5), 0.0, "wall"],
+	[Vector3(-29.5, 0, -17), Vector3(0.5, 1.1, 4.0), 0.0, "wall"],
+	[Vector3(-19, 0, -16), Vector3(1.2, 1.1, 1.2), 0.0, "crate"],
+	[Vector3(-23, 0, -22), Vector3(1.6, 2.4, 1.6), 0.0, "tall"],
+	# Area BRAVO (centre): checkpoint
+	[Vector3(0, 0, -20), Vector3(4.0, 1.1, 0.5), 0.0, "wall"],
+	[Vector3(8, 0, -21), Vector3(4.0, 1.1, 0.5), 0.15, "wall"],
+	[Vector3(4, 0, -27), Vector3(1.6, 2.4, 1.6), 0.0, "tall"],
+	[Vector3(-3, 0, -29), Vector3(2.0, 1.1, 1.0), 0.5, "crate"],
+	[Vector3(11, 0, -30), Vector3(2.0, 1.1, 1.0), -0.4, "crate"],
+	# Area CHARLIE (east): motor pool, the APC patrols the lane behind it
+	[Vector3(22, 0, -29), Vector3(5.0, 1.1, 0.5), 0.0, "wall"],
+	[Vector3(31, 0, -31), Vector3(2.5, 1.1, 1.0), -0.2, "crate"],
+	[Vector3(17, 0, -36), Vector3(1.6, 2.4, 1.6), 0.0, "tall"],
+	[Vector3(38, 0, -37), Vector3(1.6, 2.4, 1.6), 0.0, "tall"],
 ]
 
-const DUMMY_SPOTS := [
-	Vector3(-10, 0, -30), Vector3(-3, 0, -34), Vector3(4, 0, -31),
-	Vector3(11, 0, -36), Vector3(0, 0, -42), Vector3(-17, 0, -38),
+## Enemy positions. Small groups on purpose: you have the numbers for now.
+const AREA_DEFS := [
+	{"name": "ALPHA", "center": Vector3(-24, 0, -18), "radius": 11.0,
+		"men": [Vector3(-24, 0, -15), Vector3(-20, 0, -18)]},
+	{"name": "BRAVO", "center": Vector3(4, 0, -25), "radius": 11.0,
+		"men": [Vector3(1, 0, -22), Vector3(7, 0, -23), Vector3(4, 0, -31)]},
+	{"name": "CHARLIE", "center": Vector3(27, 0, -35), "radius": 12.0,
+		"men": [Vector3(24, 0, -31), Vector3(31, 0, -33)],
+		"apc": [Vector3(20, 0, -44), Vector3(36, 0, -44)]},
 ]
 
 var cover_defs: Array = []      # [{xform, size}] used by CoverUtil
 var cover_points: Array = []    # [{pos, normal, height}]
-var dummies: Array = []
-var targets: Array = []         # everything the squad can shoot: dummies + vehicles
+var targets: Array = []         # everything the squad can shoot: enemy soldiers + vehicles
+var areas: Array = []           # [{name, center, radius, members, alerted, claimed, label}]
 var vehicles: Array = []
 var squad: Node3D
 var cam_rig: Node3D
@@ -76,6 +99,7 @@ var hurt := 0.0               # red screen-edge flash when a soldier is hit
 var _friendly_tracer_mat: StandardMaterial3D
 var _enemy_tracer_mat: StandardMaterial3D
 var kills := 0
+var debug_reticle_all := false   # headless tests: treat everything as inside the reticle
 
 var _tracers: Array = []
 var _tracer_life: Array = []
@@ -94,13 +118,7 @@ func _ready() -> void:
 	_build_boxes()
 	_bake_nav()
 	_build_cover_points()
-	_build_dummies()
-	var v: StaticBody3D = VehicleScript.new()
-	v.main = self
-	add_child(v)
-	v.global_position = VEHICLE_SPOT
-	vehicles.append(v)
-	targets.append(v)
+	_build_areas()
 	_build_tracers()
 	_build_impacts()
 	_build_explosions()
@@ -113,7 +131,7 @@ func _ready() -> void:
 	squad = SquadScript.new()
 	squad.name = "Squad"
 	add_child(squad)
-	squad.setup(self, Vector3(0, 0, 30))   # just outside enemy rifle range
+	squad.setup(self, SQUAD_START)
 	squad.spawn_waiting_team("ANTI-ARMOR TEAM", AT_TEAM_SPOT, ["anti_armor", "anti_armor", "anti_armor"])
 
 	cam_rig = CameraRigScript.new()
@@ -138,6 +156,7 @@ func _setup_input() -> void:
 	_bind("move_right", [KEY_D, KEY_RIGHT])
 	_bind("take_cover", [KEY_C, KEY_SPACE])
 	_bind("auto_fire", [KEY_F])
+	_bind("move_order", [KEY_E])
 
 
 func _bind(action: String, keys: Array) -> void:
@@ -165,9 +184,9 @@ func _build_ground() -> void:
 	var shader := Shader.new()
 	shader.code = """
 shader_type spatial;
-// Rain-soaked field: dark wet grass and glossy puddles.
-uniform vec3 grass_col : source_color = vec3(0.10, 0.17, 0.08);
-uniform vec3 line_col : source_color = vec3(0.07, 0.12, 0.06);
+// Field ground. wet = 1: night, dark wet grass with glossy puddles.
+// wet = 0: daytime, dry grass with patchy colour.
+uniform float wet = 0.0;
 varying vec3 wpos;
 
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -182,18 +201,22 @@ void vertex() { wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz; }
 void fragment() {
 	vec2 g = abs(fract(wpos.xz / 4.0 - 0.5) - 0.5) * 4.0;
 	float l = 1.0 - smoothstep(0.0, 0.06, min(g.x, g.y));
-	float puddle = smoothstep(0.52, 0.62, noise(wpos.xz * 0.22) * 0.7 + noise(wpos.xz * 0.9) * 0.3);
-	vec3 c = mix(grass_col, line_col, l * 0.6);
-	c = mix(c, c * 0.35, puddle);
+	float patch = noise(wpos.xz * 0.22) * 0.7 + noise(wpos.xz * 0.9) * 0.3;
+	vec3 day = mix(vec3(0.30, 0.42, 0.17), vec3(0.42, 0.45, 0.2), smoothstep(0.35, 0.75, patch));
+	day = mix(day, day * 0.85, l * 0.5);
+	vec3 night = mix(vec3(0.10, 0.17, 0.08), vec3(0.07, 0.12, 0.06), l * 0.6);
+	float puddle = smoothstep(0.52, 0.62, patch) * wet;
+	night = mix(night, night * 0.35, puddle);
+	vec3 c = mix(day, night, wet);
 	bool outside = abs(wpos.x) > 50.0 || abs(wpos.z) > 50.0;
-	ALBEDO = outside ? c * 0.7 : c;
-
-	ROUGHNESS = mix(0.32, 0.03, puddle);
-	SPECULAR = 0.65;
+	ALBEDO = outside ? c * 0.75 : c;
+	ROUGHNESS = mix(0.95, mix(0.32, 0.03, puddle), wet);
+	SPECULAR = mix(0.2, 0.65, wet);
 }
 """
 	var mat := ShaderMaterial.new()
 	mat.shader = shader
+	mat.set_shader_parameter("wet", 1.0 if AtmosphereScript.NIGHT else 0.0)
 	mesh.material_override = mat
 	mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	body.add_child(mesh)
@@ -216,16 +239,12 @@ void fragment() {
 
 
 func _build_boxes() -> void:
-	# Rain-soaked wood: dark and glossy.
-	var low_mat := StandardMaterial3D.new()
-	low_mat.albedo_color = Color(0.36, 0.27, 0.16)
-	low_mat.roughness = 0.18
-	low_mat.metallic_specular = 0.8
-	var tall_mat := StandardMaterial3D.new()
-	tall_mat.albedo_color = Color(0.26, 0.19, 0.12)
-	tall_mat.roughness = 0.18
-	tall_mat.metallic_specular = 0.8
-
+	var night: bool = AtmosphereScript.NIGHT
+	var mats := {
+		"crate": _surface(Color(0.36, 0.27, 0.16) if night else Color(0.55, 0.42, 0.26), night),
+		"tall": _surface(Color(0.26, 0.19, 0.12) if night else Color(0.42, 0.31, 0.19), night),
+		"wall": _surface(Color(0.30, 0.30, 0.29) if night else Color(0.58, 0.57, 0.53), night),
+	}
 	for entry in BOX_LAYOUT:
 		var pos: Vector3 = entry[0]
 		var size: Vector3 = entry[1]
@@ -243,7 +262,7 @@ func _build_boxes() -> void:
 		var bm := BoxMesh.new()
 		bm.size = size
 		mi.mesh = bm
-		mi.material_override = tall_mat if size.y > 2.0 else low_mat
+		mi.material_override = mats[entry[3]]
 		body.add_child(mi)
 
 		var col := CollisionShape3D.new()
@@ -251,6 +270,15 @@ func _build_boxes() -> void:
 		bs.size = size
 		col.shape = bs
 		body.add_child(col)
+
+
+## Glossy and wet at night, dry and matte in daylight.
+func _surface(color: Color, wet: bool) -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	m.albedo_color = color
+	m.roughness = 0.18 if wet else 0.85
+	m.metallic_specular = 0.8 if wet else 0.4
+	return m
 
 
 func _bake_nav() -> void:
@@ -298,14 +326,109 @@ func _build_cover_points() -> void:
 				})
 
 
-func _build_dummies() -> void:
-	for p in DUMMY_SPOTS:
-		var d: StaticBody3D = DummyScript.new()
-		d.main = self
-		add_child(d)
-		d.global_position = p
-		dummies.append(d)
-		targets.append(d)
+## Spawn each defended area: its riflemen, the APC for CHARLIE, and a
+## floating label with how many hostiles are left.
+func _build_areas() -> void:
+	for def in AREA_DEFS:
+		var area := {
+			"name": def["name"], "center": def["center"], "radius": def["radius"],
+			"members": [], "alerted": false, "claimed": {},
+		}
+		for p in def["men"]:
+			var e: CharacterBody3D = EnemySoldierScript.new()
+			e.main = self
+			e.area = area
+			e.post = p
+			e.position = p
+			add_child(e)
+			area["members"].append(e)
+			targets.append(e)
+		if def.has("apc"):
+			var v: StaticBody3D = VehicleScript.new()
+			v.main = self
+			v.area = area
+			v.respawns = false
+			v.waypoints = def["apc"]
+			add_child(v)
+			v.global_position = def["apc"][0]
+			v.rotation.y = PI / 2.0
+			area["members"].append(v)
+			vehicles.append(v)
+			targets.append(v)
+		var label := Label3D.new()
+		label.font = UI_FONT
+		label.font_size = 48
+		label.outline_size = 10
+		label.pixel_size = 0.008
+		label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		label.no_depth_test = true
+		label.modulate = Color(1.0, 0.75, 0.25)
+		label.outline_modulate = Color(0.1, 0.05, 0.0, 0.8)
+		label.position = def["center"] + Vector3(0, 5.5, 0)
+		add_child(label)
+		area["label"] = label
+		areas.append(area)
+		_update_area_label(area)
+
+
+func _alive_in(area: Dictionary) -> int:
+	var n := 0
+	for m in area["members"]:
+		if m.alive:
+			n += 1
+	return n
+
+
+func _update_area_label(area: Dictionary) -> void:
+	var n := _alive_in(area)
+	var lbl: Label3D = area["label"]
+	if n == 0:
+		lbl.text = "AREA %s\nCLEARED" % area["name"]
+		lbl.modulate = Color(0.45, 1.0, 0.3)
+	else:
+		lbl.text = "AREA %s\n%d HOSTILE%s%s" % [area["name"], n, "" if n == 1 else "S", "  [ALERT]" if area["alerted"] else ""]
+
+
+func on_area_alerted(area: Dictionary) -> void:
+	_update_area_label(area)
+	notify("CONTACT  -  AREA %s" % area["name"])
+
+
+func on_enemy_killed(e: Node3D) -> void:
+	kills += 1
+	for area in areas:
+		if e in area["members"]:
+			_update_area_label(area)
+			if _alive_in(area) == 0:
+				var all_clear := true
+				for a in areas:
+					if _alive_in(a) > 0:
+						all_clear = false
+				notify("ALL AREAS CLEARED  -  PRESS R TO RESTART" if all_clear else "AREA %s CLEARED" % area["name"])
+
+
+func areas_text() -> String:
+	var parts: Array = []
+	for a in areas:
+		var n := _alive_in(a)
+		parts.append("%s %s" % [a["name"], "CLEAR" if n == 0 else str(n)])
+	return "   ".join(parts)
+
+
+## Ground point under the centre of the reticle (for the move order).
+func reticle_ground_point() -> Variant:
+	var cam: Camera3D = cam_rig.cam
+	var r := reticle_rect()
+	var c := r.get_center()
+	var origin := cam.project_ray_origin(c)
+	var dir := cam.project_ray_normal(c)
+	var q := PhysicsRayQueryParameters3D.create(origin, origin + dir * 200.0, 1)
+	var hit := get_world_3d().direct_space_state.intersect_ray(q)
+	if hit.is_empty():
+		return null
+	var p: Vector3 = hit["position"]
+	p.y = 0.0
+	return p
 
 
 func _build_tracers() -> void:
@@ -539,7 +662,8 @@ func _seg_dist(a: Vector3, b: Vector3, p: Vector3) -> float:
 	return p.distance_to(a + ab * t)
 
 
-## Our rounds snapping past enemies pin them down.
+## Our rounds snapping past enemies pin them down. Fire from far away is
+## much less frightening than fire from close up.
 func suppress_enemies(from: Vector3, end: Vector3, amount: float) -> void:
 	for t in targets:
 		if not t.alive or not ("gunners" in t):
@@ -547,8 +671,9 @@ func suppress_enemies(from: Vector3, end: Vector3, amount: float) -> void:
 		var reach: float = 2.5 + t.radius
 		var d := _seg_dist(from, end, t.aim_point())
 		if d < reach:
+			var range_f := clampf(1.3 - from.distance_to(t.aim_point()) / 50.0, 0.25, 1.0)
 			for g in t.gunners:
-				g.add_suppression(amount * (1.0 - d / reach))
+				g.add_suppression(amount * range_f * (1.0 - d / reach))
 
 
 ## Enemy rounds snapping past soldiers rattle them.
@@ -605,6 +730,8 @@ func reticle_rect() -> Rect2:
 
 ## True if a world point shows up inside the reticle on screen.
 func in_reticle(world_pos: Vector3) -> bool:
+	if debug_reticle_all:
+		return true
 	var cam: Camera3D = cam_rig.cam
 	if cam.is_position_behind(world_pos):
 		return false
@@ -632,8 +759,6 @@ func camera_forward() -> Vector3:
 	return dir.normalized()
 
 
-func on_dummy_down() -> void:
-	kills += 1
 
 
 # ---------------------------------------------------------------- HUD
@@ -738,12 +863,14 @@ func _process(delta: float) -> void:
 		hud_label.text = "SQUAD TEST // FIELD TRIAL\n" \
 			+ "WASD  move squad     MOUSE  aim%s     WHEEL  zoom\n" % ("" if captured else " (click to grab)") \
 			+ "HOLD LMB  focus fire on reticle     HOLD RMB  specialists fire GL / rockets\n" \
-			+ "C / SPACE  cover vs camera facing     F  auto fire (at will)     TAB  reticle     R  restart\n\n" \
+			+ "E  move squad to reticle     C / SPACE  cover vs camera facing     F  auto fire (at will)\n" \
+			+ "TAB  reticle     R  restart\n\n" \
 			+ "SQUAD   %s\n" % squad.status_text() \
 			+ "UNIT    %s\n" % squad.roster_text() \
 			+ "FIRE    %s%s\n" % [squad.fire_mode_text(), "   (auto fire ON)" if squad.auto_fire else ""] \
 			+ "UNDER FIRE  %s\n" % _supp_bar(squad.avg_suppression()) \
-			+ "HITS    %d     DROPPED  %d" % [hits, kills] \
+			+ "ENEMY   %s\n" % areas_text() \
+			+ "HITS    %d     KILLS  %d" % [hits, kills] \
 			+ ("\n\n>> %s" % _notice if _notice_t > 0.0 else "")
 
 

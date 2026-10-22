@@ -13,6 +13,7 @@ You command a squad of six soldiers as one unit. Each soldier picks its own targ
 | Hold left mouse | **Focus fire**: only targets inside the reticle; with none there, the squad saturates the area under it |
 | Hold right mouse | **Specials**: grenadiers and rocket teams fire their launchers at the reticle |
 | F | Auto fire toggle: fire at will (each soldier picks any target he can see) |
+| E | Move the squad to the spot under the reticle (WASD cancels) |
 | C / Space | Take cover against the direction the camera faces / leave cover (moving also leaves cover) |
 | Tab | Reticle settings (sizes are saved in your browser) |
 | R | Restart |
@@ -48,8 +49,7 @@ aimed fire (focus fire, launchers) x1.15; follow-up rounds in a burst x0.85. Mis
 so the blast can still catch the target.
 
 ## Enemy fire, health and suppression
-- Dummies are enemy riflemen and shoot back (red tracers). The APC's turret tracks you with a machine gun and fires
-  explosive cannon shells. Enemies need line of sight: a soldier crouched behind a low crate is hidden.
+- Enemy riflemen (grey, red armband) and the APC shoot back (red tracers). The APC's turret tracks you with a machine gun and fires explosive cannon shells. Enemies need line of sight: a soldier crouched behind a low crate is hidden.
 - Soldiers have 100 HP. Below 50 they're **wounded** (slower, less accurate); at 0 they're **down** and leave the squad.
 - **Suppression** (both sides): rounds snapping past within ~2 m build it up; it fades ~1.5 s after the fire stops.
   Suppressed soldiers peek less and shoot worse; **pinned** soldiers stay down. Suppressed enemies fire slower and
@@ -65,3 +65,14 @@ so the blast can still catch the target.
 
 Enemy hit chance: weapon accuracy x range falloff x0.75 vs moving soldiers x0.6 vs soldiers fighting from cover
 x(1 - 0.75 x the shooter's suppression).
+
+## Test field (daytime)
+Three defended areas, each with a floating label showing hostiles left:
+- **ALPHA** (west): 2 riflemen behind a sandbag line.
+- **BRAVO** (centre checkpoint): 3 riflemen.
+- **CHARLIE** (east motor pool): 2 riflemen + the APC, which patrols the lane behind it.
+
+The anti-armor team waits north-west of the start. Enemies stand at their posts until they spot you (within 45 m)
+or take fire; then the whole area alerts. Alerted riflemen run to cover that shields them from your squad, peek
+to shoot (leaning around tall crates), stay down when pinned, move when you flank them, and fall back when wounded.
+The APC stops patrolling to fight. Night lighting is still in the code (`NIGHT` in `scripts/atmosphere.gd`).
