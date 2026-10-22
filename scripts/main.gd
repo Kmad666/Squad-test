@@ -1129,6 +1129,7 @@ func _build_hud() -> void:
 	sb.set_corner_radius_all(3)
 	sb.set_content_margin_all(10)
 	panel.add_theme_stylebox_override("panel", sb)
+	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE   # HUD never swallows clicks
 	ui_root.add_child(panel)
 	hud_label = Label.new()
 	hud_label.add_theme_font_size_override("font_size", 14)
@@ -1142,6 +1143,7 @@ func _build_hud() -> void:
 	help_panel.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	help_panel.offset_right = -12
 	help_panel.offset_top = 12
+	help_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	ui_root.add_child(help_panel)
 	help_label = Label.new()
 	help_label.add_theme_font_size_override("font_size", 12)
@@ -1159,6 +1161,7 @@ func _build_hud() -> void:
 	unit_panel.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	unit_panel.offset_right = -12
 	unit_panel.offset_bottom = -12
+	unit_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	ui_root.add_child(unit_panel)
 	unit_label = _rich(13)
 	unit_label.custom_minimum_size = Vector2(300, 0)
@@ -1173,6 +1176,7 @@ func _build_hud() -> void:
 	bar.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	bar.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	bar.offset_bottom = -12
+	bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	ui_root.add_child(bar)
 	special_label = _rich(15)
 	special_label.custom_minimum_size = Vector2(440, 0)
