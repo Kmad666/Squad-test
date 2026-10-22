@@ -26,6 +26,7 @@ const UPPER_ARM := 0.31
 const FOREARM := 0.28
 const WAIST_Y := 0.99         # upper-body pivot (upper space, just above the belt)
 const LEAN := 0.25            # forward lean when crouched (radians)
+const RETRO_HUNCH := 0.2      # RETRO idle: hunched forward, one foot forward, one back
 const BLADE := 0.6            # torso turn when shouldering (left shoulder forward)
 const POCKET := Vector3(0.15, 1.46, -0.12)   # rifle butt in the shoulder (upper space)
 const AIM_YAW := 0.6         # how far the rifle can swing off the body's facing
@@ -66,6 +67,7 @@ var _phase := 0.0            # gait cycle 0..1 (left foot plants at 0)
 var _move_dir := Vector3.FORWARD   # travel direction, model space
 var _driven := false         # animate() is being called each frame
 var _leg_yaw := 0.0          # hips and legs turned toward travel (strafing)
+var _laid := false           # dead: no stance styling
 var _demo_vel := Vector3.ZERO
 # aiming (see set_aim_point / recoil)
 var _aiming := false
@@ -341,7 +343,8 @@ func _apply_pose() -> void:
 	var stance := lerpf(lerpf(0.62, 0.34, run_t), 0.62, c)
 	var fwd := clampf(-_move_dir.z, 0.0, 1.0)
 	var bob := w * lerpf(0.022, -0.04, run_t) * cos(TAU * 2.0 * (_phase - stance * 0.5))
-	var hip_drop := lerpf(0.02, 0.33, c) + 0.06 * run_t * w
+	var st := (1.0 if retro and not _laid else 0.0) * (1.0 - c)   # retro guard stance weight
+	var hip_drop := lerpf(0.02, 0.33, c) + 0.06 * run_t * w + 0.045 * st
 	var hip_back := 0.08 * c
 	_hips.position = Vector3(0, HIP_Y - hip_drop + bob, hip_back)
 	var a := smoothstep(0.0, 1.0, _aim_amt)
@@ -356,7 +359,7 @@ func _apply_pose() -> void:
 	# The upper body was laid out for hips at 0.93 m: keep it on the hips, and
 	# lean it forward by pivoting at the waist (not at the feet, which would
 	# swing the torso off the hips).
-	var lean := LEAN * c + 0.28 * run_t * w * (0.4 + 0.6 * fwd) + 0.06 * a - 0.05 * _recoil
+	var lean := LEAN * c + 0.28 * run_t * w * (0.4 + 0.6 * fwd) + 0.06 * a - 0.05 * _recoil + RETRO_HUNCH * st * (1.0 - 0.4 * w)
 	var waist := Vector3(0, WAIST_Y, 0)
 	var on_hips := Vector3(0, HIP_Y - 0.93 - hip_drop + bob, hip_back)
 	var rot := Basis(Vector3.UP, twist) * Basis(Vector3.RIGHT, -lean)
@@ -404,10 +407,11 @@ func _apply_pose() -> void:
 		# Standing (or crouched) rest position.
 		var rest := Vector3(HIP_X * sx * 1.15, ANKLE_Y, -0.03 + (0.06 if s == "R" else -0.05))
 		if s == "R":
-			rest.z += 0.2 * c + 0.13 * a * (1.0 - c)        # one foot back when low / shooting
-			rest.x += 0.04 * a
+			rest.z += 0.2 * c + 0.13 * a * (1.0 - c) * (1.0 - st) + 0.17 * st   # one foot back when low / shooting / retro guard
+			rest.x += 0.04 * a + 0.03 * st
 		else:
-			rest.z -= 0.05 * a * (1.0 - c)
+			rest.z -= 0.05 * a * (1.0 - c) * (1.0 - st) + 0.13 * st
+			rest.x -= 0.02 * st
 		var pitch := 0.0
 		var ankle := rest
 		if w > 0.0:
@@ -675,6 +679,7 @@ func set_sergeant(on: bool) -> void:
 func lay_down(face_up: bool) -> void:
 	if _gesture:
 		_gesture.kill()
+	_laid = true
 	crouched = false
 	_crouch_amt = 0.0
 	_gait_w = 0.0

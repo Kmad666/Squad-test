@@ -310,6 +310,32 @@ class Builder:
 		_cap_ring(ring_a, full.basis * Vector3.DOWN, c, id, true)
 		_cap_ring(ring_b, full.basis * Vector3.UP, c, id, false)
 
+	## A collar: an open ring of `sides` panels from radius r0 at y0 to r1 at
+	## y1 (r1 > r0 flares it open), `thick` thick, with inside and top rim,
+	## so it reads from every angle. Centred on (0, *, z).
+	func collar(r0: Vector2, r1: Vector2, y0: float, y1: float, thick: float, z: float, xf: Transform3D, c: Color, id: float, sides := 8) -> void:
+		var col := _col(c, id)
+		var nb := xf.basis.inverse().transposed()
+		var ring := func(r: Vector2, y: float, k: int) -> Vector3:
+			var u := TAU * float(k) / sides + PI / sides
+			return Vector3(cos(u) * r.x, y, z + sin(u) * r.y)
+		for k in sides:
+			var k2 := (k + 1) % sides
+			var mid := Vector3(cos(TAU * (k + 0.5) / sides + PI / sides), 0, sin(TAU * (k + 0.5) / sides + PI / sides))
+			var ri0 := r0 - Vector2(thick, thick)
+			var ri1 := r1 - Vector2(thick, thick)
+			# outer, inner and top-rim quads
+			for q in [[ring.call(r0, y0, k), ring.call(r0, y0, k2), ring.call(r1, y1, k2), ring.call(r1, y1, k), mid],
+					[ring.call(ri0, y0, k), ring.call(ri0, y0, k2), ring.call(ri1, y1, k2), ring.call(ri1, y1, k), -mid],
+					[ring.call(ri1, y1, k), ring.call(ri1, y1, k2), ring.call(r1, y1, k2), ring.call(r1, y1, k), Vector3.UP]]:
+				var base := verts.size()
+				for i in 4:
+					verts.append(xf * (q[i] as Vector3))
+					norms.append((nb * (q[4] as Vector3)).normalized())
+					cols.append(col)
+				_tri(base, base + 1, base + 2)
+				_tri(base, base + 2, base + 3)
+
 	## Round tube along a polyline (hoses, cables, sling).
 	func tube(points: Array, radius: float, c: Color, id: float, nu := 6, xf := Transform3D.IDENTITY) -> void:
 		for i in points.size() - 1:

@@ -28,7 +28,7 @@ void fragment() {
 	ROUGHNESS = 1.0;
 	if (mid > 0.17 && mid < 0.32) {
 		ALBEDO = (COLOR.rgb * 2.5 + 0.03) * tint.rgb;      // bold, readable lenses
-		EMISSION = COLOR.rgb * night * 3.0 * tint.rgb;
+		EMISSION = COLOR.rgb * (0.9 + night * 2.2) * tint.rgb;   // goggles glow, brighter at night
 	}
 	if (night > 0.0) {
 		RIM = 0.4 * night;

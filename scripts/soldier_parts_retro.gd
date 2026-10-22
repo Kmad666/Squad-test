@@ -43,64 +43,67 @@ static func _dk(c: Color, f: float) -> Color:
 	return Color(c.r * f, c.g * f, c.b * f)
 
 
+const GOGGLE_RED := Color(0.9, 0.06, 0.03)
+## Rotations that put one edge of a 3-sided loft forward (+Z) or outward.
+const POINT_FWD := PI / 2.0
+
+
+## Triangular-prism limb: a 3-sided loft through [centre, radius] rings,
+## one ridge pointing along +Z (forward on legs, outward on arms).
+static func _prism(b: B, rings: Array, c: Color, id: float) -> void:
+	var rr := []
+	for r in rings:
+		rr.append([r[0], r[1], r[1]])
+	b.loft(rr, _x(Vector3.ZERO, Vector3(0, POINT_FWD, 0)), c, id, 3)
+
+
 static func _hips(b: B, p: Dictionary) -> void:
 	var u: Color = p["uniform"]
-	b.tbox(Vector2(0.115, 0.095), Vector2(0.185, 0.13), 0.28, _x(Vector3(0, -0.01, 0)), u, Kit.CAMO)
-	b.box(Vector3(0.195, 0.03, 0.14), _x(Vector3(0, 0.1, 0)), p["kit"], Kit.NYLON)
-	b.box(Vector3(0.035, 0.02, 0.01), _x(Vector3(0, 0.1, -0.145)), Color(0.12, 0.12, 0.12), Kit.METAL)
-	for sx in [-1.0, 1.0]:
-		b.box(Vector3(0.035, 0.055, 0.045), _x(Vector3(0.205 * sx, 0.04, -0.01)), p["kit2"], Kit.NYLON)
-	b.box(Vector3(0.07, 0.045, 0.035), _x(Vector3(0.0, 0.07, 0.165)), p["kit2"], Kit.NYLON)
+	# narrow waist and hips
+	b.tbox(Vector2(0.095, 0.08), Vector2(0.13, 0.095), 0.26, _x(Vector3(0, -0.01, 0)), u, Kit.CAMO)
+	b.box(Vector3(0.14, 0.024, 0.105), _x(Vector3(0, 0.1, 0)), Color(0.06, 0.06, 0.06), Kit.NYLON)
+	b.box(Vector3(0.03, 0.02, 0.01), _x(Vector3(0, 0.1, -0.11)), Color(0.35, 0.35, 0.33), Kit.METAL)
+	b.box(Vector3(0.026, 0.05, 0.032), _x(Vector3(0.155, 0.045, 0.0)), Color(0.06, 0.06, 0.06), Kit.NYLON)   # holster
 
 
 static func _torso(b: B, p: Dictionary) -> void:
 	var u: Color = p["uniform"]
-	var kit: Color = p["kit"]
-	# broad, chunky torso tapering to the waist
-	b.tbox(Vector2(0.17, 0.12), Vector2(0.235, 0.14), 0.54, _x(Vector3(0, 1.23, 0)), u, Kit.CAMO)
-	b.tbox(Vector2(0.17, 0.11), Vector2(0.085, 0.075), 0.1, _x(Vector3(0, 1.55, 0.005)), u, Kit.CAMO)
-	for sx in [-1.0, 1.0]:
-		b.tbox(Vector2(0.075, 0.08), Vector2(0.06, 0.07), 0.13, _x(Vector3(0.235 * sx, 1.45, 0)), _dk(u, 0.9), Kit.CAMO)   # shoulder pads
-	# vest: front and back plates, mag pouches, shoulder straps
-	b.tbox(Vector2(0.2, 0.03), Vector2(0.22, 0.03), 0.36, _x(Vector3(0, 1.32, -0.15)), kit, Kit.NYLON)
-	b.tbox(Vector2(0.2, 0.03), Vector2(0.22, 0.03), 0.38, _x(Vector3(0, 1.33, 0.15)), kit, Kit.NYLON)
-	for i in 3:
-		b.box(Vector3(0.042, 0.055, 0.032), _x(Vector3((i - 1) * 0.095, 1.22, -0.205)), p["kit2"], Kit.NYLON)
-	for sx in [-1.0, 1.0]:
-		b.box(Vector3(0.05, 0.022, 0.16), _x(Vector3(0.13 * sx, 1.515, 0)), kit, Kit.NYLON)
-	b.box(Vector3(0.07, 0.04, 0.02), _x(Vector3(0, 1.4, -0.19)), _dk(kit, 1.3), Kit.NYLON)
-	# pack with a rolled mat on top
-	var pk: Color = p["pack"]
-	b.tbox(Vector2(0.15, 0.075), Vector2(0.14, 0.07), 0.38, _x(Vector3(0, 1.32, 0.26)), pk, Kit.CLOTH)
-	b.cyl(Vector3(-0.15, 1.54, 0.25), Vector3(0.15, 1.54, 0.25), 0.045, 0.045, _dk(pk, 0.75), Kit.CLOTH, 6)
-	b.box(Vector3(0.11, 0.07, 0.025), _x(Vector3(0, 1.24, 0.345)), _dk(pk, 0.88), Kit.CLOTH)
+	# jacket: heroic V, broad shoulders tapering to a narrow waist (6 facets)
+	b.loft([
+		[Vector3(0, 0.96, 0.0), 0.125, 0.095], [Vector3(0, 1.1, 0.0), 0.15, 0.108],
+		[Vector3(0, 1.3, -0.01), 0.24, 0.135], [Vector3(0, 1.44, 0.0), 0.275, 0.13],
+		[Vector3(0, 1.52, 0.01), 0.18, 0.1], [Vector3(0, 1.575, 0.01), 0.085, 0.075],
+	], Transform3D.IDENTITY, u, Kit.CAMO, 6)
+	# popped round collar
+	b.collar(Vector2(0.095, 0.085), Vector2(0.125, 0.115), 1.52, 1.665, 0.018, 0.015, Transform3D.IDENTITY, _dk(u, 0.8), Kit.CAMO, 8)
 
 
 static func _head(b: B, p: Dictionary) -> void:
 	var hood: Color = p["hood"]
-	var mask: Color = p["mask"]
-	b.tbox(Vector2(0.075, 0.07), Vector2(0.08, 0.075), 0.12, _x(Vector3(0, -0.04, 0.01)), hood, Kit.CLOTH)    # neck
-	b.tbox(Vector2(0.095, 0.1), Vector2(0.1, 0.105), 0.2, _x(Vector3(0, 0.09, 0.012)), hood, Kit.CLOTH)      # head
-	# gas mask: a chunky front block, two big lenses, a filter canister on the chin
-	b.tbox(Vector2(0.058, 0.04), Vector2(0.088, 0.04), 0.15, _x(Vector3(0, 0.055, -0.09)), mask, Kit.RUBBER, -0.012)
+	# balaclava: faceted head and neck
+	b.loft([[Vector3(0, -0.12, 0.01), 0.068, 0.066], [Vector3(0, 0.0, 0.01), 0.075, 0.075]],
+		Transform3D.IDENTITY, hood, Kit.CLOTH, 6, false, false)
+	b.loft([
+		[Vector3(0, -0.01, 0.0), 0.075, 0.08], [Vector3(0, 0.04, -0.005), 0.095, 0.1],
+		[Vector3(0, 0.13, 0.0), 0.1, 0.106], [Vector3(0, 0.2, 0.005), 0.074, 0.08],
+		[Vector3(0, 0.228, 0.005), 0.03, 0.03],
+	], Transform3D.IDENTITY, hood, Kit.CLOTH, 6)
+	b.box(Vector3(0.035, 0.02, 0.012), _x(Vector3(0, 0.035, -0.1)), _dk(hood, 0.75), Kit.CLOTH)   # mouth panel
+	# goggles: strap round the head, frames, glowing red lenses
+	b.loft([[Vector3(0, 0.098, 0), 0.103, 0.108], [Vector3(0, 0.126, 0), 0.103, 0.108]],
+		Transform3D.IDENTITY, Color(0.05, 0.05, 0.05), Kit.NYLON, 6, false, false)
 	for sx in [-1.0, 1.0]:
-		b.box(Vector3(0.036, 0.028, 0.008), _x(Vector3(0.045 * sx, 0.105, -0.133), Vector3(0.1, -0.25 * sx, 0)), Color(0.1, 0.1, 0.1), Kit.METAL)
-		b.box(Vector3(0.03, 0.022, 0.006), _x(Vector3(0.045 * sx, 0.105, -0.139), Vector3(0.1, -0.25 * sx, 0)), p["lens"], Kit.GLASS)
-	b.cyl(Vector3(0, 0.02, -0.125), Vector3(0, -0.015, -0.19), 0.042, 0.046, p["filter"], Kit.METAL, 6)
-	b.cyl(Vector3(0, -0.015, -0.19), Vector3(0, -0.02, -0.198), 0.04, 0.036, _dk(p["filter"], 0.4), Kit.METAL, 6)
-	# helmet: faceted dome, rim, NVG mount
-	var hc: Color = p["helmet"]
-	b.sq(Vector3(0.14, 0.135, 0.15), _x(Vector3(0, 0.125, 0.012)), hc, Kit.CLOTH, 1.0, 1.0, 8, 3, -0.12, PI / 2.0)
-	b.box(Vector3(0.03, 0.022, 0.012), _x(Vector3(0, 0.19, -0.145), Vector3(-0.4, 0, 0)), Color(0.08, 0.08, 0.08), Kit.METAL)
-	for sx in [-1.0, 1.0]:
-		b.box(Vector3(0.022, 0.04, 0.035), _x(Vector3(0.112 * sx, 0.08, 0.01)), Color(0.07, 0.07, 0.07), Kit.RUBBER)   # ear cups
+		var rot := Vector3(0.05, -0.32 * sx, 0)
+		b.box(Vector3(0.037, 0.027, 0.012), _x(Vector3(0.042 * sx, 0.112, -0.104), rot), Color(0.05, 0.05, 0.05), Kit.METAL)
+		b.box(Vector3(0.03, 0.02, 0.008), _x(Vector3(0.043 * sx, 0.112, -0.113), rot), GOGGLE_RED, Kit.GLASS)
+	b.box(Vector3(0.012, 0.012, 0.01), _x(Vector3(0, 0.112, -0.112)), Color(0.05, 0.05, 0.05), Kit.METAL)   # bridge
 
 
 static func _upper_arm(b: B, p: Dictionary, s: String) -> void:
 	var u: Color = p["uniform"]
-	b.tbox(Vector2(0.058, 0.058), Vector2(0.075, 0.075), 0.36, _x(Vector3(0, -0.14, 0)), u, Kit.CAMO)
+	_prism(b, [[Vector3(0, 0.05, 0), 0.085], [Vector3(0, -0.12, 0), 0.092], [Vector3(0, -0.33, 0), 0.066]], u, Kit.CAMO)
 	if p["armband"] != null:
-		b.tbox(Vector2(0.066, 0.066), Vector2(0.07, 0.07), 0.06, _x(Vector3(0, -0.15, 0)), p["armband"], Kit.CLOTH)
+		_prism(b, [[Vector3(0, -0.12, 0), 0.1], [Vector3(0, -0.19, 0), 0.094]], p["armband"], Kit.CLOTH)
 
 
 static func _forearm(b: B, p: Dictionary, s: String) -> void:
@@ -108,34 +111,30 @@ static func _forearm(b: B, p: Dictionary, s: String) -> void:
 	var u: Color = p["uniform"]
 	var g: Color = p["gloves"]
 	var f := 0.28
-	b.tbox(Vector2(0.046, 0.044), Vector2(0.06, 0.06), 0.26, _x(Vector3(0, -0.11, 0)), u, Kit.CAMO)
-	b.tbox(Vector2(0.05, 0.05), Vector2(0.058, 0.058), 0.05, _x(Vector3(0, -0.245, 0)), g, Kit.RUBBER)        # glove cuff
-	b.tbox(Vector2(0.055, 0.03), Vector2(0.05, 0.032), 0.11, _x(Vector3(0, -f - 0.05, -0.004)), g, Kit.RUBBER)  # big glove
-	b.box(Vector3(0.015, 0.03, 0.016), _x(Vector3(0.05 * sx, -f - 0.04, -0.02), Vector3(0, 0, 0.4 * sx)), g, Kit.RUBBER)   # thumb
-	b.box(Vector3(0.022, 0.045, 0.04), _x(Vector3(-0.048 * sx, 0.0, 0)), p["pads"], Kit.RUBBER)                   # elbow pad
+	_prism(b, [[Vector3(0, 0.03, 0), 0.075], [Vector3(0, -0.1, 0), 0.08], [Vector3(0, -0.235, 0), 0.056]], u, Kit.CAMO)
+	b.tbox(Vector2(0.044, 0.044), Vector2(0.05, 0.05), 0.05, _x(Vector3(0, -0.245, 0)), g, Kit.RUBBER)        # glove cuff
+	b.tbox(Vector2(0.052, 0.028), Vector2(0.047, 0.03), 0.11, _x(Vector3(0, -f - 0.05, -0.004)), g, Kit.RUBBER)  # big glove
+	b.box(Vector3(0.015, 0.03, 0.016), _x(Vector3(0.048 * sx, -f - 0.04, -0.02), Vector3(0, 0, 0.4 * sx)), g, Kit.RUBBER)   # thumb
 
 
 static func _thigh(b: B, p: Dictionary, s: String) -> void:
-	var sx := 1.0 if s == "R" else -1.0
-	var u: Color = p["uniform"]
-	b.tbox(Vector2(0.07, 0.072), Vector2(0.1, 0.098), 0.53, _x(Vector3(0, -0.195, 0.004)), u, Kit.CAMO)
-	b.box(Vector3(0.016, 0.065, 0.055), _x(Vector3(-0.088 * sx, -0.2, 0.004)), _dk(u, 0.88), Kit.CAMO)       # cargo pocket
+	# puffy trouser leg, ridge forward
+	_prism(b, [[Vector3(0, 0.08, 0), 0.115], [Vector3(0, -0.16, 0.012), 0.135], [Vector3(0, -0.38, 0.01), 0.108], [Vector3(0, -0.47, 0), 0.088]], p["uniform"], Kit.CAMO)
 
 
 static func _shin(b: B, p: Dictionary) -> void:
-	var u: Color = p["uniform"]
-	b.tbox(Vector2(0.06, 0.062), Vector2(0.072, 0.076), 0.35, _x(Vector3(0, -0.135, -0.004)), u, Kit.CAMO)
-	b.tbox(Vector2(0.068, 0.074), Vector2(0.07, 0.072), 0.16, _x(Vector3(0, -0.365, 0.004)), p["boots"], Kit.RUBBER)   # boot shaft
-	b.box(Vector3(0.062, 0.068, 0.028), _x(Vector3(0, -0.005, 0.07)), p["pads"], Kit.RUBBER)                  # knee pad
+	# puffy lower leg gathered into a narrow boot that is thinnest at the top
+	_prism(b, [[Vector3(0, 0.05, 0), 0.1], [Vector3(0, -0.12, 0.004), 0.118], [Vector3(0, -0.26, 0), 0.094], [Vector3(0, -0.315, 0), 0.06]], p["uniform"], Kit.CAMO)
+	b.tbox(Vector2(0.05, 0.062), Vector2(0.034, 0.042), 0.14, _x(Vector3(0, -0.375, 0.004)), p["boots"], Kit.RUBBER)
 
 
 static func _foot(b: B, p: Dictionary) -> void:
 	var bt: Color = p["boots"]
-	# big boot: body, toe, sole (bottom 0.0875 below the ankle, toe and heel
-	# within the clearance the gait assumes)
-	b.box(Vector3(0.066, 0.045, 0.118), _x(Vector3(0, -0.04, -0.05)), bt, Kit.RUBBER)
-	b.tbox(Vector2(0.066, 0.035), Vector2(0.06, 0.03), 0.055, _x(Vector3(0, -0.058, -0.145)), _dk(bt, 1.15), Kit.RUBBER)
-	b.box(Vector3(0.07, 0.0125, 0.13), _x(Vector3(0, -0.075, -0.05)), Color(0.035, 0.035, 0.035), Kit.RUBBER)
+	# narrow, long boot; sole bottom 0.0875 below the ankle, toe and heel
+	# within the clearance the gait assumes
+	b.box(Vector3(0.048, 0.042, 0.115), _x(Vector3(0, -0.042, -0.052)), bt, Kit.RUBBER)
+	b.tbox(Vector2(0.048, 0.032), Vector2(0.042, 0.026), 0.05, _x(Vector3(0, -0.058, -0.148)), _dk(bt, 1.15), Kit.RUBBER)
+	b.box(Vector3(0.052, 0.0125, 0.13), _x(Vector3(0, -0.075, -0.05)), Color(0.035, 0.035, 0.035), Kit.RUBBER)
 
 
 static func _rifle(b: B, p: Dictionary) -> void:
