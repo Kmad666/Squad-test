@@ -107,6 +107,14 @@ GODOT=/path/to/godot tests/run_all.sh          # MINUTES=10 for longer soak runs
   Enemies: a ROADBLOCK mid-street (2), an ALLEY ambush (2), the COMPOUND (4 + APC). The anti-armor team waits in the
   first side passage. At night enemies only spot you within 35 m. Objective: secure the compound.
 - **TEST FIELD** (day): open ground with three small enemy positions, for tuning mechanics.
+- **MODEL VIEWER** (day, no enemies): every variant of the universal soldier (`scripts/soldier_model.gd`) on a
+  turntable in its idle pose: rifleman, sergeant, grenadier, rocketman, enemy, crouched, and a hand-signal loop.
+
+## Soldier model
+One universal soldier (`soldier_model.gd`) is built for everyone, friend and foe: a jointed body (hips, torso, head,
+two-bone IK arms and legs) merged into one vertex-coloured mesh per part, so it stays cheap on integrated GPUs.
+Variants only change colours and kit: uniform/armband per side, skin tone, grenade launcher under the grenadier's
+rifle, tube launcher and carbine for the rocketman, amber chevrons and a radio antenna for the sergeant.
 
 Maps live in `scripts/maps/`. Each lists its boxes (`building`, `cwall`, `car`, `crate`, `dumpster`, `barrier`,
 `sandbag`, `wall`, `tall`), enemy areas, start point, anti-armor team spot, and adds its own lights.
