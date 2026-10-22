@@ -252,6 +252,7 @@ func cycle_special() -> void:
 
 
 func use_special() -> void:
+	print("[debug] use_special total=", total_specials(), " kind=", selected_kind(), " count=", special_count(selected_kind()), " users=", _special_users().size())
 	if total_specials() == 0:
 		main.on_no_explosives()
 		return
@@ -267,6 +268,7 @@ func use_special() -> void:
 	var w: Dictionary = Weapons.SPECIALS[kind][0]
 	var aim: Dictionary = main.special_target(kind)
 	var point: Vector3 = aim["point"]
+	print("[debug] aim target=", aim["target"], " point=", point)
 	# The nearest ready man carrying this kind who can reach the spot throws.
 	var best: Node3D = null
 	var best_d := INF
@@ -284,6 +286,7 @@ func use_special() -> void:
 		if d < best_d:
 			best_d = d
 			best = s
+	print("[debug] best=", best, " any_ready=", any_ready)
 	if best == null:
 		main.special_msg(("TOO FAR FOR %s  (%d m)" % [Weapons.SPECIALS[kind][1], int(w["max"])]) if any_ready else "%s RELOADING" % Weapons.SPECIALS[kind][1], 1.5)
 		return
