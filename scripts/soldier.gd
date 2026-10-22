@@ -21,6 +21,7 @@ extends CharacterBody3D
 const Weapons = preload("res://scripts/weapons.gd")
 const ProjectileScript = preload("res://scripts/projectile.gd")
 const Atmosphere = preload("res://scripts/atmosphere.gd")
+const SoldierModel = preload("res://scripts/soldier_model.gd")
 
 enum State { FOLLOW, TO_COVER, IN_COVER }
 
@@ -33,7 +34,6 @@ const FIRE_FOCUS := 2
 const MAX_HP := 100.0
 const ACCEL := 12.0            # m/s^2: how fast he gets up to speed / slows down
 const LOW_SPEED := 0.45        # speed factor while moving low out of cover
-const ARM_REST := Vector3(-0.35, -0.5, 0.0)   # left hand on the rifle
 
 static var _mats := {}
 
@@ -66,7 +66,6 @@ var suppression := 0.0
 
 var _agent: NavigationAgent3D
 var _upper: Node3D
-var _legs: Node3D
 var _flash: MeshInstance3D
 var _launch_tip: Node3D
 var _rng := RandomNumberGenerator.new()
@@ -87,13 +86,8 @@ var _since_incoming := 99.0
 var _hurt_t := 0.0
 var _cap: CapsuleShape3D
 var _col: CollisionShape3D
-var _torso: MeshInstance3D
 var _model: Node3D
-var _patch: MeshInstance3D
 var is_sergeant := false
-var _left_arm: Node3D          # shoulder pivot; the sergeant signals with it
-var _arm_tween: Tween
-var _sgt_parts: Array = []
 var _pending: Array = []       # [[seconds_left, Callable]] delayed reactions to orders
 var _hold_point: Variant = null   # set while he holds his ground (not yet reacted / halted)
 var _low_t := 0.0              # leaving cover: crouched, slow, covering fire
@@ -157,110 +151,28 @@ static func _mat(key_name: String, color: Color, unshaded := false) -> StandardM
 	return _mats[key]
 
 
-func _part(parent: Node3D, mesh: Mesh, mat: Material, pos: Vector3, rot := Vector3.ZERO, scl := Vector3.ONE) -> MeshInstance3D:
-	var mi := MeshInstance3D.new()
-	mi.mesh = mesh
-	mi.material_override = mat
-	mi.position = pos
-	mi.rotation = rot
-	mi.scale = scl
-	parent.add_child(mi)
-	return mi
-
-
-func _box(size: Vector3) -> BoxMesh:
-	var b := BoxMesh.new()
-	b.size = size
-	return b
-
-
-func _tube(radius: float, length: float) -> CylinderMesh:
-	var c := CylinderMesh.new()
-	c.top_radius = radius
-	c.bottom_radius = radius
-	c.height = length
-	c.radial_segments = 10
-	return c
-
-
 func _build_model() -> void:
-	var anti_armor := role == "anti_armor"
-	# Anti-armor team wears a lighter tan-khaki so you can tell them apart.
-	var uniform := _mat("tan", Color(0.44, 0.40, 0.28)) if anti_armor else _mat("olive", Color(0.36, 0.40, 0.24))
-	var dark := _mat("dark", Color(0.22, 0.25, 0.16))
-	var skin := _mat("skin", Color(0.80, 0.64, 0.50))
-	var black := _mat("black", Color(0.08, 0.08, 0.08))
-	var drab := _mat("drab", Color(0.30, 0.33, 0.20))
-	var flash := _mat("flash", Color(1.0, 0.9, 0.4), true)
-
-	var model := Node3D.new()
-	model.name = "Model"
-	add_child(model)
-	_model = model
-
-	_legs = Node3D.new()
-	model.add_child(_legs)
-	for side in [-1.0, 1.0]:
-		_part(_legs, _box(Vector3(0.16, 0.86, 0.18)), dark, Vector3(0.11 * side, 0.43, 0))
-
-	_upper = Node3D.new()
-	model.add_child(_upper)
-	_torso = _part(_upper, _box(Vector3(0.48, 0.62, 0.28)), uniform, Vector3(0, 1.16, 0))  # torso
-	_part(_upper, _box(Vector3(0.34, 0.42, 0.16)), dark, Vector3(0, 1.20, 0.2))          # backpack
-	var head := SphereMesh.new()
-	head.radius = 0.13
-	head.height = 0.26
-	_part(_upper, head, skin, Vector3(0, 1.6, -0.01))
-	var helmet := SphereMesh.new()
-	helmet.radius = 0.165
-	helmet.height = 0.33
-	_part(_upper, helmet, dark, Vector3(0, 1.66, 0), Vector3.ZERO, Vector3(1, 0.72, 1))
-	_part(_upper, _box(Vector3(0.11, 0.11, 0.40)), uniform, Vector3(0.27, 1.28, -0.16))  # right arm
-	# Left arm on a shoulder pivot so it can signal; at rest it holds the rifle.
-	_left_arm = Node3D.new()
-	_left_arm.position = Vector3(-0.29, 1.38, -0.02)
-	_left_arm.rotation = ARM_REST
-	_upper.add_child(_left_arm)
-	_part(_left_arm, _box(Vector3(0.11, 0.11, 0.55)), uniform, Vector3(0, 0, -0.27))
-	_part(_left_arm, _box(Vector3(0.12, 0.12, 0.1)), skin, Vector3(0, 0, -0.58))
-
-	var rifle_len := 0.7 if anti_armor else 0.85     # burst rifle is a shorter carbine
-	_part(_upper, _box(Vector3(0.07, 0.10, rifle_len)), black, Vector3(0.12, 1.27, -0.38 + (0.85 - rifle_len) * 0.5))
-
-	match role:
-		"grenadier":
-			# Fat under-barrel launcher + grenade bandolier across the chest.
-			_part(_upper, _tube(0.05, 0.32), drab, Vector3(0.12, 1.18, -0.52), Vector3(PI / 2.0, 0, 0))
-			_part(_upper, _box(Vector3(0.5, 0.08, 0.3)), drab, Vector3(0, 1.3, -0.01), Vector3(0, 0, 0.6))
-			_launch_tip = Node3D.new()
-			_launch_tip.position = Vector3(0.12, 1.18, -0.7)
-			_upper.add_child(_launch_tip)
-		"anti_armor":
-			# Launcher tube carried on the right shoulder.
-			_part(_upper, _tube(0.075, 1.2), drab, Vector3(0.3, 1.52, -0.12), Vector3(PI / 2.0, 0, 0))
-			_part(_upper, _tube(0.09, 0.12), black, Vector3(0.3, 1.52, -0.7), Vector3(PI / 2.0, 0, 0))
-			_launch_tip = Node3D.new()
-			_launch_tip.position = Vector3(0.3, 1.52, -0.8)
-			_upper.add_child(_launch_tip)
-
+	_model = SoldierModel.new()
+	_model.name = "Model"
+	add_child(_model)
+	_model.build(role, "friendly", index)
+	_upper = _model.upper
+	_launch_tip = _model.launch_tip
 	var fm := SphereMesh.new()
-	fm.radius = 0.09
-	fm.height = 0.18
-	# Fire-team patch on the back of the helmet (hidden while the squad is joined).
-	_patch = _part(_upper, _box(Vector3(0.16, 0.1, 0.05)), _mat("patch_a", Color(0.2, 1.0, 0.35), true), Vector3(0, 1.66, 0.16))
-	_patch.visible = false
-	_flash = _part(_upper, fm, flash, Vector3(0.12, 1.27, -0.86))
+	fm.radius = 0.08
+	fm.height = 0.16
+	_flash = MeshInstance3D.new()
+	_flash.mesh = fm
+	_flash.material_override = _mat("flash", Color(1.0, 0.9, 0.4), true)
 	_flash.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_flash.visible = false
-
+	_model.muzzle.add_child(_flash)
 
 ## -1 hides the patch (squad joined); 0 = team A green, 1 = team B amber.
 func set_team_patch(t: int) -> void:
-	if _patch == null:
-		return
-	_patch.visible = t >= 0 and not dead
-	if t >= 0:
-		_patch.material_override = _mat("patch_a", Color(0.2, 1.0, 0.35), true) if t == 0 else _mat("patch_b", Color(1.0, 0.7, 0.15), true)
+	if _model:
+		_model.set_team_patch(t, not dead)
+
 
 
 func set_special(kind: String, ammo: int) -> void:
@@ -286,8 +198,7 @@ func _set_crouch(on: bool) -> void:
 	if on == _crouched:
 		return
 	_crouched = on
-	_legs.scale.y = 0.5 if on else 1.0
-	_upper.position.y = -0.45 if on else 0.0
+	_model.set_crouch(on)
 	# Shrink the hitbox too, so a crouched man really is hidden behind a crate.
 	_cap.height = 1.25 if on else 1.8
 	_col.position.y = 0.625 if on else 0.9
@@ -325,7 +236,7 @@ func take_damage(dmg: float, _from: Vector3) -> bool:
 	hp -= dmg
 	add_suppression(0.35)
 	_hurt_t = 0.12
-	_torso.material_override = _mat("hurt", Color(1.0, 0.15, 0.1), true)
+	_model.set_tint("hurt")
 	main.on_soldier_hit(self)
 	if hp <= 0.0:
 		_die()
@@ -343,22 +254,7 @@ func role_name() -> String:
 ## Sergeant: amber chevrons on both sleeves and a radio antenna on the pack.
 func set_sergeant(on: bool) -> void:
 	is_sergeant = on
-	for p in _sgt_parts:
-		p.queue_free()
-	_sgt_parts.clear()
-	if not on:
-		return
-	var amber := _mat("chevron", Color(1.0, 0.72, 0.15), true)
-	for side in [-1.0, 1.0]:
-		for i in 2:
-			_sgt_parts.append(_part(_upper, _box(Vector3(0.03, 0.035, 0.16)), amber,
-				Vector3(0.265 * side, 1.27 - i * 0.06, 0.0), Vector3(0, 0, 0.5 * side)))
-	var ant := CylinderMesh.new()
-	ant.top_radius = 0.008
-	ant.bottom_radius = 0.012
-	ant.height = 0.9
-	_sgt_parts.append(_part(_upper, ant, _mat("black", Color(0.08, 0.08, 0.08)), Vector3(0.12, 1.75, 0.24), Vector3(-0.15, 0, 0)))
-
+	_model.set_sergeant(on)
 
 ## Run `cb` after `seconds` (his reaction time to an order).
 func schedule(seconds: float, cb: Callable) -> void:
@@ -389,36 +285,13 @@ func start_low(seconds: float) -> void:
 ## Sergeant hand signals with the left arm: "move", "halt", "cover", "fire".
 ## `toward` (world direction) is where he points for "fire".
 func signal_hand(kind: String, toward := Vector3.ZERO) -> void:
-	if dead or _left_arm == null:
+	if dead:
 		return
-	if _arm_tween:
-		_arm_tween.kill()
-	var tw := create_tween()
-	_arm_tween = tw
-	var arm := _left_arm
-	match kind:
-		"move":      # arm up and forward, chop forward twice: "move out"
-			for i in 2:
-				tw.tween_property(arm, "rotation", Vector3(1.2, 0.0, 0.0), 0.14)
-				tw.tween_property(arm, "rotation", Vector3(0.05, 0.0, 0.0), 0.16)
-			tw.tween_interval(0.15)
-		"halt":      # raised fist, held
-			tw.tween_property(arm, "rotation", Vector3(1.65, 0.0, 0.15), 0.15)
-			tw.tween_interval(0.9)
-		"cover":     # arm out, palm down, pump down: "get down / take cover"
-			tw.tween_property(arm, "rotation", Vector3(0.2, 0.5, 0.0), 0.12)
-			for i in 2:
-				tw.tween_property(arm, "rotation", Vector3(-0.65, 0.5, 0.0), 0.15)
-				tw.tween_property(arm, "rotation", Vector3(0.2, 0.5, 0.0), 0.13)
-		"fire":      # point at the target
-			var yaw_off := 0.0
-			if toward != Vector3.ZERO:
-				var local := global_transform.basis.inverse() * toward
-				yaw_off = clampf(atan2(-local.x, -local.z), -1.2, 1.2)
-			tw.tween_property(arm, "rotation", Vector3(0.12, yaw_off, 0.0), 0.15)
-			tw.tween_interval(0.8)
-	tw.tween_property(arm, "rotation", ARM_REST, 0.25)
-
+	var yaw_off := 0.0
+	if toward != Vector3.ZERO:
+		var local := global_transform.basis.inverse() * toward
+		yaw_off = clampf(atan2(-local.x, -local.z), -1.2, 1.2)
+	_model.gesture(kind, yaw_off)
 
 ## Static "down" pose: lies flat where he fell, no collision, no glow.
 func _die() -> void:
@@ -431,9 +304,8 @@ func _die() -> void:
 	_flash.visible = false
 	_model.rotation.x = -PI / 2.0
 	_model.position.y = 0.2
-	var dead_mat := _mat("dead", Color(0.12, 0.13, 0.09))
-	for mi in _model.find_children("*", "MeshInstance3D", true, false):
-		mi.material_override = dead_mat
+	_model.set_tint("dead")
+	_model.set_team_patch(-1, false)
 	set_physics_process(false)
 	squad.on_soldier_killed(self)
 
@@ -479,7 +351,7 @@ func _physics_process(delta: float) -> void:
 	if _hurt_t > 0.0:
 		_hurt_t -= delta
 		if _hurt_t <= 0.0:
-			_torso.material_override = _mat("tan", Color(0.44, 0.40, 0.28)) if role == "anti_armor" else _mat("olive", Color(0.36, 0.40, 0.24))
+			_model.set_tint("normal")
 	for i in range(_pending.size() - 1, -1, -1):
 		_pending[i][0] -= delta
 		if _pending[i][0] <= 0.0:

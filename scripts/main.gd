@@ -16,7 +16,8 @@ const FieldManualScript = preload("res://scripts/field_manual.gd")
 const UI_FONT = preload("res://fonts/ShareTechMono-Regular.ttf")
 const StreetMission = preload("res://scripts/maps/street_mission.gd")
 const TestField = preload("res://scripts/maps/test_field.gd")
-const MAPS := [StreetMission, TestField]     # M cycles through these
+const ModelViewer = preload("res://scripts/maps/model_viewer.gd")
+const MAPS := [StreetMission, TestField, ModelViewer]     # M cycles through these
 const NEON := Color(0.45, 1.0, 0.30)
 
 const NAV_HALF := 50.0          # playable half-size of the field (metres)

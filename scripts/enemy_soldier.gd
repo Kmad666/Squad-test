@@ -16,13 +16,13 @@ extends CharacterBody3D
 const EnemyGunner = preload("res://scripts/enemy_gunner.gd")
 const Weapons = preload("res://scripts/weapons.gd")
 const CoverUtil = preload("res://scripts/cover_util.gd")
+const SoldierModel = preload("res://scripts/soldier_model.gd")
 
 enum State { POST, MOVING, IN_COVER }
 
 const MAX_HP := 6.0
 const SPEED := 4.6
 
-static var _mats := {}
 
 var main: Node3D
 var area: Dictionary          # shared with the other men in his area
@@ -40,8 +40,6 @@ var _gun: Node3D
 var _agent: NavigationAgent3D
 var _model: Node3D
 var _upper: Node3D
-var _legs: Node3D
-var _torso: MeshInstance3D
 var _cap: CapsuleShape3D
 var _col: CollisionShape3D
 var _rng := RandomNumberGenerator.new()
@@ -84,8 +82,7 @@ func _ready() -> void:
 	_gun.weapon = Weapons.ENEMY_RIFLE
 	_gun.reaction_min = 0.35
 	_gun.reaction_max = 0.8
-	_gun.position = Vector3(0.12, 1.3, -0.9)
-	_upper.add_child(_gun)
+	_model.muzzle.add_child(_gun)        # fires from the rifle's muzzle
 	gunners = [_gun]
 	_dest = post   # post is set by main before the man is added
 	rotation.y = PI    # model front (-Z) turned to face +Z, where the squad comes from
@@ -93,75 +90,21 @@ func _ready() -> void:
 
 # ---------------------------------------------------------------- model
 
-static func _mat(key: String, color: Color) -> StandardMaterial3D:
-	if not _mats.has(key):
-		var m := StandardMaterial3D.new()
-		m.albedo_color = color
-		m.roughness = 0.7
-		_mats[key] = m
-	return _mats[key]
-
-
-func _part(parent: Node3D, size: Vector3, mat: Material, pos: Vector3, rot := Vector3.ZERO) -> MeshInstance3D:
-	var mi := MeshInstance3D.new()
-	var b := BoxMesh.new()
-	b.size = size
-	mi.mesh = b
-	mi.material_override = mat
-	mi.position = pos
-	mi.rotation = rot
-	parent.add_child(mi)
-	return mi
-
-
-## Same block soldier as yours, in slate grey with a red armband so you can
-## tell friend from foe at a glance.
+## The same universal soldier as yours (scripts/soldier_model.gd), in slate
+## grey with a black vest and a red armband so you can tell friend from foe.
 func _build_model() -> void:
-	var uniform := _mat("slate", Color(0.27, 0.28, 0.30))
-	var dark := _mat("dark", Color(0.14, 0.14, 0.16))
-	var skin := _mat("skin", Color(0.78, 0.62, 0.48))
-	var black := _mat("black", Color(0.06, 0.06, 0.06))
-	var red := _mat("red", Color(0.75, 0.08, 0.06))
-
-	_model = Node3D.new()
+	_model = SoldierModel.new()
+	_model.name = "Model"
 	add_child(_model)
-	_legs = Node3D.new()
-	_model.add_child(_legs)
-	for side in [-1.0, 1.0]:
-		_part(_legs, Vector3(0.16, 0.86, 0.18), dark, Vector3(0.11 * side, 0.43, 0))
-	_upper = Node3D.new()
-	_model.add_child(_upper)
-	_torso = _part(_upper, Vector3(0.48, 0.62, 0.28), uniform, Vector3(0, 1.16, 0))
-	_part(_upper, Vector3(0.34, 0.42, 0.16), dark, Vector3(0, 1.20, 0.2))
-	_part(_upper, Vector3(0.13, 0.12, 0.13), red, Vector3(-0.31, 1.33, 0))         # armband
-	var head := MeshInstance3D.new()
-	var hm := SphereMesh.new()
-	hm.radius = 0.13
-	hm.height = 0.26
-	head.mesh = hm
-	head.material_override = skin
-	head.position = Vector3(0, 1.6, -0.01)
-	_upper.add_child(head)
-	var helmet := MeshInstance3D.new()
-	var hel := SphereMesh.new()
-	hel.radius = 0.165
-	hel.height = 0.33
-	helmet.mesh = hel
-	helmet.material_override = black
-	helmet.position = Vector3(0, 1.66, 0)
-	helmet.scale = Vector3(1, 0.72, 1)
-	_upper.add_child(helmet)
-	_part(_upper, Vector3(0.11, 0.11, 0.40), uniform, Vector3(0.27, 1.28, -0.16))
-	_part(_upper, Vector3(0.11, 0.11, 0.46), uniform, Vector3(-0.17, 1.25, -0.24), Vector3(0, -0.5, 0))
-	_part(_upper, Vector3(0.07, 0.10, 0.85), black, Vector3(0.12, 1.27, -0.38))
+	_model.build("rifleman", "enemy", _rng.randi())
+	_upper = _model.upper
 
 
 func _set_crouch(on: bool) -> void:
 	if on == _crouched:
 		return
 	_crouched = on
-	_legs.scale.y = 0.5 if on else 1.0
-	_upper.position.y = -0.45 if on else 0.0
+	_model.set_crouch(on)
 	_cap.height = 1.25 if on else 1.8
 	_col.position.y = 0.625 if on else 0.9
 
@@ -191,7 +134,7 @@ func take_damage(soft_dmg: float, _armor_dmg: float) -> bool:
 		return false
 	hp -= soft_dmg
 	_gun.add_suppression(0.2)
-	_torso.material_override = _mat("hit", Color(1.0, 0.3, 0.2))
+	_model.set_tint("hurt")
 	_hurt_t = 0.1
 	_alert_area()
 	if hp <= 0.0:
@@ -216,9 +159,7 @@ func _die() -> void:
 	collision_layer = 0
 	_model.rotation.x = PI / 2.0
 	_model.position.y = 0.2
-	var dead := _mat("dead", Color(0.16, 0.16, 0.17))
-	for mi in _model.find_children("*", "MeshInstance3D", true, false):
-		mi.material_override = dead
+	_model.set_tint("dead")
 	set_physics_process(false)
 	main.on_enemy_killed(self)
 
@@ -290,7 +231,7 @@ func _physics_process(delta: float) -> void:
 	if _hurt_t > 0.0:
 		_hurt_t -= delta
 		if _hurt_t <= 0.0:
-			_torso.material_override = _mat("slate", Color(0.27, 0.28, 0.30))
+			_model.set_tint("normal")
 
 	if _gun.suppression > 0.05:
 		_alert_area()
