@@ -33,7 +33,7 @@ const METAL := Color(0.07, 0.07, 0.075)
 const POLY := Color(0.11, 0.11, 0.10)
 
 ## Body measurements (metres; origin between the feet).
-const HIP_Y := 0.93
+const HIP_Y := 0.985          # hips high enough that the legs stand almost straight
 const HIP_X := 0.105
 const THIGH := 0.44
 const SHIN := 0.43
@@ -205,7 +205,7 @@ func _build_hips() -> void:
 	add_child(_hips)
 	var mg := Merger.new()
 	var c := _colors
-	mg.add(_cap(0.12, 0.36), _xf(Vector3(0, 0.02, 0), Vector3(0, 0, PI / 2), Vector3(1, 1, 0.72)), c["uniform"])
+	mg.add(_cap(0.12, 0.36), _xf(Vector3(0, -0.03, 0), Vector3(0, 0, PI / 2), Vector3(1, 1, 0.72)), c["uniform"])
 	mg.add(_cyl(0.165, 0.165, 0.06, 14), _xf(Vector3(0, 0.1, 0), Vector3.ZERO, Vector3(1, 1, 0.72)), c["gear"])       # belt
 	mg.add(_box(Vector3(0.05, 0.05, 0.03)), _xf(Vector3(0, 0.1, -0.12)), METAL)                                       # buckle
 	mg.add(_box(Vector3(0.07, 0.1, 0.09)), _xf(Vector3(-0.16, 0.06, -0.02)), c["vest"])                               # pouch
@@ -382,7 +382,8 @@ func _solve_legs() -> void:
 	var hip_drop := 0.33 if crouched else 0.02
 	var hip_back := 0.08 if crouched else 0.0
 	_hips.position = Vector3(0, HIP_Y - hip_drop, hip_back)
-	upper.position = Vector3(0, -hip_drop, hip_back * 0.6)
+	# The upper body was laid out for hips at 0.93 m: keep it on the hips.
+	upper.position = Vector3(0, HIP_Y - 0.93 - hip_drop, hip_back * 0.6)
 	upper.rotation.x = -0.25 if crouched else 0.0      # lean forward when low
 	for s in ["L", "R"]:
 		var sx := -1.0 if s == "L" else 1.0

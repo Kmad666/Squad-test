@@ -1,7 +1,8 @@
 extends RefCounted
 ## MODEL VIEWER: every variant of the universal soldier on a slow turntable,
 ## in daylight, so the model can be judged up close. Your squad stands behind
-## the line-up (walk around them with WASD, zoom with the wheel). No enemies.
+## out of the way; the camera starts up close and WASD pans it along the
+## line-up (the squad is on HOLD). Wheel zooms, mouse orbits. No enemies.
 
 const SoldierModel = preload("res://scripts/soldier_model.gd")
 const UI_FONT = preload("res://fonts/ShareTechMono-Regular.ttf")
@@ -9,7 +10,7 @@ const UI_FONT = preload("res://fonts/ShareTechMono-Regular.ttf")
 const NAME := "MODEL VIEWER"
 const NIGHT := false
 const GROUND := "field"
-const START := Vector3(0, 0, 9)
+const START := Vector3(0, 0, 26)
 const AT_TEAM := Vector3(40, 0, 44)
 const OBJECTIVE := "MODEL VIEWER  -  UNIVERSAL SOLDIER, IDLE POSE  -  M FOR NEXT MAP"
 const COMPLETE := ""
@@ -29,6 +30,11 @@ const LINEUP := [
 
 
 static func build_extras(main: Node3D) -> void:
+	# Camera up close on the line-up: the squad holds back, WASD pans the view.
+	main.squad.set_holding(true)
+	main.squad.scout_offset = Vector3(0, 0, -21.5)
+	main.cam_rig.dist = 4.5
+	main.cam_rig.pitch = -0.1
 	var plinth_mat := StandardMaterial3D.new()
 	plinth_mat.albedo_color = Color(0.32, 0.32, 0.3)
 	for i in LINEUP.size():
