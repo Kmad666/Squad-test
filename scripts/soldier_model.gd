@@ -67,10 +67,21 @@ var _gesture: Tween
 var _rifle: Node3D
 var _rifle_base := Transform3D.IDENTITY   # rifle in upper space, standing
 var _guard_local := Vector3.ZERO          # left hand on the handguard, rifle space
+var _grip_rest := Vector3.ZERO            # right hand on the pistol grip (upper space)
+# gait / stance state (see _apply_pose)
+var _crouch_amt := 0.0       # 0 standing .. 1 crouched (eased when driven)
+var _gait_w := 0.0           # 0 idle .. 1 walking/running (eased)
+var _speed := 0.0            # smoothed ground speed, m/s
+var _phase := 0.0            # gait cycle 0..1 (left foot plants at 0)
+var _move_dir := Vector3.FORWARD   # travel direction, model space
+var _driven := false         # animate() is being called each frame
+var _leg_yaw := 0.0          # hips and legs turned toward travel (strafing)
+var _demo_vel := Vector3.ZERO
 
 
 ## role: "rifleman" | "grenadier" | "anti_armor"; side: "friendly" | "enemy".
 func build(role: String, side := "friendly", variant := 0) -> void:
+	set_process(false)
 	_colors = (ENEMY if side == "enemy" else (ANTI_ARMOR if role == "anti_armor" else FRIENDLY)).duplicate()
 	_skin = SKINS[variant % SKINS.size()]
 	_build_hips()
@@ -314,6 +325,7 @@ func _build_rifle(role: String) -> void:
 	var rifle := Node3D.new()
 	rifle.name = "Rifle"
 	_grip = Vector3(0.14, 1.12, -0.2)
+	_grip_rest = _grip
 	var dir := Vector3(-0.32, -0.2, -1.0).normalized()
 	rifle.transform = Transform3D(Basis.looking_at(dir, Vector3.UP), _grip)
 	upper.add_child(rifle)
@@ -393,35 +405,133 @@ static func _solve(root: Vector3, target: Vector3, a: float, b: float, pole: Vec
 
 
 func _solve_legs() -> void:
-	var hip_drop := 0.33 if crouched else 0.02
-	var hip_back := 0.08 if crouched else 0.0
-	_hips.position = Vector3(0, HIP_Y - hip_drop, hip_back)
+	_apply_pose()
+
+
+## Poses hips, legs, torso and rifle from the current stance (crouch amount)
+## and gait (phase, speed, travel direction, blend weight).
+##
+## Gait: each foot alternates stance (planted, sliding back under the body as
+## he moves) and swing (lifted and carried forward). Feet step along the
+## direction of travel in model space, so strafing and backing up step
+## sideways / backwards. Running: shorter stance, higher knees, lower hips,
+## forward lean. Crouch-walk: short low steps. Hands stay on the rifle; the
+## torso twists a little against the hips instead of swinging arms.
+func _apply_pose() -> void:
+	var c := _crouch_amt
+	var w := _gait_w
+	var run_t := clampf((_speed - 2.6) / 2.4, 0.0, 1.0) * (1.0 - c)
+	var stance := lerpf(lerpf(0.62, 0.34, run_t), 0.62, c)
+	var fwd := clampf(-_move_dir.z, 0.0, 1.0)
+	var bob := w * lerpf(0.022, -0.04, run_t) * cos(TAU * 2.0 * (_phase - stance * 0.5))
+	var hip_drop := lerpf(0.02, 0.33, c) + 0.06 * run_t * w
+	var hip_back := 0.08 * c
+	_hips.position = Vector3(0, HIP_Y - hip_drop + bob, hip_back)
+	var twist := w * (0.07 + 0.05 * run_t) * sin(TAU * _phase) * (0.3 + 0.7 * fwd)
+	var leg_yaw := _leg_yaw * w
+	var ly := Basis(Vector3.UP, leg_yaw)
+	_hips.rotation.y = leg_yaw * 0.85 - twist * 0.6
 	# The upper body was laid out for hips at 0.93 m: keep it on the hips, and
-	# lean it forward when low by pivoting at the waist (not at the feet, which
-	# would swing the torso off the hips).
-	var lean := LEAN if crouched else 0.0
+	# lean it forward by pivoting at the waist (not at the feet, which would
+	# swing the torso off the hips).
+	var lean := LEAN * c + 0.28 * run_t * w * (0.4 + 0.6 * fwd)
 	var waist := Vector3(0, WAIST_Y, 0)
-	var on_hips := Vector3(0, HIP_Y - 0.93 - hip_drop, hip_back)
-	var rot := Basis(Vector3.RIGHT, -lean)
+	var on_hips := Vector3(0, HIP_Y - 0.93 - hip_drop + bob, hip_back)
+	var rot := Basis(Vector3.UP, twist) * Basis(Vector3.RIGHT, -lean)
 	upper.transform = Transform3D(rot, on_hips + waist - rot * waist)
-	head.rotation.x = lean * 0.7                         # keep eyes up
+	head.rotation = Vector3(lean * 0.7, -twist * 0.8, 0)   # eyes stay up and ahead
 	# Counter-rotate the rifle about the grip so the muzzle stays at low
 	# ready instead of pointing into the ground.
 	var counter := Transform3D(Basis(Vector3.RIGHT, lean * 0.8), Vector3.ZERO)
-	_rifle.transform = Transform3D(Basis.IDENTITY, _grip) * counter * Transform3D(Basis.IDENTITY, -_grip) * _rifle_base
+	_rifle.transform = Transform3D(Basis.IDENTITY, _grip_rest) * counter * Transform3D(Basis.IDENTITY, -_grip_rest) * _rifle_base
 	_guard = _rifle.transform * _guard_local
 	if not (_gesture and _gesture.is_running()):
 		_left_target = _guard
+
+	var cycle := _cycle_length()
+	var reach := minf(cycle * stance * 0.5, lerpf(0.45, 0.28, c))
+	var lift := lerpf(0.1, 0.2, run_t) * lerpf(1.0, 0.6, c)
+	# Steps are laid out in leg space (hips turned toward travel), so a
+	# strafe becomes a diagonal run with the torso twisted to keep facing.
+	var dir := Basis(Vector3.UP, -leg_yaw) * _move_dir
+	var lat := absf(dir.x)
+	reach *= 1.0 - 0.45 * lat
+	var kick := 0.24 * run_t
 	for s in ["L", "R"]:
 		var sx := -1.0 if s == "L" else 1.0
-		var hip := _hips.position + Vector3(HIP_X * sx, -0.04, 0)
-		var ankle := Vector3(HIP_X * sx * 1.15, ANKLE_Y, -0.03 + (0.06 if s == "R" else -0.05))
-		if crouched and s == "R":
-			ankle.z += 0.2                                   # one foot back when kneeling-low
-		var knee := _solve(hip, ankle, THIGH, SHIN, Vector3(0.1 * sx, 0, -1))
-		_aim_bone(_legs[s]["thigh"], hip, knee, Vector3(0, 0, -1))
-		_aim_bone(_legs[s]["shin"], knee, ankle, Vector3(0, 0, -1))
-		_legs[s]["foot"].transform = Transform3D(Basis(Vector3.UP, 0.08 * sx), ankle)
+		var hip := _hips.position + ly * Vector3(HIP_X * sx, -0.04, 0)
+		# Standing (or crouched) rest position.
+		var rest := Vector3(HIP_X * sx * 1.15, ANKLE_Y, -0.03 + (0.06 if s == "R" else -0.05))
+		if s == "R":
+			rest.z += 0.2 * c                               # one foot back when low
+		var pitch := 0.0
+		var ankle := rest
+		if w > 0.0:
+			var p := fposmod(_phase + (0.5 if s == "R" else 0.0), 1.0)
+			var off := 0.0
+			var h := 0.0
+			if p < stance:                                  # planted, sliding back
+				var t := p / stance
+				off = reach * (1.0 - 2.0 * t)
+				pitch = lerpf(0.15, -0.3, t)
+			else:                                           # lifted, carried forward
+				var t := (p - stance) / (1.0 - stance)
+				off = -reach + 2.0 * reach * smoothstep(0.0, 1.0, t)
+				# running: the heel kicks up behind first, then the knee drives through
+				h = lift * sin(PI * t) + kick * sin(PI * clampf(t / 0.6, 0.0, 1.0))
+				pitch = lerpf(-0.55, 0.2, t) - kick * 2.5 * sin(PI * clampf(t / 0.6, 0.0, 1.0))
+			var local := Vector3(HIP_X * sx * (1.1 + 0.6 * lat), 0, 0) + dir * off
+			local.x = maxf(local.x, 0.085) if s == "R" else minf(local.x, -0.085)   # never cross the feet
+			var gait := Vector3(_hips.position.x, ANKLE_Y + h, _hips.position.z * 0.5) + ly * local
+			ankle = rest.lerp(gait, w)
+			pitch *= w
+		# Never ask a leg to reach further than it can.
+		var to := ankle - hip
+		var max_len := THIGH + SHIN - 0.015
+		if to.length() > max_len:
+			ankle = hip + to.normalized() * max_len
+		var knee := _solve(hip, ankle, THIGH, SHIN, ly * Vector3(0.1 * sx, 0, -1))
+		_aim_bone(_legs[s]["thigh"], hip, knee, ly * Vector3(0, 0, -1))
+		_aim_bone(_legs[s]["shin"], knee, ankle, ly * Vector3(0, 0, -1))
+		_legs[s]["foot"].transform = Transform3D(Basis(Vector3.UP, leg_yaw + 0.08 * sx) * Basis(Vector3.RIGHT, pitch), ankle)
+
+
+## Metres travelled per full gait cycle (two steps): longer strides when fast.
+func _cycle_length() -> float:
+	return lerpf(0.9 + 0.38 * _speed, 0.7 + 0.35 * _speed, _crouch_amt)
+
+
+## Call every physics frame with the body's actual world velocity. Advances
+## the gait, eases into / out of walking, and eases crouch transitions.
+func animate(world_vel: Vector3, delta: float) -> void:
+	var v := global_basis.inverse() * Vector3(world_vel.x, 0, world_vel.z)
+	v.y = 0.0
+	animate_local(v, delta)
+
+
+## Same, with the velocity already in model space (-Z = facing).
+func animate_local(v: Vector3, delta: float) -> void:
+	_driven = true
+	var spd := v.length()
+	var crouch_goal := 1.0 if crouched else 0.0
+	if spd < 0.05 and _speed < 0.02 and _gait_w == 0.0 and _crouch_amt == crouch_goal:
+		return                                              # settled: nothing to pose
+	_speed = lerpf(_speed, spd, clampf(10.0 * delta, 0.0, 1.0))
+	if spd > 0.15:
+		_move_dir = _move_dir.slerp(v / spd, clampf(10.0 * delta, 0.0, 1.0)).normalized()
+	_gait_w = move_toward(_gait_w, 1.0 if _speed > 0.35 else 0.0, 4.0 * delta)
+	_crouch_amt = move_toward(_crouch_amt, crouch_goal, 5.0 * delta)
+	_phase = fposmod(_phase + _speed * delta / _cycle_length(), 1.0)
+	# Turn the hips toward travel (mirrored when backing up), up to ~70 deg.
+	var ang := atan2(-_move_dir.x, -_move_dir.z)
+	if absf(ang) > PI / 2.0:
+		ang -= PI * signf(ang)
+	var yaw_goal := clampf(ang * 0.85, -1.2, 1.2) if _speed > 0.35 else 0.0
+	_leg_yaw = move_toward(_leg_yaw, yaw_goal, 5.0 * delta)
+	if _gait_w == 0.0:
+		_speed = 0.0 if spd < 0.05 and _speed < 0.05 else _speed
+	_apply_pose()
+	_solve_arms()
 
 
 func _solve_arms() -> void:
@@ -437,12 +547,24 @@ func _solve_arms() -> void:
 
 # ---------------------------------------------------------------- pose API
 
+## Model viewer: animate in place as if moving at `local_vel` (model space).
+func set_demo_motion(local_vel: Vector3) -> void:
+	_demo_vel = local_vel
+	set_process(local_vel != Vector3.ZERO)
+
+
+func _process(delta: float) -> void:
+	animate_local(_demo_vel, delta)
+
+
 func set_crouch(on: bool) -> void:
 	if on == crouched:
 		return
 	crouched = on
-	_solve_legs()
-	_solve_arms()
+	if not _driven:          # static model (viewer): snap; driven ones ease in animate()
+		_crouch_amt = 1.0 if on else 0.0
+		_solve_legs()
+		_solve_arms()
 
 
 func _set_left_hand(p: Vector3) -> void:
@@ -538,9 +660,11 @@ func set_sergeant(on: bool) -> void:
 func lay_down(face_up: bool) -> void:
 	if _gesture:
 		_gesture.kill()
-	if crouched:
-		crouched = false
-		_solve_legs()
+	crouched = false
+	_crouch_amt = 0.0
+	_gait_w = 0.0
+	_leg_yaw = 0.0
+	_apply_pose()
 	if face_up:
 		_left_target = Vector3(-0.1, 1.12, -0.36)
 		_grip = Vector3(0.08, 1.0, -0.34)

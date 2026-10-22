@@ -115,11 +115,16 @@ One universal soldier (`soldier_model.gd`) is built for everyone, friend and foe
 two-bone IK arms and legs) merged into one vertex-coloured mesh per part, so it stays cheap on integrated GPUs.
 Variants only change colours and kit: uniform/armband per side, skin tone, grenade launcher under the grenadier's
 rifle, tube launcher and carbine for the rocketman, amber chevrons and a radio antenna for the sergeant.
+Movement: a procedural gait driven by each body's real velocity (`animate()`, called every physics frame):
+feet alternate planted / swinging steps along the direction of travel, stride and cadence scale with speed,
+running adds a forward lean, lower hips and a heel kick, crouching gives short low steps, and when strafing or
+backing up the hips turn toward travel while the torso keeps facing the enemy. Crouch transitions ease in.
 Poses: idle (rifle at low ready), crouch (hips drop, torso leans forward from the waist, rifle stays level),
 left-hand signals, and dead (your men sprawl face down; enemies fall back onto their side; the rifle drops beside
 the body and the body is fitted to the ground so nothing sinks or floats).
 
-`tests/tools/render_models.gd` renders close-ups of every pose from several angles for visual review (needs a real
+`tests/tools/render_gait.gd` renders each gait at six points of its stride; `tests/tools/capture_game.gd`
+screenshots the real game mid-move. `tests/tools/render_models.gd` renders close-ups of every pose from several angles for visual review (needs a real
 renderer, e.g. under `xvfb-run`; usage is in the file). Not part of the test suite.
 
 Maps live in `scripts/maps/`. Each lists its boxes (`building`, `cwall`, `car`, `crate`, `dumpster`, `barrier`,

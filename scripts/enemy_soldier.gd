@@ -337,6 +337,7 @@ func _move(delta: float) -> void:
 
 	velocity = Vector3(vel.x, -4.0, vel.z)
 	move_and_slide()
+	_model.animate(get_real_velocity(), delta)
 
 	# Face whoever he's shooting, else the squad when alerted, else his travel.
 	var look := Vector3.ZERO

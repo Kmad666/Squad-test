@@ -1,5 +1,6 @@
 extends RefCounted
-## MODEL VIEWER: every variant of the universal soldier on a slow turntable,
+## MODEL VIEWER: every variant of the universal soldier on a slow turntable
+## (then the gaits, animated in place),
 ## in daylight, so the model can be judged up close. Your squad stands behind
 ## out of the way; the camera starts up close and WASD pans it along the
 ## line-up (the squad is on HOLD). Wheel zooms, mouse orbits. No enemies.
@@ -12,20 +13,25 @@ const NIGHT := false
 const GROUND := "field"
 const START := Vector3(0, 0, 26)
 const AT_TEAM := Vector3(40, 0, 44)
-const OBJECTIVE := "MODEL VIEWER  -  UNIVERSAL SOLDIER, IDLE POSE  -  M FOR NEXT MAP"
+const OBJECTIVE := "MODEL VIEWER  -  UNIVERSAL SOLDIER: POSES AND GAITS  -  WASD TO PAN  -  M FOR NEXT MAP"
 const COMPLETE := ""
 const BOXES := []
 const AREAS := []
 
-## [label, role, side, sergeant, crouched, signal]
+## [label, role, side, sergeant, crouched, signal, in-place velocity (model space)]
 const LINEUP := [
-	["RIFLEMAN", "rifleman", "friendly", false, false, ""],
-	["SERGEANT", "rifleman", "friendly", true, false, ""],
-	["GRENADIER", "grenadier", "friendly", false, false, ""],
-	["ROCKETMAN", "anti_armor", "friendly", false, false, ""],
-	["ENEMY RIFLEMAN", "rifleman", "enemy", false, false, ""],
-	["CROUCHED", "rifleman", "friendly", false, true, ""],
-	["SIGNALS (LOOP)", "rifleman", "friendly", true, false, "loop"],
+	["RIFLEMAN", "rifleman", "friendly", false, false, "", Vector3.ZERO],
+	["SERGEANT", "rifleman", "friendly", true, false, "", Vector3.ZERO],
+	["GRENADIER", "grenadier", "friendly", false, false, "", Vector3.ZERO],
+	["ROCKETMAN", "anti_armor", "friendly", false, false, "", Vector3.ZERO],
+	["ENEMY RIFLEMAN", "rifleman", "enemy", false, false, "", Vector3.ZERO],
+	["CROUCHED", "rifleman", "friendly", false, true, "", Vector3.ZERO],
+	["SIGNALS (LOOP)", "rifleman", "friendly", true, false, "loop", Vector3.ZERO],
+	["WALK", "rifleman", "friendly", false, false, "", Vector3(0, 0, -1.6)],
+	["RUN", "rifleman", "friendly", false, false, "", Vector3(0, 0, -6.3)],
+	["CROUCH WALK", "rifleman", "friendly", false, true, "", Vector3(0, 0, -2.5)],
+	["STRAFE", "rifleman", "friendly", false, false, "", Vector3(3.5, 0, 0)],
+	["BACKPEDAL", "rifleman", "enemy", false, false, "", Vector3(0, 0, 2.2)],
 ]
 
 
@@ -63,6 +69,8 @@ static func build_extras(main: Node3D) -> void:
 			m.set_sergeant(true)
 		if e[4]:
 			m.set_crouch(true)
+		if e[6] != Vector3.ZERO:
+			m.set_demo_motion(e[6])
 		var tw := turntable.create_tween().set_loops()
 		tw.tween_property(turntable, "rotation:y", PI + TAU, 14.0).from(PI)
 		if e[5] == "loop":

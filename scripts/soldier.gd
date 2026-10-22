@@ -417,6 +417,7 @@ func _physics_process(delta: float) -> void:
 	_vel = _vel.move_toward(vel, ACCEL * delta)
 	velocity = Vector3(_vel.x, -4.0, _vel.z)
 	move_and_slide()
+	_model.animate(get_real_velocity(), delta)
 
 	_update_combat(delta)
 	_update_facing(delta, vel)
@@ -426,6 +427,7 @@ func _physics_process(delta: float) -> void:
 func _idle(delta: float) -> void:
 	velocity = Vector3(0, -4.0, 0)
 	move_and_slide()
+	_model.animate(Vector3.ZERO, delta)
 	rotation.y = lerp_angle(rotation.y, 0.0, clampf(4.0 * delta, 0.0, 1.0))
 
 
