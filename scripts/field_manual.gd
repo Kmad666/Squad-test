@@ -17,6 +17,7 @@ var is_open := false
 var _was_captured := false
 var _expect_release := false
 var _root: Control
+var _lock_cb: JavaScriptObject   # browser "pointer lock changed" listener (web only)
 var _tabs: TabContainer
 var ui_theme: Theme             # set by main before adding (neon font + colours)
 
@@ -32,6 +33,23 @@ func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	_build()
 	_root.visible = false
+	# In the browser, Esc while aiming is eaten by the browser (it releases the
+	# pointer lock), so listen for that release directly.
+	if OS.has_feature("web"):
+		_lock_cb = JavaScriptBridge.create_callback(_on_pointer_lock_change)
+		var doc := JavaScriptBridge.get_interface("document")
+		doc.addEventListener("pointerlockchange", _lock_cb)
+
+
+func _on_pointer_lock_change(_args: Array) -> void:
+	var locked: bool = JavaScriptBridge.eval("!!document.pointerLockElement", true)
+	print("[debug] pointerlockchange locked=", locked, " open=", is_open, " expect=", _expect_release)
+	if locked or is_open:
+		return
+	if _expect_release:
+		_expect_release = false
+		return
+	call_deferred("open")
 
 
 func _process(_delta: float) -> void:
