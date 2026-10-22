@@ -12,6 +12,7 @@ const ReticleScript = preload("res://scripts/reticle.gd")
 const ReticlePanelScript = preload("res://scripts/reticle_panel.gd")
 const AtmosphereScript = preload("res://scripts/atmosphere.gd")
 const PostFxScript = preload("res://scripts/postfx.gd")
+const FieldManualScript = preload("res://scripts/field_manual.gd")
 const UI_FONT = preload("res://fonts/ShareTechMono-Regular.ttf")
 const StreetMission = preload("res://scripts/maps/street_mission.gd")
 const TestField = preload("res://scripts/maps/test_field.gd")
@@ -43,6 +44,7 @@ var _special_msg := ""          # special callouts / warnings, shown under the s
 var _special_msg_t := 0.0
 var help_label: Label
 var help_panel: PanelContainer
+var manual: CanvasLayer          # Esc: field manual + pause
 var _help_t := 25.0            # controls panel auto-hides after this; F1 toggles it
 var reticle: Control
 var reticle_panel: PanelContainer
@@ -1152,7 +1154,7 @@ func _build_hud() -> void:
 	help_label.text = "WASD move   MOUSE aim   WHEEL zoom   E move to reticle   C / SPACE cover\n" \
 		+ "LMB focus fire   RMB throw / fire special   1-4 pick special   X next special\n" \
 		+ "F auto fire   T split / join teams   Q switch team   B bound   H hold + scout\n" \
-		+ "TAB reticle   G graphics   M next map   R restart   F1 this help"
+		+ "ESC field manual (pause)   TAB reticle   G graphics   M map   R restart   F1 help"
 	help_panel.add_child(help_label)
 
 	# Squad health: one line per man (bottom right).
@@ -1187,6 +1189,10 @@ func _build_hud() -> void:
 	reticle_panel = ReticlePanelScript.new()
 	reticle_panel.reticle = reticle
 	ui_root.add_child(reticle_panel)
+
+	manual = FieldManualScript.new()
+	manual.ui_theme = ui_root.theme
+	add_child(manual)
 
 
 func _rich(size: int) -> RichTextLabel:
@@ -1264,6 +1270,8 @@ func _unhandled_key_input(event: InputEvent) -> void:
 
 func _input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_TAB:
+		if not reticle_panel.visible and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+			manual.allow_release()     # opening the reticle panel frees the mouse on purpose
 		reticle_panel.toggle()
 		get_viewport().set_input_as_handled()
 

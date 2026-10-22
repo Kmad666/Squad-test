@@ -15,6 +15,7 @@ You command a squad of six soldiers as one unit. Each soldier picks its own targ
 | 1 / 2 / 3 / 4 | Select special: frag, flashbang, grenade launcher, rocket |
 | X | Next special that still has ammo |
 | F1 | Show / hide the controls panel |
+| Esc | Field manual: pauses and explains every mechanic (tabs; Esc again to resume) |
 | F | Auto fire toggle: fire at will (each soldier picks any target he can see) |
 | E | Move the squad to the spot under the reticle (WASD cancels) |
 | C / Space | Take cover against the direction the camera faces / leave cover (moving also leaves cover) |
@@ -95,6 +96,7 @@ GODOT=/path/to/godot tests/run_all.sh          # MINUTES=10 for longer soak runs
 ```
 - `battle_test.gd`: scripted advance through all three areas, prints squad health and enemy states every 10 s.
 - `lean_spot_test.gd`: checks no two soldiers share a lean-out spot at tall crates.
+- `manual_test.gd`: Esc opens / pages / closes the field manual and pauses / unpauses.
 - `mission_test.gd`: scripted run of the street mission using split, bound and flank orders.
 - `soak_test.gd`: random orders (including split / switch / bound / hold), cover, fire modes, specials, graphics toggles and restarts; fails on any script error.
 
