@@ -41,6 +41,7 @@ var forced_mode := -1              # tests can force a fire mode
 var forced_specials := false       # tests: use a special every 1.5 s automatically
 var selected_special := 0          # index into Weapons.SPECIAL_ORDER (keys 1-4, X)
 var _forced_special_t := 0.0
+var _rmb_was_down := true         # right click fires once per fresh press
 var pending_teams: Array = []      # [{members, center, label, name}]
 var kia := 0
 
@@ -335,9 +336,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		cycle_special()
 	elif event is InputEventKey and event.pressed and not event.echo and event.physical_keycode >= KEY_1 and event.physical_keycode <= KEY_4:
 		select_special(event.physical_keycode - KEY_1)
-	elif event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_RIGHT \
-			and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
-		use_special()
+
 
 
 ## Send the active team to a point. They break cover and move as a group;
@@ -567,6 +566,15 @@ func _physics_process(delta: float) -> void:
 		(_ping.material_override as StandardMaterial3D).albedo_color.a = clampf(_ping_t / 1.5, 0.0, 1.0) * 0.8
 		if _ping_t <= 0.0:
 			_ping.visible = false
+
+	# Right click: one special per fresh press (polled, so no UI can swallow it).
+	# Until the mouse is grabbed the button counts as held, so the click that
+	# grabs the mouse never throws anything.
+	var captured := Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
+	var rmb := Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT)
+	if captured and rmb and not _rmb_was_down:
+		use_special()
+	_rmb_was_down = rmb or not captured
 
 	if forced_specials:
 		_forced_special_t -= delta
