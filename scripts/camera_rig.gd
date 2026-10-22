@@ -39,7 +39,7 @@ func _ready() -> void:
 	cam.current = true
 
 	# Dim cold fill riding with the camera so the squad reads as shapes in the dark.
-	if not Atmosphere.NIGHT:
+	if not Atmosphere.night:
 		return
 	var fill := OmniLight3D.new()
 	fill.light_color = Color(0.55, 0.65, 0.85)

@@ -16,6 +16,7 @@ var plan := [
 	[5400, null, 1],
 ]
 func _initialize():
+	load("res://scripts/main.gd").forced_map = int(OS.get_environment("MAP")) if OS.get_environment("MAP") != "" else 1
 	main = load("res://main.tscn").instantiate()
 	root.add_child(main)
 func _states(area):

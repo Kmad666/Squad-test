@@ -1,13 +1,14 @@
 extends Node3D
-## Scene lighting. NIGHT = false gives the daytime test field (sun, sky, light
-## haze). NIGHT = true restores the night mood: dark, foggy, wet after rain,
+## Scene lighting. night = false: daytime (sun, sky, light haze).
+## night = true: the night mood: dark, foggy, wet after rain,
 ## with harsh light sources that bloom and glare like they're blinding the lens:
 ##   - dark environment with fog, ACES tonemap and strong bloom (glow)
 ##   - a floodlight on a pole aimed at the target dummies
 ##   - a sodium street lamp over the cover area
 ##   - glare sprites + anamorphic streaks on each light, plus visible beams
 
-const NIGHT := false
+## Set by main from the map before the scene is built.
+static var night := false
 
 var cam_rig: Node3D
 var _glares: Array = []   # [{node, dir, base}] for view-dependent glare
@@ -16,16 +17,10 @@ var shadow_lights: Array = []   # lights whose shadows the LOW graphics setting 
 
 
 func _ready() -> void:
-	if not NIGHT:
+	if not night:
 		_build_day()
 		return
-	_build_environment()
-	# Floodlight beside the range, aimed at the middle of the dummies.
-	_build_light_pole(Vector3(14, 0, -21), 7.5, Vector3(-3, 0.8, -36),
-		Color(0.85, 0.92, 1.0), 16.0, 30.0, 45.0, true, 3.2)
-	# Street lamp hanging over the cover crates.
-	_build_light_pole(Vector3(-4.5, 0, 6.5), 5.5, Vector3(-1.5, 0, 5.5),
-		Color(1.0, 0.68, 0.36), 9.0, 62.0, 16.0, true, 2.2)
+	_build_environment()   # the map adds its own lamps with add_light_pole()
 
 
 ## LOW graphics: no shadows, no bloom. HIGH restores both.
@@ -129,8 +124,8 @@ func _metal() -> StandardMaterial3D:
 
 ## A pole with a lamp head at `height`, a SpotLight aimed at `aim`, a glowing
 ## lens, a glare sprite and a soft visible beam.
-func _build_light_pole(base: Vector3, height: float, aim: Vector3, color: Color,
-		energy: float, angle_deg: float, light_range: float, shadows: bool, glare_size: float) -> void:
+func add_light_pole(base: Vector3, height: float, aim: Vector3, color: Color,
+		energy: float, angle_deg: float, light_range: float, shadows: bool, glare_size: float, fill := false) -> void:
 	var metal := _metal()
 
 	var pole := MeshInstance3D.new()
@@ -195,14 +190,15 @@ func _build_light_pole(base: Vector3, height: float, aim: Vector3, color: Color,
 	spot.global_transform = Transform3D(head_basis, head_pos + dir * 0.3)
 	add_child(spot)
 
-	# Soft fill so the light "gives off" ambient light around its pool.
-	var fill := OmniLight3D.new()
-	fill.light_color = color
-	fill.light_energy = energy * 0.06
-	fill.omni_range = light_range * 0.6
-	fill.position = head_pos + dir * 1.0
-	fill.shadow_enabled = false
-	add_child(fill)
+	# Optional soft fill so the light "gives off" ambient light around its pool.
+	if fill:
+		var fill_light := OmniLight3D.new()
+		fill_light.light_color = color
+		fill_light.light_energy = energy * 0.06
+		fill_light.omni_range = light_range * 0.6
+		fill_light.position = head_pos + dir * 1.0
+		fill_light.shadow_enabled = false
+		add_child(fill_light)
 
 	_build_beam(head_pos + dir * 0.3, dir, color, minf(light_range * 0.8, 18.0), angle_deg)
 	_build_glare(head_pos + dir * 0.35, dir, color, glare_size)

@@ -31,6 +31,8 @@ static var _mats := {}
 var squad: Node3D
 var main: Node3D
 var index := 0
+var team := 0                  # fire team (0 = A, 1 = B) when the squad is split
+var slot_offset := Vector3.ZERO
 var role := "rifleman"
 var recruited := true
 var home_pos := Vector3.ZERO
@@ -75,6 +77,7 @@ var _cap: CapsuleShape3D
 var _col: CollisionShape3D
 var _torso: MeshInstance3D
 var _model: Node3D
+var _patch: MeshInstance3D
 
 
 func _ready() -> void:
@@ -108,20 +111,21 @@ func _ready() -> void:
 
 # ---------------------------------------------------------------- model
 
-static func _mat(key: String, color: Color, unshaded := false) -> StandardMaterial3D:
+static func _mat(key_name: String, color: Color, unshaded := false) -> StandardMaterial3D:
+	var key := key_name + ("_n" if Atmosphere.night else "_d")   # day and night looks differ
 	if not _mats.has(key):
 		var m := StandardMaterial3D.new()
 		m.albedo_color = color
-		m.roughness = 0.28 if Atmosphere.NIGHT else 0.75   # rain-soaked at night
+		m.roughness = 0.28 if Atmosphere.night else 0.75   # rain-soaked at night
 		m.metallic_specular = 0.7
 		if unshaded:
 			m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		elif key != "dead":
+		elif key_name != "dead":
 			# A touch of self-light + rim so your own men read in the dark.
 			m.emission_enabled = true
 			m.emission = color
-			m.emission_energy_multiplier = 0.22 if Atmosphere.NIGHT else 0.06
-			m.rim_enabled = Atmosphere.NIGHT   # edge highlight only needed in the dark
+			m.emission_energy_multiplier = 0.22 if Atmosphere.night else 0.06
+			m.rim_enabled = Atmosphere.night   # edge highlight only needed in the dark
 			m.rim = 0.5
 			m.rim_tint = 0.6
 		_mats[key] = m
@@ -211,9 +215,21 @@ func _build_model() -> void:
 	var fm := SphereMesh.new()
 	fm.radius = 0.09
 	fm.height = 0.18
+	# Fire-team patch on the back of the helmet (hidden while the squad is joined).
+	_patch = _part(_upper, _box(Vector3(0.16, 0.1, 0.05)), _mat("patch_a", Color(0.2, 1.0, 0.35), true), Vector3(0, 1.66, 0.16))
+	_patch.visible = false
 	_flash = _part(_upper, fm, flash, Vector3(0.12, 1.27, -0.86))
 	_flash.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_flash.visible = false
+
+
+## -1 hides the patch (squad joined); 0 = team A green, 1 = team B amber.
+func set_team_patch(t: int) -> void:
+	if _patch == null:
+		return
+	_patch.visible = t >= 0 and not dead
+	if t >= 0:
+		_patch.material_override = _mat("patch_a", Color(0.2, 1.0, 0.35), true) if t == 0 else _mat("patch_b", Color(1.0, 0.7, 0.15), true)
 
 
 func _set_crouch(on: bool) -> void:
@@ -412,7 +428,7 @@ func _update_facing(delta: float, vel: Vector3) -> void:
 	elif _has_aim:
 		look = _aim_point - global_position
 	elif state == State.IN_COVER:
-		look = squad.threat_dir
+		look = squad.threat_dir_for(team)
 	elif Vector2(vel.x, vel.z).length() > 0.4:
 		look = vel
 	look.y = 0
@@ -558,8 +574,8 @@ func _update_combat(delta: float) -> void:
 
 	if target and not target.alive:
 		target = null
-	var mode: int = squad.fire_mode()
-	var use_sec: bool = squad.specials_active() and not secondary.is_empty()
+	var mode: int = squad.fire_mode_for(self)
+	var use_sec: bool = squad.specials_for(self) and not secondary.is_empty()
 	_retarget_timer -= delta
 	if mode != _mode or use_sec != _using_secondary or _retarget_timer <= 0.0:
 		_mode = mode

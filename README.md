@@ -15,6 +15,11 @@ You command a squad of six soldiers as one unit. Each soldier picks its own targ
 | F | Auto fire toggle: fire at will (each soldier picks any target he can see) |
 | E | Move the squad to the spot under the reticle (WASD cancels) |
 | C / Space | Take cover against the direction the camera faces / leave cover (moving also leaves cover) |
+| T | Split into fire teams A + B (helmet patches: A green, B amber) / join back up |
+| Q | Switch which fire team you command (the other gives covering fire at will) |
+| B | Bounding advance to the point under the reticle: teams leapfrog, one moves while one covers |
+| H | Hold position: nobody moves, WASD scouts ahead with the camera (H again to release) |
+| M | Next map (remembered) |
 | Tab | Reticle settings (sizes are saved in your browser) |
 | G | Graphics LOW / HIGH (LOW: no shadows or bloom, 70% 3D resolution, lighter screen effects; remembered) |
 | R | Restart |
@@ -87,4 +92,16 @@ GODOT=/path/to/godot tests/run_all.sh          # MINUTES=10 for longer soak runs
 ```
 - `battle_test.gd`: scripted advance through all three areas, prints squad health and enemy states every 10 s.
 - `lean_spot_test.gd`: checks no two soldiers share a lean-out spot at tall crates.
-- `soak_test.gd`: random orders, cover, fire modes, specials, graphics toggles and restarts; fails on any script error.
+- `mission_test.gd`: scripted run of the street mission using split, bound and flank orders.
+- `soak_test.gd`: random orders (including split / switch / bound / hold), cover, fire modes, specials, graphics toggles and restarts; fails on any script error.
+
+## Maps
+- **OPERATION LAMPLIGHTER** (default, night): a street between two rows of buildings, a back alley joined to the road
+  by two side passages, and a walled compound at the end of the road (gate on the road, breach at the alley mouth).
+  Cars, crates, dumpsters and barriers for cover; sodium street lamps, lit windows and a floodlight over the gate.
+  Enemies: a ROADBLOCK mid-street (2), an ALLEY ambush (2), the COMPOUND (4 + APC). The anti-armor team waits in the
+  first side passage. At night enemies only spot you within 35 m. Objective: secure the compound.
+- **TEST FIELD** (day): open ground with three small enemy positions, for tuning mechanics.
+
+Maps live in `scripts/maps/`. Each lists its boxes (`building`, `cwall`, `car`, `crate`, `dumpster`, `barrier`,
+`sandbag`, `wall`, `tall`), enemy areas, start point, anti-armor team spot, and adds its own lights.

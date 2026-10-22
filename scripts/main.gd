@@ -12,65 +12,21 @@ const ReticlePanelScript = preload("res://scripts/reticle_panel.gd")
 const AtmosphereScript = preload("res://scripts/atmosphere.gd")
 const PostFxScript = preload("res://scripts/postfx.gd")
 const UI_FONT = preload("res://fonts/ShareTechMono-Regular.ttf")
+const StreetMission = preload("res://scripts/maps/street_mission.gd")
+const TestField = preload("res://scripts/maps/test_field.gd")
+const MAPS := [StreetMission, TestField]     # M cycles through these
 const NEON := Color(0.45, 1.0, 0.30)
 
 const NAV_HALF := 50.0          # playable half-size of the field (metres)
-const AT_TEAM_SPOT := Vector3(-36, 0, 32)   # anti-armor team waiting to link up
-const SQUAD_START := Vector3(0, 0, 42)      # outside enemy rifle range
 const TRACER_COUNT := 48
 const TRACER_LIFE := 0.06
 const TALL_COVER := 1.6         # boxes taller than this need a lean-out to shoot
 
-## Cover: [ground position, size, yaw, type]. "crate" and "wall" are low cover
-## (1.1 m, shoot over it), "tall" crates (2.4 m) are hard cover you lean around.
-const BOX_LAYOUT := [
-	# Start zone
-	[Vector3(-4, 0, 36), Vector3(3.0, 1.1, 1.0), 0.0, "crate"],
-	[Vector3(5, 0, 37), Vector3(2.5, 1.1, 1.0), 0.2, "crate"],
-	# Midfield: cover to advance through
-	[Vector3(-14, 0, 24), Vector3(5.0, 1.1, 0.5), 0.1, "wall"],
-	[Vector3(-6, 0, 20), Vector3(1.6, 2.4, 1.6), 0.0, "tall"],
-	[Vector3(2, 0, 22), Vector3(3.0, 1.1, 1.0), 0.0, "crate"],
-	[Vector3(12, 0, 18), Vector3(4.5, 1.1, 0.5), -0.2, "wall"],
-	[Vector3(20, 0, 12), Vector3(2.5, 1.1, 1.0), 0.4, "crate"],
-	[Vector3(-24, 0, 10), Vector3(3.0, 1.1, 1.0), -0.3, "crate"],
-	[Vector3(-34, 0, 4), Vector3(1.6, 2.4, 1.6), 0.0, "tall"],
-	[Vector3(-4, 0, 8), Vector3(4.0, 1.1, 0.5), 0.0, "wall"],
-	[Vector3(8, 0, 4), Vector3(2.0, 1.1, 1.0), 0.6, "crate"],
-	[Vector3(17, 0, -2), Vector3(1.6, 2.4, 1.6), 0.3, "tall"],
-	[Vector3(32, 0, -6), Vector3(3.0, 1.1, 1.0), 1.2, "crate"],
-	[Vector3(-13, 0, -1), Vector3(3.5, 1.1, 0.5), 0.4, "wall"],
-	[Vector3(-6, 0, -8), Vector3(2.0, 1.1, 1.0), -0.4, "crate"],
-	# Area ALPHA (west): sandbag line with a tall crate behind it
-	[Vector3(-24, 0, -13), Vector3(5.0, 1.1, 0.5), 0.0, "wall"],
-	[Vector3(-29.5, 0, -17), Vector3(0.5, 1.1, 4.0), 0.0, "wall"],
-	[Vector3(-19, 0, -16), Vector3(1.2, 1.1, 1.2), 0.0, "crate"],
-	[Vector3(-23, 0, -22), Vector3(1.6, 2.4, 1.6), 0.0, "tall"],
-	# Area BRAVO (centre): checkpoint
-	[Vector3(0, 0, -20), Vector3(4.0, 1.1, 0.5), 0.0, "wall"],
-	[Vector3(8, 0, -21), Vector3(4.0, 1.1, 0.5), 0.15, "wall"],
-	[Vector3(4, 0, -27), Vector3(1.6, 2.4, 1.6), 0.0, "tall"],
-	[Vector3(-3, 0, -29), Vector3(2.0, 1.1, 1.0), 0.5, "crate"],
-	[Vector3(11, 0, -30), Vector3(2.0, 1.1, 1.0), -0.4, "crate"],
-	# Area CHARLIE (east): motor pool, the APC patrols the lane behind it
-	[Vector3(22, 0, -29), Vector3(5.0, 1.1, 0.5), 0.0, "wall"],
-	[Vector3(31, 0, -31), Vector3(2.5, 1.1, 1.0), -0.2, "crate"],
-	[Vector3(17, 0, -36), Vector3(1.6, 2.4, 1.6), 0.0, "tall"],
-	[Vector3(38, 0, -37), Vector3(1.6, 2.4, 1.6), 0.0, "tall"],
-]
-
-## Enemy positions. Small groups on purpose: you have the numbers for now.
-const AREA_DEFS := [
-	{"name": "ALPHA", "center": Vector3(-24, 0, -18), "radius": 11.0,
-		"men": [Vector3(-24, 0, -15), Vector3(-20, 0, -18)]},
-	{"name": "BRAVO", "center": Vector3(4, 0, -25), "radius": 11.0,
-		"men": [Vector3(1, 0, -22), Vector3(7, 0, -23), Vector3(4, 0, -31)]},
-	{"name": "CHARLIE", "center": Vector3(27, 0, -35), "radius": 12.0,
-		"men": [Vector3(24, 0, -31), Vector3(31, 0, -33)],
-		"apc": [Vector3(20, 0, -44), Vector3(36, 0, -44)]},
-]
-
+var map: GDScript              # the map being played (scripts/maps/*)
+static var forced_map := -1    # tests: pick a map regardless of saved settings
+var map_index := 0
 var cover_defs: Array = []      # [{xform, size}] used by CoverUtil
+var solid_defs: Array = []      # buildings and compound walls: the squad's anchor can't pass these
 var cover_points: Array = []    # [{pos, normal, height}]
 var targets: Array = []         # everything the squad can shoot: enemy soldiers + vehicles
 var areas: Array = []           # [{name, center, radius, members, alerted, claimed, label}]
@@ -111,6 +67,14 @@ var _tracer_idx := 0
 
 func _ready() -> void:
 	_setup_input()
+	var cfg := ConfigFile.new()
+	if cfg.load(SETTINGS_PATH) == OK:
+		low_quality = bool(cfg.get_value("graphics", "low", false))
+		map_index = clampi(int(cfg.get_value("game", "map", 0)), 0, MAPS.size() - 1)
+	if forced_map >= 0:
+		map_index = forced_map
+	map = MAPS[map_index]
+	AtmosphereScript.night = map.NIGHT
 	atmosphere = AtmosphereScript.new()
 	atmosphere.name = "Atmosphere"
 	add_child(atmosphere)
@@ -134,8 +98,8 @@ func _ready() -> void:
 	squad = SquadScript.new()
 	squad.name = "Squad"
 	add_child(squad)
-	squad.setup(self, SQUAD_START)
-	squad.spawn_waiting_team("ANTI-ARMOR TEAM", AT_TEAM_SPOT, ["anti_armor", "anti_armor", "anti_armor"])
+	squad.setup(self, map.START)
+	squad.spawn_waiting_team("ANTI-ARMOR TEAM", map.AT_TEAM, ["anti_armor", "anti_armor", "anti_armor"])
 
 	cam_rig = CameraRigScript.new()
 	cam_rig.name = "CameraRig"
@@ -147,11 +111,10 @@ func _ready() -> void:
 	postfx = PostFxScript.new()
 	add_child(postfx)
 
+	map.build_extras(self)
 	_build_hud()
-	var cfg := ConfigFile.new()
-	if cfg.load(SETTINGS_PATH) == OK:
-		low_quality = bool(cfg.get_value("graphics", "low", false))
 	_apply_quality()
+	notify(map.OBJECTIVE, 7.0)
 
 
 ## LOW: no shadows, no bloom, no MSAA, 3D drawn at 70% resolution, cheap
@@ -164,12 +127,24 @@ func _apply_quality() -> void:
 	postfx.set_cheap(low_quality)
 
 
+func _save_settings() -> void:
+	var cfg := ConfigFile.new()
+	cfg.set_value("graphics", "low", low_quality)
+	cfg.set_value("game", "map", map_index)
+	cfg.save(SETTINGS_PATH)
+
+
+## M: next map (remembered), then restart.
+func next_map() -> void:
+	map_index = (map_index + 1) % MAPS.size()
+	_save_settings()
+	get_tree().reload_current_scene()
+
+
 func toggle_quality() -> void:
 	low_quality = not low_quality
 	_apply_quality()
-	var cfg := ConfigFile.new()
-	cfg.set_value("graphics", "low", low_quality)
-	cfg.save(SETTINGS_PATH)
+	_save_settings()
 	notify("GRAPHICS: %s" % ("LOW" if low_quality else "HIGH"))
 
 
@@ -183,6 +158,10 @@ func _setup_input() -> void:
 	_bind("take_cover", [KEY_C, KEY_SPACE])
 	_bind("auto_fire", [KEY_F])
 	_bind("move_order", [KEY_E])
+	_bind("split_teams", [KEY_T])
+	_bind("switch_team", [KEY_Q])
+	_bind("bound", [KEY_B])
+	_bind("hold_position", [KEY_H])
 
 
 func _bind(action: String, keys: Array) -> void:
@@ -196,23 +175,14 @@ func _bind(action: String, keys: Array) -> void:
 
 # ---------------------------------------------------------------- world
 
-func _build_ground() -> void:
-	var body := StaticBody3D.new()
-	body.name = "Ground"
-	body.collision_layer = 1
-	body.collision_mask = 0
-	nav_region.add_child(body)
-
-	var mesh := MeshInstance3D.new()
-	var plane := PlaneMesh.new()
-	plane.size = Vector2(240, 240)
-	mesh.mesh = plane
-	var shader := Shader.new()
-	shader.code = """
+## Ground in 10 m tiles (so each tile only gathers the lights near it) plus
+## invisible walls around the playable area. "field": grass. "street":
+## asphalt road with lane markings, concrete sidewalks, a concrete compound
+## yard; wet and glossy at night.
+const GROUND_SHADER := """
 shader_type spatial;
-// Field ground. wet = 1: night, dark wet grass with glossy puddles.
-// wet = 0: daytime, dry grass with patchy colour.
-uniform float wet = 0.0;
+uniform float wet = 0.0;      // 1 at night: dark, glossy, puddles
+uniform float street = 0.0;   // 1: street map surfaces, 0: grass field
 varying vec3 wpos;
 
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -225,27 +195,115 @@ float noise(vec2 p) {
 void vertex() { wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz; }
 
 void fragment() {
-	vec2 g = abs(fract(wpos.xz / 4.0 - 0.5) - 0.5) * 4.0;
-	float l = 1.0 - smoothstep(0.0, 0.06, min(g.x, g.y));
 	float patch = noise(wpos.xz * 0.22) * 0.7 + noise(wpos.xz * 0.9) * 0.3;
-	vec3 day = mix(vec3(0.20, 0.28, 0.12), vec3(0.30, 0.31, 0.16), smoothstep(0.35, 0.75, patch));
-	day = mix(day, day * 0.85, l * 0.5);
-	vec3 night = mix(vec3(0.10, 0.17, 0.08), vec3(0.07, 0.12, 0.06), l * 0.6);
+	vec3 c;
+	float rough;
+	if (street > 0.5) {
+		float ax = abs(wpos.x);
+		bool road = ax < 5.0 && wpos.z > -24.0;
+		bool walk = ax >= 5.0 && ax < 7.0 && wpos.z > -24.0;
+		bool yard = wpos.z < -24.0 && abs(wpos.x) < 22.0;
+		c = vec3(0.075, 0.075, 0.08) * (0.85 + 0.3 * noise(wpos.xz * 1.7));       // asphalt
+		if (road) {
+			if (ax < 0.08 && fract(wpos.z / 6.0) < 0.5) c = vec3(0.55, 0.45, 0.15);  // centre dashes
+			if (abs(ax - 4.75) < 0.06) c = vec3(0.4);                                // edge lines
+		}
+		if (walk) {
+			c = vec3(0.2, 0.2, 0.19) * (0.9 + 0.2 * noise(wpos.xz * 3.0));
+			float seam = 1.0 - smoothstep(0.0, 0.04, abs(fract(wpos.z / 1.5) - 0.5) - 0.46);
+			c *= 1.0 - 0.25 * (1.0 - seam);
+			if (abs(ax - 5.0) < 0.12) c = vec3(0.3);                                  // kerb
+		}
+		if (yard) c = vec3(0.16, 0.16, 0.15) * (0.85 + 0.3 * noise(wpos.xz * 0.8));
+		rough = 0.75;
+	} else {
+		vec2 g = abs(fract(wpos.xz / 4.0 - 0.5) - 0.5) * 4.0;
+		float l = 1.0 - smoothstep(0.0, 0.06, min(g.x, g.y));
+		c = mix(vec3(0.20, 0.28, 0.12), vec3(0.30, 0.31, 0.16), smoothstep(0.35, 0.75, patch));
+		c = mix(c, c * 0.85, l * 0.5);
+		if (wet > 0.5) c = mix(vec3(0.10, 0.17, 0.08), vec3(0.07, 0.12, 0.06), l * 0.6);
+		rough = 0.95;
+	}
 	float puddle = smoothstep(0.52, 0.62, patch) * wet;
-	night = mix(night, night * 0.35, puddle);
-	vec3 c = mix(day, night, wet);
+	c = mix(c, c * 0.4, puddle);
 	bool outside = abs(wpos.x) > 50.0 || abs(wpos.z) > 50.0;
-	ALBEDO = outside ? c * 0.75 : c;
-	ROUGHNESS = mix(0.95, mix(0.32, 0.03, puddle), wet);
-	SPECULAR = mix(0.2, 0.65, wet);
+	ALBEDO = outside ? c * 0.7 : c;
+	ROUGHNESS = mix(rough, mix(0.3, 0.03, puddle), wet);
+	SPECULAR = mix(0.2, 0.7, wet);
 }
 """
+
+const BUILDING_SHADER := """
+shader_type spatial;
+// Facade with a window grid. At night some windows are lit (warm or TV-blue).
+uniform vec3 wall_col : source_color = vec3(0.2, 0.19, 0.18);
+uniform float seed = 0.0;
+uniform float night = 1.0;
+varying vec3 wpos;
+varying vec3 wn;
+
+float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+
+void vertex() {
+	wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	wn = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz);
+}
+
+void fragment() {
+	vec3 c = wall_col * (0.9 + 0.2 * hash(floor(wpos.xz * 0.5) + seed));
+	float rough = 0.85;
+	vec3 emit = vec3(0.0);
+	if (abs(wn.y) < 0.5 && wpos.y > 1.2) {
+		float u = abs(wn.x) > 0.5 ? wpos.z : wpos.x;
+		vec2 cell = vec2(floor(u / 3.0), floor((wpos.y - 1.2) / 3.2));
+		vec2 f = vec2(fract(u / 3.0), fract((wpos.y - 1.2) / 3.2));
+		if (f.x > 0.25 && f.x < 0.75 && f.y > 0.3 && f.y < 0.8) {
+			float h = hash(cell + vec2(seed, seed * 1.7) + wn.xz * 13.0);
+			c = vec3(0.03, 0.035, 0.04);
+			rough = 0.08;
+			if (night > 0.5 && h > 0.74)
+				emit = mix(vec3(1.0, 0.68, 0.32), vec3(0.55, 0.7, 1.0), step(0.93, h)) * (0.9 + h);
+		}
+	}
+	if (wpos.y < 1.0) c *= 0.65;      // grimy ground floor
+	ALBEDO = c;
+	ROUGHNESS = rough;
+	EMISSION = emit;
+}
+"""
+
+
+func _build_ground() -> void:
+	var body := StaticBody3D.new()
+	body.name = "Ground"
+	body.collision_layer = 1
+	body.collision_mask = 0
+	nav_region.add_child(body)
+
+	var shader := Shader.new()
+	shader.code = GROUND_SHADER
 	var mat := ShaderMaterial.new()
 	mat.shader = shader
-	mat.set_shader_parameter("wet", 1.0 if AtmosphereScript.NIGHT else 0.0)
-	mesh.material_override = mat
-	mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	body.add_child(mesh)
+	mat.set_shader_parameter("wet", 1.0 if AtmosphereScript.night else 0.0)
+	mat.set_shader_parameter("street", 1.0 if map.GROUND == "street" else 0.0)
+	var tile := PlaneMesh.new()
+	tile.size = Vector2(10, 10)
+	for ix in range(-6, 6):
+		for iz in range(-6, 6):
+			var mi := MeshInstance3D.new()
+			mi.mesh = tile
+			mi.material_override = mat
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			mi.position = Vector3(ix * 10 + 5, 0, iz * 10 + 5)
+			body.add_child(mi)
+	var outer := MeshInstance3D.new()        # far ground beyond the tiles
+	var big := PlaneMesh.new()
+	big.size = Vector2(400, 400)
+	outer.mesh = big
+	outer.material_override = mat
+	outer.position.y = -0.02
+	outer.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	body.add_child(outer)
 
 	var col := CollisionShape3D.new()
 	var shape := BoxShape3D.new()
@@ -254,7 +312,7 @@ void fragment() {
 	col.position.y = -0.5
 	body.add_child(col)
 
-	# Invisible walls keep everyone on the practice field.
+	# Invisible walls keep everyone on the playable area.
 	for side in [Vector3(1, 0, 0), Vector3(-1, 0, 0), Vector3(0, 0, 1), Vector3(0, 0, -1)]:
 		var wall := CollisionShape3D.new()
 		var ws := BoxShape3D.new()
@@ -264,19 +322,32 @@ void fragment() {
 		body.add_child(wall)
 
 
+
+## Every cover object / building from the map. Low cover and tall crates go
+## in cover_defs; buildings and compound walls also go in solid_defs.
 func _build_boxes() -> void:
-	var night: bool = AtmosphereScript.NIGHT
+	var night: bool = AtmosphereScript.night
 	var mats := {
 		"crate": _surface(Color(0.36, 0.27, 0.16) if night else Color(0.55, 0.42, 0.26), night),
 		"tall": _surface(Color(0.26, 0.19, 0.12) if night else Color(0.42, 0.31, 0.19), night),
 		"wall": _surface(Color(0.30, 0.30, 0.29) if night else Color(0.58, 0.57, 0.53), night),
+		"barrier": _surface(Color(0.42, 0.41, 0.38), night),
+		"cwall": _surface(Color(0.24, 0.23, 0.21), night),
+		"sandbag": _surface(Color(0.40, 0.36, 0.26), false),
+		"dumpster": _surface(Color(0.10, 0.22, 0.14), night),
 	}
-	for entry in BOX_LAYOUT:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 99
+	for entry in map.BOXES:
 		var pos: Vector3 = entry[0]
 		var size: Vector3 = entry[1]
 		var yaw: float = entry[2]
+		var type: String = entry[3]
 		var xform := Transform3D(Basis(Vector3.UP, yaw), pos)
-		cover_defs.append({"xform": xform, "size": size})
+		var def := {"xform": xform, "size": size, "type": type}
+		cover_defs.append(def)
+		if type in ["building", "cwall"]:
+			solid_defs.append(def)
 
 		var body := StaticBody3D.new()
 		body.collision_layer = 1
@@ -284,12 +355,31 @@ func _build_boxes() -> void:
 		body.transform = Transform3D(xform.basis, pos + Vector3(0, size.y * 0.5, 0))
 		nav_region.add_child(body)
 
-		var mi := MeshInstance3D.new()
-		var bm := BoxMesh.new()
-		bm.size = size
-		mi.mesh = bm
-		mi.material_override = mats[entry[3]]
-		body.add_child(mi)
+		match type:
+			"car":
+				_build_car(body, size, rng)
+			"building":
+				var mi := MeshInstance3D.new()
+				var bm := BoxMesh.new()
+				bm.size = size
+				mi.mesh = bm
+				var sh := Shader.new()
+				sh.code = BUILDING_SHADER
+				var m := ShaderMaterial.new()
+				m.shader = sh
+				var tones := [Color(0.2, 0.19, 0.18), Color(0.17, 0.17, 0.19), Color(0.23, 0.2, 0.17), Color(0.15, 0.15, 0.14)]
+				m.set_shader_parameter("wall_col", tones[rng.randi() % tones.size()] * (1.0 if night else 2.2))
+				m.set_shader_parameter("seed", rng.randf() * 100.0)
+				m.set_shader_parameter("night", 1.0 if night else 0.0)
+				mi.material_override = m
+				body.add_child(mi)
+			_:
+				var mi := MeshInstance3D.new()
+				var bm := BoxMesh.new()
+				bm.size = size
+				mi.mesh = bm
+				mi.material_override = mats.get(type, mats["crate"])
+				body.add_child(mi)
 
 		var col := CollisionShape3D.new()
 		var bs := BoxShape3D.new()
@@ -297,6 +387,61 @@ func _build_boxes() -> void:
 		col.shape = bs
 		body.add_child(col)
 
+
+## Low-poly car: body, cabin with dark glass, wheels; some still have their
+## tail lights on. Length runs along local x.
+func _build_car(body: Node3D, size: Vector3, rng: RandomNumberGenerator) -> void:
+	var paints := [Color(0.35, 0.05, 0.05), Color(0.25, 0.27, 0.3), Color(0.08, 0.1, 0.2), Color(0.55, 0.55, 0.52), Color(0.1, 0.1, 0.1), Color(0.3, 0.25, 0.12)]
+	var paint := StandardMaterial3D.new()
+	paint.albedo_color = paints[rng.randi() % paints.size()]
+	paint.roughness = 0.15
+	paint.metallic = 0.4
+	var glass := StandardMaterial3D.new()
+	glass.albedo_color = Color(0.02, 0.025, 0.03)
+	glass.roughness = 0.05
+	glass.metallic_specular = 1.0
+	var tyre := StandardMaterial3D.new()
+	tyre.albedo_color = Color(0.03, 0.03, 0.03)
+	var bottom := -size.y * 0.5
+	var lower := MeshInstance3D.new()
+	var lm := BoxMesh.new()
+	lm.size = Vector3(size.x, 0.7, size.z)
+	lower.mesh = lm
+	lower.material_override = paint
+	lower.position = Vector3(0, bottom + 0.3 + 0.35, 0)
+	body.add_child(lower)
+	var cabin := MeshInstance3D.new()
+	var cm := BoxMesh.new()
+	cm.size = Vector3(size.x * 0.5, 0.55, size.z * 0.9)
+	cabin.mesh = cm
+	cabin.material_override = glass
+	cabin.position = Vector3(-size.x * 0.05, bottom + 1.0 + 0.27, 0)
+	body.add_child(cabin)
+	for x in [-1.0, 1.0]:
+		for z in [-1.0, 1.0]:
+			var w := MeshInstance3D.new()
+			var wm := CylinderMesh.new()
+			wm.top_radius = 0.33
+			wm.bottom_radius = 0.33
+			wm.height = 0.24
+			wm.radial_segments = 10
+			w.mesh = wm
+			w.material_override = tyre
+			w.position = Vector3(x * size.x * 0.32, bottom + 0.33, z * (size.z * 0.5 - 0.08))
+			w.rotation.x = PI / 2.0
+			body.add_child(w)
+	if AtmosphereScript.night and rng.randf() < 0.35:
+		var tail := StandardMaterial3D.new()
+		tail.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		tail.albedo_color = Color(1.4, 0.08, 0.05)
+		for z in [-1.0, 1.0]:
+			var t := MeshInstance3D.new()
+			var tm := BoxMesh.new()
+			tm.size = Vector3(0.05, 0.12, 0.3)
+			t.mesh = tm
+			t.material_override = tail
+			t.position = Vector3(-size.x * 0.5 - 0.02, bottom + 0.85, z * size.z * 0.33)
+			body.add_child(t)
 
 ## Glossy and wet at night, dry and matte in daylight.
 func _surface(color: Color, wet: bool) -> StandardMaterial3D:
@@ -323,15 +468,31 @@ func _bake_nav() -> void:
 
 ## Spots around every box where a soldier can crouch. Each has an outward
 ## normal; a spot gives cover when its normal points away from the threat.
+## Buildings and compound walls only give cover at their corners and gate
+## edges, where you can lean out around them.
 func _build_cover_points() -> void:
 	for def in cover_defs:
 		var xf: Transform3D = def["xform"]
 		var size: Vector3 = def["size"]
+		var corners_only: bool = def.get("type", "") in ["building", "cwall"]
 		for face in [Vector3.RIGHT, Vector3.LEFT, Vector3.FORWARD, Vector3.BACK]:
 			var along_x: bool = absf(face.x) > 0.0
 			var half_n: float = size.x * 0.5 if along_x else size.z * 0.5
 			var span: float = size.z if along_x else size.x
 			var tangent: Vector3 = Vector3(0, 0, 1) if along_x else Vector3(1, 0, 0)
+			if corners_only:
+				if span < 0.9:
+					continue          # wall ends are handled by the long faces
+				for side in [-1.0, 1.0]:
+					var local: Vector3 = face * (half_n + 0.6) + tangent * side * maxf(span * 0.5 - 0.6, 0.0)
+					var lp: Vector3 = face * (half_n + 0.6) + tangent * side * (span * 0.5 + 0.5)
+					cover_points.append({
+						"pos": xf * local,
+						"normal": (xf.basis * face).normalized(),
+						"height": size.y,
+						"peeks": [CoverUtil.push_out(cover_defs, xf * lp, 0.5)],
+					})
+				continue
 			var count: int = maxi(1, int(floor(span / 1.0)))
 			for i in count:
 				var t: float = (float(i) + 0.5) / float(count) - 0.5
@@ -351,11 +512,10 @@ func _build_cover_points() -> void:
 					"peeks": peeks,
 				})
 
-
 ## Spawn each defended area: its riflemen, the APC for CHARLIE, and a
 ## floating label with how many hostiles are left.
 func _build_areas() -> void:
-	for def in AREA_DEFS:
+	for def in map.AREAS:
 		var area := {
 			"name": def["name"], "center": def["center"], "radius": def["radius"],
 			"members": [], "alerted": false, "claimed": {},
@@ -430,7 +590,7 @@ func on_enemy_killed(e: Node3D) -> void:
 				for a in areas:
 					if _alive_in(a) > 0:
 						all_clear = false
-				notify("ALL AREAS CLEARED  -  PRESS R TO RESTART" if all_clear else "AREA %s CLEARED" % area["name"])
+				notify(map.COMPLETE if all_clear else "AREA %s CLEARED" % area["name"], 8.0 if all_clear else 4.0)
 
 
 func areas_text() -> String:
@@ -731,9 +891,9 @@ func on_vehicle_destroyed(v: Node3D) -> void:
 	notify("ENEMY %s DESTROYED" % v.vehicle_name)
 
 
-func notify(text: String) -> void:
+func notify(text: String, seconds := 4.0) -> void:
 	_notice = text
-	_notice_t = 4.0
+	_notice_t = seconds
 
 
 ## Every shot heats up the screen effects; many at once = shake, blur, flash.
@@ -851,9 +1011,10 @@ func _build_hud() -> void:
 	ui_root.add_child(help)
 	help_label = Label.new()
 	help_label.add_theme_font_size_override("font_size", 12)
-	help_label.text = "WASD move   MOUSE aim   WHEEL zoom   E move to reticle\n" \
+	help_label.text = "WASD move   MOUSE aim   WHEEL zoom   E move to reticle   C / SPACE cover\n" \
 		+ "LMB focus fire   RMB specials (GL / rockets)   F auto fire\n" \
-		+ "C / SPACE cover vs camera facing   TAB reticle   G graphics   R restart"
+		+ "T split / join fire teams   Q switch team   B bound to reticle   H hold + scout\n" \
+		+ "TAB reticle   G graphics   M next map   R restart"
 	help.add_child(help_label)
 
 	reticle_panel = ReticlePanelScript.new()
@@ -867,6 +1028,8 @@ func _unhandled_key_input(event: InputEvent) -> void:
 			get_tree().reload_current_scene()
 		elif event.physical_keycode == KEY_G:
 			toggle_quality()
+		elif event.physical_keycode == KEY_M:
+			next_map()
 
 
 func _input(event: InputEvent) -> void:
@@ -905,7 +1068,7 @@ func _process(delta: float) -> void:
 	if hud_label:
 		var captured := Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
 		_notice_t = maxf(0.0, _notice_t - delta)
-		hud_label.text = "SQUAD TEST // FIELD TRIAL%s\n" % ("" if captured else "   (CLICK TO GRAB MOUSE)") \
+		hud_label.text = "%s%s\n" % [map.NAME, "" if captured else "   (CLICK TO GRAB MOUSE)"] \
 			+ "SQUAD   %s\n" % squad.status_text() \
 			+ "UNIT    %s\n" % squad.roster_text() \
 			+ "FIRE    %s%s\n" % [squad.fire_mode_text(), "   (auto fire ON)" if squad.auto_fire else ""] \

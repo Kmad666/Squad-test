@@ -6,6 +6,7 @@ extends Node3D
 
 const Weapons = preload("res://scripts/weapons.gd")
 const ProjectileScript = preload("res://scripts/projectile.gd")
+const Atmosphere = preload("res://scripts/atmosphere.gd")
 
 var main: Node3D
 var host: Node3D            # the dummy / vehicle this gun belongs to
@@ -30,6 +31,8 @@ var _flash_t := 0.0
 
 func _ready() -> void:
 	_rng.randomize()
+	if Atmosphere.night:
+		spot_range = 35.0     # harder to spot you in the dark
 	_fire_timer = _rng.randf_range(1.0, 3.0)
 	_flash = MeshInstance3D.new()
 	var sm := SphereMesh.new()

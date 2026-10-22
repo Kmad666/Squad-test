@@ -9,6 +9,7 @@ var idx := 0
 var clashes := 0
 var checks := 0
 func _initialize():
+	load("res://scripts/main.gd").forced_map = int(OS.get_environment("MAP")) if OS.get_environment("MAP") != "" else 1
 	main = load("res://main.tscn").instantiate()
 	root.add_child(main)
 func _physics_process(_d):

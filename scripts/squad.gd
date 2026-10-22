@@ -1,8 +1,17 @@
 extends Node3D
-## The squad as one unit: WASD moves an anchor point, soldiers hold a loose
-## cluster around it, and the cover order sends each soldier to its own nearby
-## cover spot on the far side of a box from the threat.
-## Teams waiting in the field join the squad when it walks up to them.
+## The squad: one unit, or two fire teams.
+##
+## Joined: WASD moves an anchor point, soldiers hold a loose cluster around
+## it, and the cover order sends each soldier to his own cover spot on the far
+## side of a crate from where the camera faces.
+##
+## Split (T): two fire teams, A and B (coloured helmet patches). You command
+## the active team (Q switches); the other team holds where it is and gives
+## covering fire at will. B: bounding advance to the point under the reticle,
+## teams leapfrog (one moves, the other covers). H: hold position, WASD then
+## scouts ahead with the camera instead of moving anyone.
+##
+## Teams waiting in the field join when either fire team walks up to them.
 
 const CoverUtil = preload("res://scripts/cover_util.gd")
 const SoldierScript = preload("res://scripts/soldier.gd")
@@ -10,42 +19,68 @@ const UI_FONT = preload("res://fonts/ShareTechMono-Regular.ttf")
 
 const MOVE_SPEED := 5.0
 const CLUSTER_RADIUS := 2.8      # loose cluster spread around the anchor
-const COVER_SEARCH := 14.0       # how far from the squad a cover spot may be
+const COVER_SEARCH := 14.0       # how far from the team a cover spot may be
 const COHESION_WEIGHT := 0.7     # how much cover choice favours staying grouped
 const MIN_COVER_GAP := 0.95      # two soldiers never share a spot
 const JOIN_DISTANCE := 7.0       # how close the squad must get to pick up a team
+const BOUND_STEP := 9.0          # how far each bound goes past the covering team
+const SCOUT_RANGE := 30.0        # how far the camera may scout while holding
+const TEAM_NAMES := ["A", "B"]
 
 ## Starting squad: five riflemen and a grenadier.
 const START_ROLES := ["rifleman", "rifleman", "rifleman", "grenadier", "rifleman", "rifleman"]
 
+enum { HOLD, AT_WILL, FOCUS }
+
 var main: Node3D
 var soldiers: Array = []
-var anchor := Vector3.ZERO
-var slot_offsets: Array = []
-var in_cover := false
-var auto_fire := false            # F: permanent fire at will
+var slot_offsets: Array = []       # by soldier index (kept for tests / tools)
+var auto_fire := false             # F: permanent fire at will
 var forced_mode := -1              # tests can force a fire mode
 var forced_specials := false       # tests can force the specials order
 var pending_teams: Array = []      # [{members, center, label, name}]
 var kia := 0
-var order_target: Variant = null   # E: point the squad is moving to
+
+var teams: Array = []              # 2 x {anchor, in_cover, order_target, threat_dir}
+var split := false
+var active := 0
+var holding := false
+var scout_offset := Vector3.ZERO
+var bound: Dictionary = {}         # {target, mover, phase, timer} while bounding
+
 var _ping: MeshInstance3D
 var _ping_t := 0.0
 
-enum { HOLD, AT_WILL, FOCUS }
-var threat_dir := Vector3.FORWARD
+# The active team's state, so everything that used the single squad still works.
+var anchor: Vector3:
+	get: return teams[active]["anchor"]
+	set(v): teams[active]["anchor"] = v
+var in_cover: bool:
+	get: return teams[active]["in_cover"]
+	set(v): teams[active]["in_cover"] = v
+var order_target: Variant:
+	get: return teams[active]["order_target"]
+	set(v): teams[active]["order_target"] = v
+var threat_dir: Vector3:
+	get: return teams[active]["threat_dir"]
+	set(v): teams[active]["threat_dir"] = v
 
+
+func _init() -> void:
+	for i in 2:
+		teams.append({"anchor": Vector3.ZERO, "in_cover": false, "order_target": null, "threat_dir": Vector3.FORWARD})
 
 
 func setup(m: Node3D, start: Vector3) -> void:
 	main = m
-	anchor = start
-	_make_offsets(START_ROLES.size())
+	teams[0]["anchor"] = start
 	for i in START_ROLES.size():
 		var s := _new_soldier(START_ROLES[i], i)
-		s.global_position = anchor + slot_offsets[i]
-		s.move_target = s.global_position
 		soldiers.append(s)
+	_make_offsets()
+	for s in soldiers:
+		s.global_position = start + s.slot_offset
+		s.move_target = s.global_position
 
 
 func _new_soldier(role: String, idx: int) -> CharacterBody3D:
@@ -85,36 +120,58 @@ func spawn_waiting_team(team_name: String, center: Vector3, roles: Array) -> voi
 
 func _check_joins() -> void:
 	for team in pending_teams.duplicate():
-		if anchor.distance_to(team["center"]) > JOIN_DISTANCE:
+		var joiner := -1
+		for t in (2 if split else 1):
+			if teams[t]["anchor"].distance_to(team["center"]) <= JOIN_DISTANCE:
+				joiner = t
+		if joiner < 0:
 			continue
 		for s in team["members"]:
 			s.recruited = true
 			s.index = soldiers.size()
+			s.team = joiner
 			soldiers.append(s)
 		team["label"].queue_free()
 		pending_teams.erase(team)
-		_make_offsets(soldiers.size())
-		if in_cover:
-			take_cover()
-		main.notify("%s JOINED THE SQUAD  (+%d)" % [team["name"], team["members"].size()])
+		_make_offsets()
+		if teams[joiner]["in_cover"]:
+			take_cover(joiner)
+		main.notify("%s JOINED %s  (+%d)" % [team["name"], ("TEAM " + TEAM_NAMES[joiner]) if split else "THE SQUAD", team["members"].size()])
 
 
-## Loose cluster: sunflower spiral with a little per-soldier jitter so it
-## doesn't look like a parade-ground pattern.
-func _make_offsets(count: int) -> void:
-	slot_offsets.clear()
-	var rng := RandomNumberGenerator.new()
-	rng.seed = 4242
-	var radius := CLUSTER_RADIUS * sqrt(maxf(1.0, float(count) / 6.0))  # bigger squad, wider cluster
-	for i in count:
-		var r: float = radius * sqrt((float(i) + 0.6) / float(count))
-		var a: float = float(i) * 2.39996 + 0.4
-		var jitter := Vector3(rng.randf_range(-0.35, 0.35), 0, rng.randf_range(-0.35, 0.35))
-		slot_offsets.append(Vector3(cos(a) * r, 0, sin(a) * r) + jitter)
+func team_members(t: int) -> Array:
+	if not split:
+		return soldiers if t == 0 else []
+	return soldiers.filter(func(s): return s.team == t)
 
 
-## Primary weapons: left mouse held = focus fire on the reticle, otherwise
-## fire at will if auto fire (F) is on, else hold fire.
+## Loose cluster per team: sunflower spiral with a little per-soldier jitter
+## so it doesn't look like a parade-ground pattern.
+func _make_offsets() -> void:
+	slot_offsets.resize(soldiers.size())
+	for t in 2:
+		var members := team_members(t)
+		var count := members.size()
+		if count == 0:
+			continue
+		var rng := RandomNumberGenerator.new()
+		rng.seed = 4242 + t
+		var radius := CLUSTER_RADIUS * sqrt(maxf(1.0, float(count) / 6.0))  # bigger team, wider cluster
+		for i in count:
+			var r: float = radius * sqrt((float(i) + 0.6) / float(count))
+			var a: float = float(i) * 2.39996 + 0.4
+			var jitter := Vector3(rng.randf_range(-0.35, 0.35), 0, rng.randf_range(-0.35, 0.35))
+			var off := Vector3(cos(a) * r, 0, sin(a) * r) + jitter
+			members[i].slot_offset = off
+			slot_offsets[members[i].index] = off
+	for s in soldiers:
+		s.set_team_patch(s.team if split else -1)
+
+
+# ---------------------------------------------------------------- fire control
+
+## Primary weapons for the team you command: left mouse held = focus fire on
+## the reticle, otherwise fire at will if auto fire (F) is on, else hold fire.
 func fire_mode() -> int:
 	if forced_mode >= 0:
 		return forced_mode
@@ -123,11 +180,26 @@ func fire_mode() -> int:
 	return AT_WILL if auto_fire else HOLD
 
 
+## The team you're not commanding is the base of fire: it fires at will.
+func fire_mode_for(s: Node3D) -> int:
+	if split and s.team != active:
+		return AT_WILL
+	return fire_mode()
+
+
 ## Right mouse held = specialists use grenade launchers / rockets on the reticle.
 func specials_active() -> bool:
 	if forced_specials:
 		return true
 	return Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT)
+
+
+func specials_for(s: Node3D) -> bool:
+	return specials_active() and (not split or s.team == active)
+
+
+func threat_dir_for(t: int) -> Vector3:
+	return teams[t if split else 0]["threat_dir"]
 
 
 func fire_mode_text() -> String:
@@ -139,7 +211,437 @@ func fire_mode_text() -> String:
 			t = "FIRE AT WILL"
 	if specials_active():
 		t += " + SPECIALS"
+	if split:
+		t += "   (TEAM %s COVERING)" % TEAM_NAMES[1 - active]
 	return t
+
+
+# ---------------------------------------------------------------- orders
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed("take_cover"):
+		if in_cover:
+			leave_cover()
+		else:
+			take_cover()
+	elif event.is_action_pressed("auto_fire"):
+		auto_fire = not auto_fire
+	elif event.is_action_pressed("move_order"):
+		var p: Variant = main.reticle_ground_point()
+		if p != null:
+			move_to(p)
+	elif event.is_action_pressed("split_teams"):
+		join_teams() if split else split_teams()
+	elif event.is_action_pressed("switch_team"):
+		switch_team()
+	elif event.is_action_pressed("bound"):
+		var p: Variant = main.reticle_ground_point()
+		if p != null:
+			start_bound(p)
+	elif event.is_action_pressed("hold_position"):
+		set_holding(not holding)
+
+
+## Send the active team to a point. They break cover and move as a group;
+## WASD cancels the order.
+func move_to(p: Vector3, t := -1) -> void:
+	if t < 0:
+		t = active
+		bound = {}
+		set_holding(false)
+	var lim: float = main.NAV_HALF - 2.0
+	teams[t]["order_target"] = CoverUtil.push_out(main.solid_defs, Vector3(clampf(p.x, -lim, lim), 0, clampf(p.z, -lim, lim)), 1.0)
+	if teams[t]["in_cover"]:
+		leave_cover(t)
+	_show_ping(teams[t]["order_target"])
+
+
+## T: split into fire teams A and B, side by side (B to the right).
+func split_teams() -> void:
+	if soldiers.size() < 2:
+		main.notify("NOT ENOUGH MEN TO SPLIT")
+		return
+	var base: Vector3 = teams[0]["anchor"]
+	var was_in_cover: bool = teams[0]["in_cover"]
+	# Spread specialists across both teams, then alternate riflemen.
+	var order := soldiers.duplicate()
+	order.sort_custom(func(a, b): return _role_rank(a.role) < _role_rank(b.role))
+	for i in order.size():
+		order[i].team = i % 2
+	split = true
+	active = 0
+	var right: Vector3 = main.cam_rig.get_yaw_basis() * Vector3.RIGHT
+	for t in 2:
+		var members := team_members(t)
+		var c := Vector3.ZERO
+		for s in members:
+			c += s.global_position
+		c /= float(maxi(1, members.size()))
+		c.y = 0
+		var side := -1.0 if t == 0 else 1.0
+		teams[t]["anchor"] = c if was_in_cover else CoverUtil.push_out(main.cover_defs, base + right * 2.5 * side, 0.7)
+		teams[t]["in_cover"] = was_in_cover
+		teams[t]["order_target"] = null
+		teams[t]["threat_dir"] = teams[0]["threat_dir"]
+	_make_offsets()
+	main.notify("SPLIT INTO FIRE TEAMS A + B  -  Q SWITCHES TEAM")
+
+
+func _role_rank(role: String) -> int:
+	return {"anti_armor": 0, "grenadier": 1}.get(role, 2)
+
+
+## T again: everyone regroups on the team you're commanding.
+func join_teams() -> void:
+	var base: Vector3 = teams[active]["anchor"]
+	bound = {}
+	split = false
+	for s in soldiers:
+		s.team = 0
+	teams[0]["anchor"] = base
+	teams[0]["order_target"] = null
+	active = 0
+	leave_cover(0)
+	_make_offsets()
+	main.notify("TEAMS JOINED")
+
+
+## Q: command the other fire team.
+func switch_team() -> void:
+	if not split:
+		return
+	active = 1 - active
+	scout_offset = Vector3.ZERO
+	main.notify("COMMANDING TEAM %s" % TEAM_NAMES[active])
+
+
+## H: hold position. Nobody moves; WASD scouts ahead with the camera.
+func set_holding(on: bool) -> void:
+	if on == holding:
+		return
+	holding = on
+	scout_offset = Vector3.ZERO
+	if on:
+		for t in 2:
+			teams[t]["order_target"] = null
+		bound = {}
+		main.notify("HOLDING POSITION  -  WASD SCOUTS, H TO RELEASE")
+	else:
+		main.notify("RELEASED HOLD")
+
+
+## B: bounding advance to `target`. Splits if needed. The team further from
+## the target moves first while the other covers from where it is.
+func start_bound(target: Vector3) -> void:
+	if soldiers.size() < 2:
+		move_to(target)
+		return
+	set_holding(false)
+	if not split:
+		split_teams()
+	var d0: float = teams[0]["anchor"].distance_to(target)
+	var d1: float = teams[1]["anchor"].distance_to(target)
+	bound = {"target": target, "mover": 0 if d0 > d1 else 1, "phase": "start", "timer": 0.0}
+	_show_ping(target)
+	main.notify("BOUNDING  -  ONE TEAM MOVES, ONE COVERS")
+
+
+func _update_bound(delta: float) -> void:
+	var target: Vector3 = bound["target"]
+	var mover: int = bound["mover"]
+	var cover_t := 1 - mover
+	match bound["phase"]:
+		"start":
+			# The covering team gets down; the moving team jumps ahead of it.
+			if not teams[cover_t]["in_cover"]:
+				_take_cover_facing(cover_t, target)
+			var from: Vector3 = teams[cover_t]["anchor"]
+			var to_t := target - from
+			to_t.y = 0
+			var dist := to_t.length()
+			var dir := to_t.normalized() if dist > 0.1 else Vector3.ZERO
+			var lateral := dir.cross(Vector3.UP) * (3.0 if mover == 1 else -3.0)
+			var dest: Vector3 = target + lateral * 0.6 if dist < BOUND_STEP + 3.0 else from + dir * BOUND_STEP + lateral
+			move_to(CoverUtil.push_out(main.cover_defs, dest, 0.7), mover)
+			bound["phase"] = "moving"
+		"moving":
+			if teams[mover]["order_target"] == null:
+				_take_cover_facing(mover, target)
+				bound["phase"] = "settle"
+				bound["timer"] = 1.5
+		"settle":
+			bound["timer"] -= delta
+			if bound["timer"] <= 0.0:
+				if teams[0]["anchor"].distance_to(target) < 6.5 and teams[1]["anchor"].distance_to(target) < 6.5:
+					bound = {}
+					main.notify("BOUND COMPLETE  -  BOTH TEAMS IN COVER")
+					return
+				bound["mover"] = cover_t
+				bound["phase"] = "start"
+
+
+func _take_cover_facing(t: int, target: Vector3) -> void:
+	var dir: Vector3 = target - teams[t]["anchor"]
+	dir.y = 0
+	take_cover(t, dir.normalized() if dir.length() > 1.0 else main.camera_forward())
+
+
+## Brief fading ring where a move order lands.
+func _show_ping(p: Vector3) -> void:
+	if _ping == null:
+		_ping = MeshInstance3D.new()
+		var t := TorusMesh.new()
+		t.inner_radius = 0.8
+		t.outer_radius = 1.0
+		_ping.mesh = t
+		var m := StandardMaterial3D.new()
+		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		m.albedo_color = Color(0.45, 1.0, 0.3, 0.8)
+		_ping.material_override = m
+		_ping.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(_ping)
+	_ping.global_position = p + Vector3(0, 0.05, 0)
+	_ping.scale = Vector3(1, 0.1, 1)
+	_ping.visible = true
+	_ping_t = 1.5
+
+
+# ---------------------------------------------------------------- movement
+
+func get_focus() -> Vector3:
+	return teams[active]["anchor"] + scout_offset
+
+
+func centroid(t := -1) -> Vector3:
+	var list: Array = soldiers if t < 0 else team_members(t)
+	var c := Vector3.ZERO
+	for s in list:
+		c += s.global_position
+	return c / float(maxi(1, list.size()))
+
+
+func _physics_process(delta: float) -> void:
+	var input := Input.get_vector("move_left", "move_right", "move_forward", "move_back")
+	var lim: float = main.NAV_HALF - 2.0
+	if input.length() > 0.05:
+		var dir: Vector3 = main.cam_rig.get_yaw_basis() * Vector3(input.x, 0, input.y)
+		dir.y = 0
+		dir = dir.normalized() * minf(input.length(), 1.0)
+		if holding:
+			scout_offset += dir * MOVE_SPEED * 1.6 * delta
+			if scout_offset.length() > SCOUT_RANGE:
+				scout_offset = scout_offset.normalized() * SCOUT_RANGE
+		else:
+			bound = {}
+			order_target = null
+			if in_cover:
+				leave_cover()
+			# Slow the anchor down if the team is lagging so the group stays tight.
+			var lag: float = anchor.distance_to(centroid(active))
+			var speed := MOVE_SPEED * clampf(1.0 - (lag - 3.0) / 4.0, 0.3, 1.0)
+			# The anchor is a ghost point with no collision: it passes straight
+			# through crates, and each soldier finds his own way around.
+			var a: Vector3 = anchor + dir * speed * delta
+			# ...but buildings and compound walls stop it, like a real street.
+			anchor = CoverUtil.push_out(main.solid_defs, Vector3(clampf(a.x, -lim, lim), 0, clampf(a.z, -lim, lim)), 1.0)
+	if not bound.is_empty():
+		_update_bound(delta)
+
+	for t in (2 if split else 1):
+		var team: Dictionary = teams[t]
+		var ot: Variant = team["order_target"]
+		if ot != null and not (t == active and input.length() > 0.05 and not holding):
+			var to: Vector3 = ot - team["anchor"]
+			to.y = 0
+			if to.length() < 0.4:
+				team["order_target"] = null
+			else:
+				var lag: float = team["anchor"].distance_to(centroid(t))
+				var speed := MOVE_SPEED * clampf(1.0 - (lag - 3.0) / 4.0, 0.3, 1.0)
+				team["anchor"] += to.normalized() * minf(speed * delta, to.length())
+		if not team["in_cover"]:
+			for s in team_members(t):
+				s.move_target = CoverUtil.push_out(main.cover_defs, team["anchor"] + s.slot_offset, 0.6)
+
+	if _ping and _ping.visible:
+		_ping_t -= delta
+		(_ping.material_override as StandardMaterial3D).albedo_color.a = clampf(_ping_t / 1.5, 0.0, 1.0) * 0.8
+		if _ping_t <= 0.0:
+			_ping.visible = false
+
+	_check_joins()
+
+
+# ---------------------------------------------------------------- cover
+
+## Every soldier in the team scrambles to the closest free cover spot that
+## shields him from `facing` (default: where the camera looks), with a pull
+## toward his team so nobody runs off alone.
+func take_cover(t := -1, facing := Vector3.ZERO) -> void:
+	if t < 0:
+		t = active
+	var team: Dictionary = teams[t]
+	team["in_cover"] = true
+	team["order_target"] = null
+	team["threat_dir"] = facing if facing != Vector3.ZERO else main.camera_forward()
+	var tdir: Vector3 = team["threat_dir"]
+	var members := team_members(t)
+	var centre: Vector3 = team["anchor"]
+
+	# Spots the other team already holds are off limits.
+	var claimed: Array = []
+	for s in soldiers:
+		if split and s.team != t and s.state != 0:   # 0 = FOLLOW
+			claimed.append(s.cover_pos)
+
+	var candidates: Array = []
+	for cp in main.cover_points:
+		if cp["pos"].distance_to(centre) > COVER_SEARCH:
+			continue
+		if cp["normal"].dot(tdir) > -0.3:
+			continue  # box isn't between this spot and the threat
+		candidates.append(cp)
+
+	var pairs: Array = []
+	for s in members:
+		for ci in candidates.size():
+			var cpos: Vector3 = candidates[ci]["pos"]
+			var score: float = s.global_position.distance_to(cpos) + COHESION_WEIGHT * cpos.distance_to(centre)
+			pairs.append([score, s.index, ci])
+	pairs.sort_custom(func(a, b): return a[0] < b[0])
+
+	var assigned := {}
+	var mine: Array = []
+	for p in pairs:
+		if assigned.has(p[1]):
+			continue
+		var cpos: Vector3 = candidates[p[2]]["pos"]
+		var free := true
+		for c in claimed + mine:
+			if c.distance_to(cpos) < MIN_COVER_GAP:
+				free = false
+				break
+		if not free:
+			continue
+		assigned[p[1]] = candidates[p[2]]
+		mine.append(cpos)
+		if assigned.size() == members.size():
+			break
+
+	# Lean-out spots: two men on neighbouring sides of a tall crate would
+	# otherwise lean out at the same corner. Each man claims his own.
+	var all_spots: Array = claimed + mine
+	var taken_leans: Array = []
+	for s in members:
+		if not assigned.has(s.index):
+			s.go_to_cover(s.global_position, false)  # no spot: get low where you are
+			continue
+		var cp: Dictionary = assigned[s.index]
+		var leans: Array = []
+		for lp in cp["peeks"]:
+			var clear := true
+			for c in all_spots:
+				if c != cp["pos"] and c.distance_to(lp) < 1.0:
+					clear = false
+			for x in taken_leans:
+				if x.distance_to(lp) < 1.0:
+					clear = false
+			if clear:
+				leans.append(lp)
+		if leans.is_empty() and not cp["peeks"].is_empty():
+			leans = [_least_crowded(cp["peeks"], all_spots + taken_leans, cp["pos"])]
+		taken_leans.append_array(leans)
+		s.go_to_cover(cp["pos"], true, leans)
+
+
+## The lean spot furthest from everyone else's spots.
+func _least_crowded(options: Array, others: Array, own: Vector3) -> Vector3:
+	var best: Vector3 = options[0]
+	var best_d := -1.0
+	for o in options:
+		var d := INF
+		for x in others:
+			if x != own:
+				d = minf(d, o.distance_to(x))
+		if d > best_d:
+			best_d = d
+			best = o
+	return best
+
+
+func leave_cover(t := -1) -> void:
+	if t < 0:
+		t = active
+	teams[t]["in_cover"] = false
+	for s in team_members(t):
+		s.leave_cover()
+
+
+# ---------------------------------------------------------------- casualties & status
+
+func on_soldier_killed(s: Node3D) -> void:
+	soldiers.erase(s)
+	kia += 1
+	for i in soldiers.size():
+		soldiers[i].index = i
+	if split and (team_members(0).is_empty() or team_members(1).is_empty()):
+		join_teams()   # a team was wiped out: survivors regroup
+	_make_offsets()
+	if soldiers.is_empty():
+		main.notify("SQUAD WIPED OUT  -  PRESS R TO RESTART")
+	else:
+		main.notify("%s DOWN" % s.role_name())
+
+
+func avg_suppression() -> float:
+	if soldiers.is_empty():
+		return 0.0
+	var t := 0.0
+	for s in soldiers:
+		t += s.suppression
+	return t / float(soldiers.size())
+
+
+func _team_status(t: int) -> String:
+	var members := team_members(t)
+	if teams[t]["order_target"] != null:
+		return "MOVING"
+	if not teams[t]["in_cover"]:
+		return "HOLDING" if holding else "READY"
+	var settled := 0
+	for s in members:
+		if s.is_settled():
+			settled += 1
+	return ("IN COVER" if settled == members.size() else "TAKING COVER") + " %d/%d" % [settled, members.size()]
+
+
+func status_text() -> String:
+	var tag := ""
+	if holding:
+		tag = "  [HOLD - SCOUTING]"
+	elif not bound.is_empty():
+		tag = "  [BOUNDING]"
+	if not split:
+		if not in_cover:
+			return ("HOLDING POSITION" if holding else "MOVING (loose cluster)") + tag
+		var settled := 0
+		var exposed := 0
+		for s in soldiers:
+			if s.is_settled():
+				settled += 1
+			if not s.has_real_cover:
+				exposed += 1
+		var txt := "IN COVER" if settled == soldiers.size() else "TAKING COVER"
+		txt += "  (%d/%d in position" % [settled, soldiers.size()]
+		if exposed > 0:
+			txt += ", %d with no cover" % exposed
+		return txt + ")" + tag
+	var parts: Array = []
+	for t in 2:
+		var mark := ">" if t == active else " "
+		parts.append("%sTEAM %s (%d) %s" % [mark, TEAM_NAMES[t], team_members(t).size(), _team_status(t)])
+	return "   ".join(parts) + tag
 
 
 ## Squad make-up plus the state of every special weapon.
@@ -178,225 +680,3 @@ func roster_text() -> String:
 	if sp.is_empty():
 		sp.append("NONE")
 	return t + "\nSPECIAL " + "   ".join(sp)
-
-
-func get_focus() -> Vector3:
-	return anchor
-
-
-func centroid() -> Vector3:
-	var c := Vector3.ZERO
-	for s in soldiers:
-		c += s.global_position
-	return c / float(maxi(1, soldiers.size()))
-
-
-func _unhandled_input(event: InputEvent) -> void:
-	if event.is_action_pressed("take_cover"):
-		if in_cover:
-			leave_cover()
-		else:
-			take_cover()
-	elif event.is_action_pressed("auto_fire"):
-		auto_fire = not auto_fire
-	elif event.is_action_pressed("move_order"):
-		var p: Variant = main.reticle_ground_point()
-		if p != null:
-			move_to(p)
-
-
-## Send the squad to a point. They break cover and move as a group;
-## WASD cancels the order.
-func move_to(p: Vector3) -> void:
-	var lim: float = main.NAV_HALF - 2.0
-	order_target = Vector3(clampf(p.x, -lim, lim), 0, clampf(p.z, -lim, lim))
-	if in_cover:
-		leave_cover()
-	_show_ping(order_target)
-
-
-## Brief fading ring where the move order lands.
-func _show_ping(p: Vector3) -> void:
-	if _ping == null:
-		_ping = MeshInstance3D.new()
-		var t := TorusMesh.new()
-		t.inner_radius = 0.8
-		t.outer_radius = 1.0
-		_ping.mesh = t
-		var m := StandardMaterial3D.new()
-		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-		m.albedo_color = Color(0.45, 1.0, 0.3, 0.8)
-		_ping.material_override = m
-		_ping.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		add_child(_ping)
-	_ping.global_position = p + Vector3(0, 0.05, 0)
-	_ping.scale = Vector3(1, 0.1, 1)
-	_ping.visible = true
-	_ping_t = 1.5
-
-
-func _physics_process(delta: float) -> void:
-	var input := Input.get_vector("move_left", "move_right", "move_forward", "move_back")
-	if input.length() > 0.05:
-		order_target = null
-		if in_cover:
-			leave_cover()
-		var dir: Vector3 = main.cam_rig.get_yaw_basis() * Vector3(input.x, 0, input.y)
-		dir.y = 0
-		# Slow the anchor down if the squad is lagging so the group stays tight.
-		var lag := anchor.distance_to(centroid())
-		var speed := MOVE_SPEED * clampf(1.0 - (lag - 3.0) / 4.0, 0.3, 1.0)
-		anchor += dir.normalized() * minf(input.length(), 1.0) * speed * delta
-		var lim: float = main.NAV_HALF - 2.0
-		anchor.x = clampf(anchor.x, -lim, lim)
-		anchor.z = clampf(anchor.z, -lim, lim)
-		# The anchor is a ghost point with no collision: it passes straight
-		# through crates, and each soldier finds his own way around.
-
-	elif order_target != null:
-		var to: Vector3 = order_target - anchor
-		to.y = 0
-		if to.length() < 0.4:
-			order_target = null
-		else:
-			var lag := anchor.distance_to(centroid())
-			var speed := MOVE_SPEED * clampf(1.0 - (lag - 3.0) / 4.0, 0.3, 1.0)
-			anchor += to.normalized() * minf(speed * delta, to.length())
-
-	if _ping and _ping.visible:
-		_ping_t -= delta
-		(_ping.material_override as StandardMaterial3D).albedo_color.a = clampf(_ping_t / 1.5, 0.0, 1.0) * 0.8
-		if _ping_t <= 0.0:
-			_ping.visible = false
-
-	if not in_cover:
-		for i in soldiers.size():
-			var p: Vector3 = anchor + slot_offsets[i]
-			soldiers[i].move_target = CoverUtil.push_out(main.cover_defs, p, 0.6)
-
-	_check_joins()
-
-
-## Every soldier scrambles to the closest free cover spot that shields it from
-## the threat, with a pull toward the squad so nobody runs off alone.
-func take_cover() -> void:
-	in_cover = true
-	threat_dir = main.camera_forward()   # hide from whatever the camera faces
-
-	var candidates: Array = []
-	for cp in main.cover_points:
-		if cp["pos"].distance_to(anchor) > COVER_SEARCH:
-			continue
-		if cp["normal"].dot(threat_dir) > -0.3:
-			continue  # box isn't between this spot and the threat
-		candidates.append(cp)
-
-	var pairs: Array = []
-	for s in soldiers:
-		for ci in candidates.size():
-			var cpos: Vector3 = candidates[ci]["pos"]
-			var score: float = s.global_position.distance_to(cpos) + COHESION_WEIGHT * cpos.distance_to(anchor)
-			pairs.append([score, s.index, ci])
-	pairs.sort_custom(func(a, b): return a[0] < b[0])
-
-	var assigned := {}
-	var claimed: Array = []
-	for p in pairs:
-		if assigned.has(p[1]):
-			continue
-		var cpos: Vector3 = candidates[p[2]]["pos"]
-		var free := true
-		for c in claimed:
-			if c.distance_to(cpos) < MIN_COVER_GAP:
-				free = false
-				break
-		if not free:
-			continue
-		assigned[p[1]] = candidates[p[2]]
-		claimed.append(cpos)
-		if assigned.size() == soldiers.size():
-			break
-
-	# Lean-out spots: two men on neighbouring sides of a tall crate would
-	# otherwise lean out at the same corner. Each man claims his own.
-	var taken_leans: Array = []
-	for s in soldiers:
-		if not assigned.has(s.index):
-			s.go_to_cover(s.global_position, false)  # no spot: get low where you are
-			continue
-		var cp: Dictionary = assigned[s.index]
-		var leans: Array = []
-		for lp in cp["peeks"]:
-			var clear := true
-			for c in claimed:
-				if c != cp["pos"] and c.distance_to(lp) < 1.0:
-					clear = false
-			for t in taken_leans:
-				if t.distance_to(lp) < 1.0:
-					clear = false
-			if clear:
-				leans.append(lp)
-		if leans.is_empty() and not cp["peeks"].is_empty():
-			leans = [_least_crowded(cp["peeks"], claimed + taken_leans, cp["pos"])]
-		taken_leans.append_array(leans)
-		s.go_to_cover(cp["pos"], true, leans)
-
-
-## The lean spot furthest from everyone else's spots.
-func _least_crowded(options: Array, others: Array, own: Vector3) -> Vector3:
-	var best: Vector3 = options[0]
-	var best_d := -1.0
-	for o in options:
-		var d := INF
-		for x in others:
-			if x != own:
-				d = minf(d, o.distance_to(x))
-		if d > best_d:
-			best_d = d
-			best = o
-	return best
-
-
-func on_soldier_killed(s: Node3D) -> void:
-	soldiers.erase(s)
-	kia += 1
-	for i in soldiers.size():
-		soldiers[i].index = i
-	_make_offsets(maxi(1, soldiers.size()))
-	if soldiers.is_empty():
-		main.notify("SQUAD WIPED OUT  -  PRESS R TO RESTART")
-	else:
-		main.notify("%s DOWN" % s.role_name())
-
-
-func avg_suppression() -> float:
-	if soldiers.is_empty():
-		return 0.0
-	var t := 0.0
-	for s in soldiers:
-		t += s.suppression
-	return t / float(soldiers.size())
-
-
-func leave_cover() -> void:
-	in_cover = false
-	for s in soldiers:
-		s.leave_cover()
-
-
-func status_text() -> String:
-	if not in_cover:
-		return "MOVING (loose cluster)"
-	var settled := 0
-	var exposed := 0
-	for s in soldiers:
-		if s.is_settled():
-			settled += 1
-		if not s.has_real_cover:
-			exposed += 1
-	var txt := "IN COVER" if settled == soldiers.size() else "TAKING COVER"
-	txt += "  (%d/%d in position" % [settled, soldiers.size()]
-	if exposed > 0:
-		txt += ", %d with no cover" % exposed
-	return txt + ")"
