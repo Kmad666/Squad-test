@@ -36,12 +36,16 @@ func _physics_process(_d):
 		4200: sq.move_to(Vector3(-19.5, 0, -14))
 		4800:
 			sq.active = 0
-			sq.forced_specials = true
 			sq.start_bound(Vector3(0, 0, -30))
 		6600: sq.join_teams()
-		6700: sq.move_to(Vector3(0, 0, -36))
+		6700: sq.move_to(Vector3(-7, 0, -29))   # clear line past the tall crate
+		7200:
+			sq.select_special(3)          # rockets on the APC from inside the gate
+			sq.forced_specials = true
 	if frame % 600 == 0: _report()
-	if frame == 9000:
-		print("final: ", main._notice)
+	if frame == 10200:
+		var left := 0
+		for t in main.targets: left += int(t.alive)
+		print("final: enemies left ", left, ", squad ", sq.soldiers.size(), "/", sq.soldiers.size() + sq.kia, (" - MISSION COMPLETE" if left == 0 else " - NOT CLEARED"))
 		quit()
 	return false

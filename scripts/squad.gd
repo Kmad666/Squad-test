@@ -15,6 +15,7 @@ extends Node3D
 
 const CoverUtil = preload("res://scripts/cover_util.gd")
 const SoldierScript = preload("res://scripts/soldier.gd")
+const Weapons = preload("res://scripts/weapons.gd")
 const UI_FONT = preload("res://fonts/ShareTechMono-Regular.ttf")
 
 const MOVE_SPEED := 5.0
@@ -37,7 +38,9 @@ var soldiers: Array = []
 var slot_offsets: Array = []       # by soldier index (kept for tests / tools)
 var auto_fire := false             # F: permanent fire at will
 var forced_mode := -1              # tests can force a fire mode
-var forced_specials := false       # tests can force the specials order
+var forced_specials := false       # tests: use a special every 1.5 s automatically
+var selected_special := 0          # index into Weapons.SPECIAL_ORDER (keys 1-4, X)
+var _forced_special_t := 0.0
 var pending_teams: Array = []      # [{members, center, label, name}]
 var kia := 0
 
@@ -74,8 +77,13 @@ func _init() -> void:
 func setup(m: Node3D, start: Vector3) -> void:
 	main = m
 	teams[0]["anchor"] = start
+	var rifle_n := 0
 	for i in START_ROLES.size():
 		var s := _new_soldier(START_ROLES[i], i)
+		if s.role == "rifleman":
+			# Riflemen carry one hand grenade each: frags and flashbangs, mixed.
+			s.set_special("flash" if rifle_n % 3 == 1 else "frag", 1)
+			rifle_n += 1
 		soldiers.append(s)
 	_make_offsets()
 	for s in soldiers:
@@ -189,15 +197,98 @@ func fire_mode_for(s: Node3D) -> int:
 	return fire_mode()
 
 
-## Right mouse held = specialists use grenade launchers / rockets on the reticle.
-func specials_active() -> bool:
-	if forced_specials:
-		return true
-	return Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT)
+# ---------------------------------------------------------------- specials
+# One right click = one man uses one special of the selected kind on the
+# reticle. 1-4 pick the kind, X jumps to the next kind that still has ammo.
+# If the selected kind is empty the click switches to the next one with ammo
+# and uses it, so a click in a pinch is never wasted.
+
+## Men whose specials you can call on: your active team (or everyone, joined).
+func _special_users() -> Array:
+	return soldiers if not split else team_members(active)
 
 
-func specials_for(s: Node3D) -> bool:
-	return specials_active() and (not split or s.team == active)
+func special_count(kind: String) -> int:
+	var n := 0
+	for s in _special_users():
+		if s.special_kind == kind:
+			n += s.special_ammo
+	return n
+
+
+func total_specials() -> int:
+	var n := 0
+	for k in Weapons.SPECIAL_ORDER:
+		n += special_count(k)
+	return n
+
+
+func selected_kind() -> String:
+	return Weapons.SPECIAL_ORDER[selected_special]
+
+
+func _clear_shot(s: Node3D, t: Node3D, point: Vector3) -> bool:
+	var from: Vector3 = s.global_position + Vector3(0, 1.55, 0)
+	var to: Vector3 = t.aim_point() if t else point + Vector3(0, 0.5, 0)
+	var q := PhysicsRayQueryParameters3D.create(from, to, 1 | 4)
+	var hit := get_world_3d().direct_space_state.intersect_ray(q)
+	return hit.is_empty() or hit["collider"] == t or (hit["position"] as Vector3).distance_to(to) < 1.0
+
+
+func select_special(idx: int) -> void:
+	selected_special = clampi(idx, 0, Weapons.SPECIAL_ORDER.size() - 1)
+	var k := selected_kind()
+	main.on_special_selected(k, special_count(k))
+
+
+## X: next kind that still has ammo.
+func cycle_special() -> void:
+	for step in range(1, Weapons.SPECIAL_ORDER.size() + 1):
+		var idx := (selected_special + step) % Weapons.SPECIAL_ORDER.size()
+		if special_count(Weapons.SPECIAL_ORDER[idx]) > 0:
+			select_special(idx)
+			return
+	main.on_no_explosives()
+
+
+func use_special() -> void:
+	if total_specials() == 0:
+		main.on_no_explosives()
+		return
+	var kind := selected_kind()
+	if special_count(kind) == 0:
+		for step in range(1, Weapons.SPECIAL_ORDER.size()):
+			var idx := (selected_special + step) % Weapons.SPECIAL_ORDER.size()
+			if special_count(Weapons.SPECIAL_ORDER[idx]) > 0:
+				main.notify("%s OUT  -  SWITCHED TO %s" % [Weapons.SPECIALS[kind][1], Weapons.SPECIALS[Weapons.SPECIAL_ORDER[idx]][1]], 2.0)
+				selected_special = idx
+				kind = Weapons.SPECIAL_ORDER[idx]
+				break
+	var w: Dictionary = Weapons.SPECIALS[kind][0]
+	var aim: Dictionary = main.special_target(kind)
+	var point: Vector3 = aim["point"]
+	# The nearest ready man carrying this kind who can reach the spot throws.
+	var best: Node3D = null
+	var best_d := INF
+	var any_ready := false
+	for s in _special_users():
+		if s.special_kind != kind or not s.special_ready():
+			continue
+		any_ready = true
+		var d: float = s.global_position.distance_to(point)
+		if d > w["max"]:
+			continue
+		# Rockets fly straight: prefer a man with a clear line to the target.
+		if kind == "rocket" and not _clear_shot(s, aim["target"], point):
+			d += 100.0
+		if d < best_d:
+			best_d = d
+			best = s
+	if best == null:
+		main.notify(("TOO FAR FOR %s  (%d m)" % [Weapons.SPECIALS[kind][1], int(w["max"])]) if any_ready else "%s RELOADING" % Weapons.SPECIALS[kind][1], 1.5)
+		return
+	best.order_special(aim["target"], point)
+	main.on_special_used(kind, best)
 
 
 func threat_dir_for(t: int) -> Vector3:
@@ -211,8 +302,6 @@ func fire_mode_text() -> String:
 			t = "FOCUS FIRE"
 		AT_WILL:
 			t = "FIRE AT WILL"
-	if specials_active():
-		t += " + SPECIALS"
 	if split:
 		t += "   (TEAM %s COVERING)" % TEAM_NAMES[1 - active]
 	return t
@@ -242,6 +331,13 @@ func _unhandled_input(event: InputEvent) -> void:
 			start_bound(p)
 	elif event.is_action_pressed("hold_position"):
 		set_holding(not holding)
+	elif event.is_action_pressed("cycle_special"):
+		cycle_special()
+	elif event is InputEventKey and event.pressed and not event.echo and event.physical_keycode >= KEY_1 and event.physical_keycode <= KEY_4:
+		select_special(event.physical_keycode - KEY_1)
+	elif event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_RIGHT \
+			and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+		use_special()
 
 
 ## Send the active team to a point. They break cover and move as a group;
@@ -472,6 +568,12 @@ func _physics_process(delta: float) -> void:
 		if _ping_t <= 0.0:
 			_ping.visible = false
 
+	if forced_specials:
+		_forced_special_t -= delta
+		if _forced_special_t <= 0.0:
+			_forced_special_t = 1.5
+			use_special()
+
 	_check_joins()
 
 
@@ -674,11 +776,4 @@ func roster_text() -> String:
 		t += "   %d WOUNDED" % wounded
 	if kia > 0:
 		t += "   %d KIA" % kia
-	var sp: Array = []
-	if gl[1] > 0:
-		sp.append("GL %d/%d READY" % gl)
-	if rk[1] > 0:
-		sp.append("ROCKETS %d/%d READY" % rk)
-	if sp.is_empty():
-		sp.append("NONE")
-	return t + "\nSPECIAL " + "   ".join(sp)
+	return t

@@ -43,6 +43,7 @@ func _physics_process(_d):
 			else: sq.move_to(p[1])
 			sq.forced_mode = 1 if p[2] == 1 else 0
 			sq.forced_specials = frame >= 2100
+			if frame == 5100: sq.select_special(3)   # rockets for CHARLIE
 	if frame % 600 == 0: _report()
 	if frame == 7200:
 		print(main._notice)

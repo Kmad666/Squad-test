@@ -7,6 +7,7 @@ const SquadScript = preload("res://scripts/squad.gd")
 const EnemySoldierScript = preload("res://scripts/enemy_soldier.gd")
 const VehicleScript = preload("res://scripts/vehicle.gd")
 const CameraRigScript = preload("res://scripts/camera_rig.gd")
+const Weapons = preload("res://scripts/weapons.gd")
 const ReticleScript = preload("res://scripts/reticle.gd")
 const ReticlePanelScript = preload("res://scripts/reticle_panel.gd")
 const AtmosphereScript = preload("res://scripts/atmosphere.gd")
@@ -35,7 +36,12 @@ var squad: Node3D
 var cam_rig: Node3D
 var nav_region: NavigationRegion3D
 var hud_label: Label
+var unit_label: RichTextLabel     # squad health panel (bottom right)
+var special_label: RichTextLabel  # special-weapon selector bar (bottom centre)
+var _no_explosives_t := 0.0
 var help_label: Label
+var help_panel: PanelContainer
+var _help_t := 25.0            # controls panel auto-hides after this; F1 toggles it
 var reticle: Control
 var reticle_panel: PanelContainer
 var hits := 0
@@ -162,6 +168,7 @@ func _setup_input() -> void:
 	_bind("switch_team", [KEY_Q])
 	_bind("bound", [KEY_B])
 	_bind("hold_position", [KEY_H])
+	_bind("cycle_special", [KEY_X])
 
 
 func _bind(action: String, keys: Array) -> void:
@@ -387,6 +394,22 @@ func _build_boxes() -> void:
 		col.shape = bs
 		body.add_child(col)
 
+		# Big hollow boxes would otherwise leave walkable "floor" inside them
+		# in the navigation mesh; an obstacle footprint blocks that out.
+		if size.x * size.z > 6.0:
+			var ob := NavigationObstacle3D.new()
+			var hx := size.x * 0.5
+			var hz := size.z * 0.5
+			var verts := PackedVector3Array()
+			for c in [Vector3(-hx, 0, -hz), Vector3(hx, 0, -hz), Vector3(hx, 0, hz), Vector3(-hx, 0, hz)]:
+				verts.append(xform.basis * c)
+			ob.vertices = verts
+			ob.height = size.y
+			ob.affect_navigation_mesh = true
+			ob.avoidance_enabled = false
+			ob.position = pos
+			nav_region.add_child(ob)
+
 
 ## Low-poly car: body, cabin with dark glass, wheels; some still have their
 ## tail lights on. Length runs along local x.
@@ -461,7 +484,7 @@ func _bake_nav() -> void:
 	nm.agent_max_climb = 0.25
 	nm.cell_size = 0.25
 	nm.cell_height = 0.25
-	nm.filter_baking_aabb = AABB(Vector3(-NAV_HALF, -1, -NAV_HALF), Vector3(NAV_HALF * 2, 4, NAV_HALF * 2))
+	nm.filter_baking_aabb = AABB(Vector3(-NAV_HALF, -1, -NAV_HALF), Vector3(NAV_HALF * 2, 16, NAV_HALF * 2))   # tall enough to include whole buildings
 	nav_region.navigation_mesh = nm
 	nav_region.bake_navigation_mesh(false)
 
@@ -775,6 +798,9 @@ func _burst(color: Color, amount: int, life: float, size: float, vmin: float, vm
 ## Blast: splash damage with falloff to every target in the radius (a direct
 ## hit always takes full damage), plus the big screen and light effects.
 func spawn_explosion(pos: Vector3, w: Dictionary, direct: Node3D, hostile := false) -> void:
+	if w["kind"] == "flash":
+		_flashbang(pos, w)
+		return
 	var radius: float = w["radius"]
 	if hostile:
 		_blast_soldiers(pos, w, direct)
@@ -887,6 +913,94 @@ func on_enemy_cannon(at: Vector3) -> void:
 	fire_heat = minf(1.0, fire_heat + clampf(20.0 / maxf(d, 1.0), 0.05, 0.3))
 
 
+## Flashbang: no damage. Every enemy in the radius who isn't shielded by a
+## wall is blinded (can't shoot) and pinned; your own men too close get
+## rattled. A blinding white flash fills the street.
+func _flashbang(pos: Vector3, w: Dictionary) -> void:
+	var radius: float = w["radius"]
+	var space := get_world_3d().direct_space_state
+	for t in targets:
+		if not t.alive or not ("gunners" in t) or t.kind == "vehicle":
+			continue
+		var p: Vector3 = t.aim_point()
+		if p.distance_to(pos) > radius:
+			continue
+		var q := PhysicsRayQueryParameters3D.create(pos + Vector3(0, 0.4, 0), p, 1)
+		if not space.intersect_ray(q).is_empty():
+			continue   # behind solid cover: spared
+		for g in t.gunners:
+			g.add_suppression(1.0)
+			g.blind(w["blind"])
+	for s in squad.soldiers:
+		var d: float = s.global_position.distance_to(pos)
+		if d < 5.0:
+			s.add_suppression(0.6 * (1.0 - d / 5.0))
+	var e: Dictionary = _explosions[_explosion_idx]
+	_explosion_idx = (_explosion_idx + 1) % _explosions.size()
+	e["root"].global_position = pos
+	var light: OmniLight3D = e["light"]
+	light.visible = true
+	light.light_color = Color(0.9, 0.95, 1.0)
+	light.light_energy = 16.0
+	if e["tween"]:
+		e["tween"].kill()
+	var tw := create_tween()
+	tw.tween_property(light, "light_energy", 0.0, 0.6).set_ease(Tween.EASE_OUT)
+	tw.tween_callback(func():
+		light.visible = false
+		light.light_color = Color(1.0, 0.6, 0.25))
+	e["tween"] = tw
+	var cam_d: float = cam_rig.cam.global_position.distance_to(pos)
+	flash = 1.0
+	fire_heat = minf(1.0, fire_heat + clampf(25.0 / maxf(cam_d, 1.0), 0.1, 0.5))
+
+
+# ---------------------------------------------------------------- specials
+
+## What a special goes at: the best enemy inside the reticle for that kind
+## (rockets: vehicles first; grenades and flashbangs: infantry first), nearest
+## to the reticle centre; otherwise the ground under the reticle.
+func special_target(kind: String) -> Dictionary:
+	var cam: Camera3D = cam_rig.cam
+	var centre := reticle_rect().get_center()
+	var best: Node3D = null
+	var best_score := INF
+	for t in targets:
+		if not t.alive or not in_reticle(t.aim_point()):
+			continue
+		var score := 0.0
+		if not debug_reticle_all and not cam.is_position_behind(t.aim_point()):
+			score = cam.unproject_position(t.aim_point()).distance_to(centre)
+		if t.kind == "vehicle":
+			score += -10000.0 if kind == "rocket" else 10000.0
+		if score < best_score:
+			best_score = score
+			best = t
+	if kind == "flash" and best and best.kind == "vehicle":
+		best = null
+	if best:
+		return {"target": best, "point": best.global_position}
+	var p: Variant = reticle_ground_point()
+	if p == null:
+		var rng := RandomNumberGenerator.new()
+		p = reticle_world_point(rng)
+	return {"target": null, "point": p}
+
+
+func on_special_selected(kind: String, count: int) -> void:
+	notify("%s SELECTED  (%d LEFT)" % [Weapons.SPECIALS[kind][1], count], 1.2)
+
+
+func on_special_used(kind: String, _who: Node3D) -> void:
+	var callout := {"frag": "FRAG OUT!", "flash": "FLASHBANG OUT!", "gl": "GRENADE AWAY!", "rocket": "ROCKET AWAY!"}
+	notify(callout.get(kind, ""), 1.0)
+
+
+func on_no_explosives() -> void:
+	_no_explosives_t = 1.6
+	notify("NO EXPLOSIVES LEFT", 1.6)
+
+
 ## Backblast / thump when a launcher fires.
 func on_launch(at: Vector3, w: Dictionary) -> void:
 	fire_heat = minf(1.0, fire_heat + (0.3 if w["kind"] == "rocket" else 0.15))
@@ -961,6 +1075,9 @@ func _neon_theme() -> Theme:
 	t.default_font = UI_FONT
 	t.default_font_size = 15
 	var glow := Color(NEON, 0.28)
+	t.set_color("default_color", "RichTextLabel", NEON)
+	t.set_color("font_outline_color", "RichTextLabel", Color(NEON, 0.22))
+	t.set_constant("outline_size", "RichTextLabel", 4)
 	for type in ["Label", "Button", "CheckBox"]:
 		t.set_color("font_color", type, NEON)
 		t.set_color("font_outline_color", type, glow)
@@ -1008,30 +1125,118 @@ func _build_hud() -> void:
 	hud_label.add_theme_font_size_override("font_size", 14)
 	panel.add_child(hud_label)
 
-	# Controls reference, bottom-left, out of the way of the reticle.
-	var help := PanelContainer.new()
-	help.add_theme_stylebox_override("panel", sb)
-	help.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
-	help.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	help.offset_left = 12
-	help.offset_bottom = -12
-	ui_root.add_child(help)
+	# Controls reference, bottom-left. Hides itself after a while (F1 toggles)
+	# so the screen stays clear for the fight.
+	help_panel = PanelContainer.new()
+	help_panel.add_theme_stylebox_override("panel", sb)
+	help_panel.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
+	help_panel.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	help_panel.offset_left = 12
+	help_panel.offset_bottom = -12
+	ui_root.add_child(help_panel)
 	help_label = Label.new()
 	help_label.add_theme_font_size_override("font_size", 12)
 	help_label.text = "WASD move   MOUSE aim   WHEEL zoom   E move to reticle   C / SPACE cover\n" \
-		+ "LMB focus fire   RMB specials (GL / rockets)   F auto fire\n" \
-		+ "T split / join fire teams   Q switch team   B bound to reticle   H hold + scout\n" \
-		+ "TAB reticle   G graphics   M next map   R restart"
-	help.add_child(help_label)
+		+ "LMB focus fire   RMB throw / fire special   1-4 pick special   X next special\n" \
+		+ "F auto fire   T split / join teams   Q switch team   B bound   H hold + scout\n" \
+		+ "TAB reticle   G graphics   M next map   R restart   F1 this help"
+	help_panel.add_child(help_label)
+
+	# Squad health: one line per man (bottom right).
+	var unit_panel := PanelContainer.new()
+	unit_panel.add_theme_stylebox_override("panel", sb)
+	unit_panel.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
+	unit_panel.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	unit_panel.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	unit_panel.offset_right = -12
+	unit_panel.offset_bottom = -12
+	ui_root.add_child(unit_panel)
+	unit_label = _rich(13)
+	unit_label.custom_minimum_size = Vector2(300, 0)
+	unit_panel.add_child(unit_label)
+
+	# Special-weapon selector, FPS style (bottom centre).
+	var bar := PanelContainer.new()
+	var bsb := sb.duplicate()
+	bsb.bg_color = Color(0.0, 0.04, 0.0, 0.45)
+	bar.add_theme_stylebox_override("panel", bsb)
+	bar.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
+	bar.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	bar.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	bar.offset_bottom = -12
+	ui_root.add_child(bar)
+	special_label = _rich(15)
+	special_label.custom_minimum_size = Vector2(440, 0)
+	bar.add_child(special_label)
 
 	reticle_panel = ReticlePanelScript.new()
 	reticle_panel.reticle = reticle
 	ui_root.add_child(reticle_panel)
 
 
+func _rich(size: int) -> RichTextLabel:
+	var r := RichTextLabel.new()
+	r.bbcode_enabled = true
+	r.fit_content = true
+	r.scroll_active = false
+	r.autowrap_mode = TextServer.AUTOWRAP_OFF
+	r.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	r.add_theme_font_size_override("normal_font_size", size)
+	return r
+
+
+const C_OK := "#73ff4d"
+const C_WARN := "#ffbf33"
+const C_BAD := "#ff4d33"
+const C_DIM := "#3f6b35"
+
+
+## Squad health panel: team, role, health bar, special and ammo for each man.
+func _unit_text() -> String:
+	var role_short := {"rifleman": "RIF ", "grenadier": "GREN", "anti_armor": "AT  "}
+	var total: int = squad.soldiers.size() + squad.kia
+	var lines: Array = ["UNIT  %d / %d%s" % [squad.soldiers.size(), total, ("   KIA %d" % squad.kia) if squad.kia > 0 else ""]]
+	for s in squad.soldiers:
+		var frac: float = clampf(s.hp / s.MAX_HP, 0.0, 1.0)
+		var col := C_OK if frac > 0.6 else (C_WARN if frac > 0.3 else C_BAD)
+		var n := ceili(frac * 10.0)
+		var bar := "[color=%s]%s[/color][color=%s]%s[/color]" % [col, "#".repeat(n), C_DIM, "-".repeat(10 - n)]
+		var team := ("ABCD"[s.team] + " ") if squad.split else ""
+		var sp_name: String = Weapons.SPECIALS[s.special_kind][1]
+		var sp := "[color=%s]%-5s %d[/color]" % [C_OK if s.special_ammo > 0 else C_DIM, sp_name, s.special_ammo]
+		var flag := ""
+		if s.pinned():
+			flag = "  [color=%s]PINNED[/color]" % C_WARN
+		elif s.hp < s.MAX_HP * 0.5:
+			flag = "  [color=%s]WOUNDED[/color]" % C_WARN
+		lines.append("%s%s %s  %s%s" % [team, role_short.get(s.role, "?   "), bar, sp, flag])
+	return "\n".join(lines)
+
+
+## Special selector: [1] FRAG 3   [2] FLASH 2 ... with the selected one lit.
+func _special_text() -> String:
+	var parts: Array = []
+	for i in Weapons.SPECIAL_ORDER.size():
+		var k: String = Weapons.SPECIAL_ORDER[i]
+		var n: int = squad.special_count(k)
+		var label := "%d %s %d" % [i + 1, Weapons.SPECIALS[k][1], n]
+		if i == squad.selected_special:
+			parts.append("[color=%s]> %s <[/color]" % ["#ffffff" if n > 0 else C_BAD, label])
+		else:
+			parts.append("[color=%s]  %s  [/color]" % [C_OK if n > 0 else C_DIM, label])
+	var t := "[center]" + "  ".join(parts)
+	if squad.total_specials() == 0:
+		var blink := _no_explosives_t <= 0.0 or fmod(_no_explosives_t, 0.3) < 0.18
+		t += "\n[color=%s]%s[/color]" % [C_BAD, "NO EXPLOSIVES LEFT" if blink else " "]
+	return t + "[/center]"
+
+
 func _unhandled_key_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
-		if event.physical_keycode == KEY_R:
+		if event.physical_keycode == KEY_F1:
+			help_panel.visible = not help_panel.visible
+			_help_t = -1.0
+		elif event.physical_keycode == KEY_R:
 			get_tree().reload_current_scene()
 		elif event.physical_keycode == KEY_G:
 			toggle_quality()
@@ -1072,6 +1277,14 @@ func _process(delta: float) -> void:
 		ui_root.modulate = Color(1, 1, 1, hum)
 		reticle.focus_active = squad.fire_mode() == squad.FOCUS
 
+	_no_explosives_t = maxf(0.0, _no_explosives_t - delta)
+	if _help_t > 0.0:
+		_help_t -= delta
+		if _help_t <= 0.0:
+			help_panel.visible = false
+	if unit_label:
+		unit_label.text = _unit_text()
+		special_label.text = _special_text()
 	if hud_label:
 		var captured := Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
 		_notice_t = maxf(0.0, _notice_t - delta)

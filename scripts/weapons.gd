@@ -31,7 +31,7 @@ const GRENADE_LAUNCHER := {
 	"name": "GRENADE LAUNCHER", "kind": "grenade",
 	"acc": 0.45, "eff": 25.0, "max": 55.0,
 	"soft": 10.0, "armor": 15.0, "radius": 4.0,
-	"reload": 2.5, "speed": 22.0,
+	"reload": 1.6, "speed": 22.0,
 }
 
 const ROCKET_LAUNCHER := {
@@ -41,11 +41,37 @@ const ROCKET_LAUNCHER := {
 	"reload": 5.0, "speed": 45.0, "vs_infantry": 0.55,
 }
 
-## role -> [primary, secondary (empty = none)]
+## Hand-thrown: a frag (blast) or a flashbang (no damage; blinds and pins
+## everyone in the radius for a few seconds). Lobbed, so they drop over cover.
+const FRAG := {
+	"name": "FRAG", "kind": "grenade",
+	"acc": 0.75, "eff": 15.0, "max": 30.0,
+	"soft": 10.0, "armor": 5.0, "radius": 4.5,
+	"reload": 0.6, "speed": 13.0,
+}
+
+const FLASHBANG := {
+	"name": "FLASHBANG", "kind": "flash",
+	"acc": 0.8, "eff": 15.0, "max": 30.0,
+	"soft": 0.0, "armor": 0.0, "radius": 7.0, "blind": 3.5,
+	"reload": 0.6, "speed": 13.0,
+}
+
+## role -> primary weapon
 const ROLES := {
 	"rifleman": [RIFLE, {}],
 	"grenadier": [RIFLE, GRENADE_LAUNCHER],
 	"anti_armor": [BURST_RIFLE, ROCKET_LAUNCHER],
+}
+
+## The special-weapon slots, in selector order (keys 1-4):
+## kind -> [weapon, short HUD name, how many one soldier carries]
+const SPECIAL_ORDER := ["frag", "flash", "gl", "rocket"]
+const SPECIALS := {
+	"frag": [FRAG, "FRAG", 1],
+	"flash": [FLASHBANG, "FLASH", 1],
+	"gl": [GRENADE_LAUNCHER, "GL", 6],
+	"rocket": [ROCKET_LAUNCHER, "RKT", 2],
 }
 
 

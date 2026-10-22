@@ -58,6 +58,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			MOUSE_BUTTON_LEFT, MOUSE_BUTTON_RIGHT:
 				if not captured:
 					Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+					get_viewport().set_input_as_handled()   # the grabbing click doesn't fire
 			MOUSE_BUTTON_WHEEL_UP:
 				dist = clampf(dist - 1.0, 4.0, 20.0)
 			MOUSE_BUTTON_WHEEL_DOWN:

@@ -11,7 +11,10 @@ You command a squad of six soldiers as one unit. Each soldier picks its own targ
 | WASD / arrows | Move the squad (loose cluster) |
 | Mouse | Aim the raised camera (click to grab the mouse, Esc to release) |
 | Hold left mouse | **Focus fire**: only targets inside the reticle; with none there, the squad saturates the area under it |
-| Hold right mouse | **Specials**: grenadiers and rocket teams fire their launchers at the reticle |
+| Right click | **Special**: one click = the nearest man carrying the selected special throws / fires one at the reticle |
+| 1 / 2 / 3 / 4 | Select special: frag, flashbang, grenade launcher, rocket |
+| X | Next special that still has ammo |
+| F1 | Show / hide the controls panel |
 | F | Auto fire toggle: fire at will (each soldier picks any target he can see) |
 | E | Move the squad to the spot under the reticle (WASD cancels) |
 | C / Space | Take cover against the direction the camera faces / leave cover (moving also leaves cover) |
@@ -105,3 +108,11 @@ GODOT=/path/to/godot tests/run_all.sh          # MINUTES=10 for longer soak runs
 
 Maps live in `scripts/maps/`. Each lists its boxes (`building`, `cwall`, `car`, `crate`, `dumpster`, `barrier`,
 `sandbag`, `wall`, `tall`), enemy areas, start point, anti-armor team spot, and adds its own lights.
+
+## Specials (limited ammo)
+Every rifleman carries one hand grenade (frags and flashbangs, mixed), the grenadier 6 launcher rounds, each
+rocket man 2 rockets. One right click = one man uses one special of the selected kind on the reticle (an enemy
+inside it, or the ground under it); rockets go to a man with a clear line of fire when possible. If the selected
+kind is empty, the click switches to the next kind with ammo and uses it. When the whole unit is out, right click
+only flashes NO EXPLOSIVES LEFT. Flashbangs do no damage but blind (no shooting) and pin enemies in a 7 m radius
+for 3.5 s. The bar at the bottom shows what's left; the panel bottom-right shows every man's health and special.

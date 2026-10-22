@@ -5,7 +5,8 @@ extends CharacterBody3D
 ##
 ## Roles (see weapons.gd): rifleman, grenadier (rifle + grenade launcher),
 ## anti_armor (burst rifle + rocket launcher). Specialists fire their
-## secondary weapon while the squad's "specials" order (right mouse) is held.
+## special (frag / flashbang / grenade-launcher round / rocket) only when the
+## squad orders him to: one right click = one man uses one special.
 ## Soldiers not yet recruited stand at their post until the squad reaches them.
 ##
 ## Health 100: below 50 he's wounded (slower, less accurate), at 0 he's down.
@@ -46,8 +47,11 @@ var peek_pos := Vector3.ZERO
 var shots := 0
 var specials_fired := 0
 var primary: Dictionary
-var secondary: Dictionary
-var secondary_cd := 0.0        # reload countdown for the secondary weapon
+var secondary: Dictionary      # his special weapon (from special_kind)
+var secondary_cd := 0.0        # reload countdown between specials
+var special_kind := ""         # "frag", "flash", "gl" or "rocket" (set by role / squad)
+var special_ammo := 0
+var _special_order: Dictionary = {}   # {target, point, t} while winding up a throw / shot
 var hp := MAX_HP
 var dead := false
 var suppression := 0.0
@@ -85,7 +89,9 @@ func _ready() -> void:
 	_speed_mul = _rng.randf_range(0.92, 1.08)
 	_fire_timer = _rng.randf_range(0.2, 1.0)
 	primary = Weapons.ROLES[role][0]
-	secondary = Weapons.ROLES[role][1]
+	if special_kind == "":
+		special_kind = {"rifleman": "frag", "grenadier": "gl", "anti_armor": "rocket"}.get(role, "frag")
+	set_special(special_kind, Weapons.SPECIALS[special_kind][2])
 	collision_layer = 2
 	collision_mask = 1
 	floor_snap_length = 0.3
@@ -230,6 +236,25 @@ func set_team_patch(t: int) -> void:
 	_patch.visible = t >= 0 and not dead
 	if t >= 0:
 		_patch.material_override = _mat("patch_a", Color(0.2, 1.0, 0.35), true) if t == 0 else _mat("patch_b", Color(1.0, 0.7, 0.15), true)
+
+
+func set_special(kind: String, ammo: int) -> void:
+	special_kind = kind
+	special_ammo = ammo
+	secondary = Weapons.SPECIALS[kind][0]
+
+
+func special_ready() -> bool:
+	return recruited and not dead and special_ammo > 0 and secondary_cd <= 0.0 and _special_order.is_empty()
+
+
+## Ordered by the squad: pop up, face the target and throw / fire one special
+## after a short wind-up. `t` is the enemy (or null), `point` the ground spot.
+func order_special(t: Node3D, point: Vector3) -> void:
+	_special_order = {"target": t, "point": point, "t": 0.22 if special_kind in ["frag", "flash"] else 0.3}
+	target = t
+	_aim_point = point
+	_has_aim = t == null
 
 
 func _set_crouch(on: bool) -> void:
@@ -575,7 +600,15 @@ func _update_combat(delta: float) -> void:
 	if target and not target.alive:
 		target = null
 	var mode: int = squad.fire_mode_for(self)
-	var use_sec: bool = squad.specials_for(self) and not secondary.is_empty()
+	if not _special_order.is_empty():
+		# Winding up a throw / shot: he stands up for it, primary fire paused.
+		_set_crouch(false)
+		_special_order["t"] -= delta
+		if _special_order["t"] <= 0.0:
+			_launch_special(_special_order["target"], _special_order["point"])
+			_special_order = {}
+		return
+	var use_sec := false
 	_retarget_timer -= delta
 	if mode != _mode or use_sec != _using_secondary or _retarget_timer <= 0.0:
 		_mode = mode
@@ -614,12 +647,6 @@ func _update_combat(delta: float) -> void:
 
 	if not has_shot:
 		can_fire = false
-
-	if _using_secondary:
-		if can_fire and secondary_cd <= 0.0:
-			_fire_secondary()
-			secondary_cd = secondary["reload"]
-		return
 
 	_fire_timer -= delta
 	if can_fire and _fire_timer <= 0.0:
@@ -690,29 +717,41 @@ func _shoot() -> void:
 	_flash_timer = 0.05
 
 
-## Launch a grenade or rocket. The hit roll decides whether it's sent at the
-## target or deliberately off to the side (where splash may still catch it).
-func _fire_secondary() -> void:
-	var from: Vector3 = _launch_tip.global_position if _launch_tip else _flash.global_position
-	var to: Vector3
-	var grenade: bool = secondary["kind"] == "grenade"
-	if target:
-		var c: Vector3 = target.aim_point()
-		if grenade:
-			c = target.global_position + Vector3(0, 0.3, 0)
-		var chance := Weapons.hit_chance(secondary, target, from.distance_to(c), _moving, true, false) * _fight_mod()
+## Throw / fire one special at a target (or a ground point). The hit roll
+## decides whether it lands on the target or a few metres off (where the
+## blast may still catch it).
+func _launch_special(t: Node3D, point: Vector3) -> void:
+	if dead or special_ammo <= 0:
+		return
+	var w := secondary
+	var thrown: bool = special_kind in ["frag", "flash"]
+	var from: Vector3
+	if thrown:
+		from = _upper.global_transform * Vector3(0.25, 1.75, -0.25)   # throwing hand, over the shoulder
+	else:
+		from = _launch_tip.global_position if _launch_tip else _flash.global_position
+	var to: Vector3 = point
+	var lobbed: bool = w["kind"] != "rocket"
+	if t and is_instance_valid(t) and t.alive:
+		var c: Vector3 = t.aim_point()
+		if lobbed:
+			c = t.global_position + Vector3(0, 0.3, 0)
+		var chance := Weapons.hit_chance(w, t, from.distance_to(c), _moving, true, false) * _fight_mod()
 		if _rng.randf() < chance:
 			to = c
 		else:
 			var side := (c - from).cross(Vector3.UP).normalized()
 			var off := side * _rng.randf_range(-1.0, 1.0) + (c - from).normalized() * _rng.randf_range(-1.0, 1.0)
 			off.y = 0
-			to = c + off.normalized() * (target.radius + _rng.randf_range(1.5, 4.0))
+			to = c + off.normalized() * (t.radius + _rng.randf_range(1.5, 4.0))
 			to.y = maxf(0.2, c.y - 0.8)
 	else:
-		to = _aim_point + Vector3(_rng.randf_range(-1, 1), 0, _rng.randf_range(-1, 1))
+		to += Vector3(_rng.randf_range(-0.8, 0.8), 0, _rng.randf_range(-0.8, 0.8))
 	var p: Node3D = ProjectileScript.new()
-	p.setup(main, secondary, from, to, _rng)
+	p.setup(main, w, from, to, _rng)
 	main.add_child(p)
+	special_ammo -= 1
+	secondary_cd = w["reload"]
 	specials_fired += 1
-	main.on_launch(from, secondary)
+	if not thrown:
+		main.on_launch(from, w)

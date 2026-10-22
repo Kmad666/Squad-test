@@ -18,6 +18,7 @@ var shots := 0
 var reaction_min := 0.6     # seconds to bring the gun onto a new target
 var reaction_max := 1.4
 var spot_range := 45.0      # an unalerted sentry only notices you this close
+var blind_t := 0.0          # flashbanged: can't see or shoot
 
 var _rng := RandomNumberGenerator.new()
 var _retarget := 0.0
@@ -54,6 +55,11 @@ func add_suppression(amount: float) -> void:
 	_since_incoming = 0.0
 
 
+func blind(seconds: float) -> void:
+	blind_t = maxf(blind_t, seconds)
+	target = null
+
+
 func pinned() -> bool:
 	return suppression > 0.85
 
@@ -68,6 +74,10 @@ func _physics_process(delta: float) -> void:
 	if not host.alive:
 		target = null
 		suppression = 0.0
+		return
+	if blind_t > 0.0:
+		blind_t -= delta
+		_since_incoming = 0.0      # stays pinned while blinded
 		return
 
 	_retarget -= delta

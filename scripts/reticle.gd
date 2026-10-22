@@ -4,7 +4,7 @@ extends Control
 ## parameter; with "show dimensions" on, the sizes are drawn next to it.
 ## Settings are saved in the browser so tweaks stick between sessions.
 
-const SAVE_PATH := "user://reticle_v2.cfg"   # v2: new defaults replace older saved tweaks
+const SAVE_PATH := "user://reticle_v3.cfg"   # v3: measurements hidden by default
 const COLOR := Color(0.45, 1.0, 0.30)
 
 ## name -> [default, min, max, step, label]
@@ -20,7 +20,7 @@ const PARAMS := {
 }
 
 var p := {}
-var show_dims := true
+var show_dims := false
 var focus_active := false   # brightens while focus firing
 var marks: Array = []       # target squares, set by main each frame
 var _t := 0.0
@@ -38,7 +38,7 @@ func _ready() -> void:
 func reset_defaults(save := true) -> void:
 	for k in PARAMS:
 		p[k] = PARAMS[k][0]
-	show_dims = true
+	show_dims = false
 	if save:
 		_save()
 
