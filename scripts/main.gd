@@ -79,6 +79,7 @@ var squad: Node3D
 var cam_rig: Node3D
 var nav_region: NavigationRegion3D
 var hud_label: Label
+var help_label: Label
 var reticle: Control
 var reticle_panel: PanelContainer
 var hits := 0
@@ -202,7 +203,7 @@ void fragment() {
 	vec2 g = abs(fract(wpos.xz / 4.0 - 0.5) - 0.5) * 4.0;
 	float l = 1.0 - smoothstep(0.0, 0.06, min(g.x, g.y));
 	float patch = noise(wpos.xz * 0.22) * 0.7 + noise(wpos.xz * 0.9) * 0.3;
-	vec3 day = mix(vec3(0.30, 0.42, 0.17), vec3(0.42, 0.45, 0.2), smoothstep(0.35, 0.75, patch));
+	vec3 day = mix(vec3(0.20, 0.28, 0.12), vec3(0.30, 0.31, 0.16), smoothstep(0.35, 0.75, patch));
 	day = mix(day, day * 0.85, l * 0.5);
 	vec3 night = mix(vec3(0.10, 0.17, 0.08), vec3(0.07, 0.12, 0.06), l * 0.6);
 	float puddle = smoothstep(0.52, 0.62, patch) * wet;
@@ -812,7 +813,23 @@ func _build_hud() -> void:
 	panel.add_theme_stylebox_override("panel", sb)
 	ui_root.add_child(panel)
 	hud_label = Label.new()
+	hud_label.add_theme_font_size_override("font_size", 14)
 	panel.add_child(hud_label)
+
+	# Controls reference, bottom-left, out of the way of the reticle.
+	var help := PanelContainer.new()
+	help.add_theme_stylebox_override("panel", sb)
+	help.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
+	help.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	help.offset_left = 12
+	help.offset_bottom = -12
+	ui_root.add_child(help)
+	help_label = Label.new()
+	help_label.add_theme_font_size_override("font_size", 12)
+	help_label.text = "WASD move   MOUSE aim   WHEEL zoom   E move to reticle\n" \
+		+ "LMB focus fire   RMB specials (GL / rockets)   F auto fire\n" \
+		+ "C / SPACE cover vs camera facing   TAB reticle   R restart"
+	help.add_child(help_label)
 
 	reticle_panel = ReticlePanelScript.new()
 	reticle_panel.reticle = reticle
@@ -860,15 +877,11 @@ func _process(delta: float) -> void:
 	if hud_label:
 		var captured := Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
 		_notice_t = maxf(0.0, _notice_t - delta)
-		hud_label.text = "SQUAD TEST // FIELD TRIAL\n" \
-			+ "WASD  move squad     MOUSE  aim%s     WHEEL  zoom\n" % ("" if captured else " (click to grab)") \
-			+ "HOLD LMB  focus fire on reticle     HOLD RMB  specialists fire GL / rockets\n" \
-			+ "E  move squad to reticle     C / SPACE  cover vs camera facing     F  auto fire (at will)\n" \
-			+ "TAB  reticle     R  restart\n\n" \
+		hud_label.text = "SQUAD TEST // FIELD TRIAL%s\n" % ("" if captured else "   (CLICK TO GRAB MOUSE)") \
 			+ "SQUAD   %s\n" % squad.status_text() \
 			+ "UNIT    %s\n" % squad.roster_text() \
 			+ "FIRE    %s%s\n" % [squad.fire_mode_text(), "   (auto fire ON)" if squad.auto_fire else ""] \
-			+ "UNDER FIRE  %s\n" % _supp_bar(squad.avg_suppression()) \
+			+ "FIRE ON US  %s\n" % _supp_bar(squad.avg_suppression()) \
 			+ "ENEMY   %s\n" % areas_text() \
 			+ "HITS    %d     KILLS  %d" % [hits, kills] \
 			+ ("\n\n>> %s" % _notice if _notice_t > 0.0 else "")

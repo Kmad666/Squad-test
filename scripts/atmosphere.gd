@@ -41,12 +41,12 @@ func _build_day() -> void:
 	env.background_mode = Environment.BG_SKY
 	env.sky = sky
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
-	env.ambient_light_energy = 0.75
+	env.ambient_light_energy = 0.5
 	env.tonemap_mode = Environment.TONE_MAPPER_ACES
-	env.tonemap_exposure = 1.0
+	env.tonemap_exposure = 0.9
 	env.glow_enabled = true            # gentle bloom on muzzle flashes / explosions
-	env.glow_intensity = 0.35
-	env.glow_hdr_threshold = 1.0
+	env.glow_intensity = 0.25
+	env.glow_hdr_threshold = 1.3
 	env.fog_enabled = true             # light distance haze
 	env.fog_light_color = Color(0.68, 0.75, 0.84)
 	env.fog_density = 0.004
@@ -58,7 +58,7 @@ func _build_day() -> void:
 	var sun := DirectionalLight3D.new()
 	sun.rotation = Vector3(deg_to_rad(-50), deg_to_rad(30), 0)
 	sun.light_color = Color(1.0, 0.96, 0.88)
-	sun.light_energy = 1.15
+	sun.light_energy = 1.0
 	sun.shadow_enabled = true
 	sun.directional_shadow_max_distance = 70.0
 	add_child(sun)
