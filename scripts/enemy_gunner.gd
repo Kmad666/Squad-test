@@ -175,6 +175,8 @@ func _shoot() -> void:
 	main.suppress_squad(from, end, weapon["suppress"])
 	main.spawn_tracer(from, end, true)
 	shots += 1
+	if host and host.has_method("on_fired"):
+		host.on_fired()
 	_flash.visible = true
 	_flash_t = 0.05
 

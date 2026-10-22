@@ -43,6 +43,10 @@ const UPPER_ARM := 0.31
 const FOREARM := 0.28
 const WAIST_Y := 0.99         # upper-body pivot (upper space, just above the belt)
 const LEAN := 0.25            # forward lean when crouched (radians)
+const BLADE := 0.6            # torso turn when shouldering (left shoulder forward)
+const POCKET := Vector3(0.15, 1.46, -0.12)   # rifle butt in the shoulder (upper space)
+const AIM_YAW := 0.6         # how far the rifle can swing off the body's facing
+const AIM_PITCH := 0.4
 
 static var _mats := {}
 
@@ -77,6 +81,14 @@ var _move_dir := Vector3.FORWARD   # travel direction, model space
 var _driven := false         # animate() is being called each frame
 var _leg_yaw := 0.0          # hips and legs turned toward travel (strafing)
 var _demo_vel := Vector3.ZERO
+# aiming (see set_aim_point / recoil)
+var _aiming := false
+var _aim_amt := 0.0          # 0 low ready .. 1 shouldered (eased)
+var _aim_dir := Vector3.FORWARD        # where the rifle points, model space (smoothed)
+var _aim_goal := Vector3.FORWARD
+var _recoil := 0.0           # 0..1, kicks on each shot, settles fast
+var _demo_aim := false
+var _demo_fire_t := 0.0
 
 
 ## role: "rifleman" | "grenadier" | "anti_armor"; side: "friendly" | "enemy".
@@ -429,24 +441,48 @@ func _apply_pose() -> void:
 	var hip_drop := lerpf(0.02, 0.33, c) + 0.06 * run_t * w
 	var hip_back := 0.08 * c
 	_hips.position = Vector3(0, HIP_Y - hip_drop + bob, hip_back)
-	var twist := w * (0.07 + 0.05 * run_t) * sin(TAU * _phase) * (0.3 + 0.7 * fwd)
+	var a := smoothstep(0.0, 1.0, _aim_amt)
+	var twist := w * (0.07 + 0.05 * run_t) * sin(TAU * _phase) * (0.3 + 0.7 * fwd) * (1.0 - 0.6 * a)
+	# Shouldered: bladed stance (left shoulder forward), and the torso turns
+	# with the aim so the arms keep the same reach wherever he points.
+	var aim_yaw := atan2(-_aim_dir.x, -_aim_dir.z) * a
+	twist += -BLADE * a + 0.8 * aim_yaw
 	var leg_yaw := _leg_yaw * w
 	var ly := Basis(Vector3.UP, leg_yaw)
-	_hips.rotation.y = leg_yaw * 0.85 - twist * 0.6
+	_hips.rotation.y = leg_yaw * 0.85 - twist * 0.6 - 0.25 * a * (1.0 - w)
 	# The upper body was laid out for hips at 0.93 m: keep it on the hips, and
 	# lean it forward by pivoting at the waist (not at the feet, which would
 	# swing the torso off the hips).
-	var lean := LEAN * c + 0.28 * run_t * w * (0.4 + 0.6 * fwd)
+	var lean := LEAN * c + 0.28 * run_t * w * (0.4 + 0.6 * fwd) + 0.06 * a - 0.05 * _recoil
 	var waist := Vector3(0, WAIST_Y, 0)
 	var on_hips := Vector3(0, HIP_Y - 0.93 - hip_drop + bob, hip_back)
 	var rot := Basis(Vector3.UP, twist) * Basis(Vector3.RIGHT, -lean)
 	upper.transform = Transform3D(rot, on_hips + waist - rot * waist)
-	head.rotation = Vector3(lean * 0.7, -twist * 0.8, 0)   # eyes stay up and ahead
-	# Counter-rotate the rifle about the grip so the muzzle stays at low
-	# ready instead of pointing into the ground.
+	# Head: eyes stay up and ahead; shouldered, cheek down onto the stock.
+	head.rotation = Vector3(lean * 0.7 + 0.14 * a, (aim_yaw - twist) * 0.9, -0.1 * a)
+	# Low ready: counter-rotate the rifle about the grip so the muzzle stays
+	# up instead of pointing into the ground when he leans.
 	var counter := Transform3D(Basis(Vector3.RIGHT, lean * 0.8), Vector3.ZERO)
-	_rifle.transform = Transform3D(Basis.IDENTITY, _grip_rest) * counter * Transform3D(Basis.IDENTITY, -_grip_rest) * _rifle_base
-	_guard = _rifle.transform * _guard_local
+	var low := Transform3D(Basis.IDENTITY, _grip_rest) * counter * Transform3D(Basis.IDENTITY, -_grip_rest) * _rifle_base
+	var xf := low
+	if a > 0.0:
+		# Shouldered: butt in the shoulder pocket, barrel along the aim line
+		# (worked out in upper space, so it stays on target through the
+		# blade, lean, gait twist and bob). Recoil kicks the muzzle up and
+		# the rifle back into the shoulder.
+		var d := (upper.basis.inverse() * _aim_dir).normalized()
+		if _recoil > 0.0:
+			var axis := d.cross(Vector3.UP)
+			if axis.length() > 0.01:
+				d = d.rotated(axis.normalized(), 0.09 * _recoil)
+		var pocket := POCKET - d * 0.035 * _recoil
+		var aim_xf := Transform3D(Basis.looking_at(d, Vector3.UP), pocket + d * 0.31)
+		xf = Transform3D(low.basis.slerp(aim_xf.basis, a), low.origin.lerp(aim_xf.origin, a))
+	_rifle.transform = xf
+	_grip = xf.origin
+	var gl := _guard_local
+	gl.z = lerpf(_guard_local.z, -0.22, a)                # hand slides back a little when shouldered
+	_guard = xf * gl
 	if not (_gesture and _gesture.is_running()):
 		_left_target = _guard
 
@@ -465,7 +501,10 @@ func _apply_pose() -> void:
 		# Standing (or crouched) rest position.
 		var rest := Vector3(HIP_X * sx * 1.15, ANKLE_Y, -0.03 + (0.06 if s == "R" else -0.05))
 		if s == "R":
-			rest.z += 0.2 * c                               # one foot back when low
+			rest.z += 0.2 * c + 0.13 * a * (1.0 - c)        # one foot back when low / shooting
+			rest.x += 0.04 * a
+		else:
+			rest.z -= 0.05 * a * (1.0 - c)
 		var pitch := 0.0
 		var ankle := rest
 		if w > 0.0:
@@ -505,6 +544,15 @@ func _apply_pose() -> void:
 		_legs[s]["foot"].transform = Transform3D(Basis(Vector3.UP, leg_yaw + 0.08 * sx) * Basis(Vector3.RIGHT, pitch), ankle)
 
 
+## Eases unit vector `from` toward `to`. (Vector3.slerp loses precision and
+## errors when the two are almost parallel, which is most frames.)
+static func _blend_dir(from: Vector3, to: Vector3, t: float) -> Vector3:
+	var v := from.lerp(to, t)
+	if v.length_squared() < 1e-6:
+		return to
+	return v.normalized()
+
+
 ## Metres travelled per full gait cycle (two steps): longer strides when fast.
 func _cycle_length() -> float:
 	return lerpf(0.9 + 0.38 * _speed, 0.7 + 0.35 * _speed, _crouch_amt)
@@ -523,11 +571,16 @@ func animate_local(v: Vector3, delta: float) -> void:
 	_driven = true
 	var spd := v.length()
 	var crouch_goal := 1.0 if crouched else 0.0
-	if spd < 0.05 and _speed < 0.02 and _gait_w == 0.0 and _crouch_amt == crouch_goal:
+	var aim_goal := 1.0 if _aiming else 0.0
+	if spd < 0.05 and _speed < 0.02 and _gait_w == 0.0 and _crouch_amt == crouch_goal \
+			and _aim_amt == aim_goal and not _aiming and _recoil == 0.0:
 		return                                              # settled: nothing to pose
+	_aim_amt = move_toward(_aim_amt, aim_goal, (4.5 if _aiming else 2.5) * delta)
+	_aim_dir = _blend_dir(_aim_dir, _aim_goal, clampf(14.0 * delta, 0.0, 1.0))
+	_recoil = move_toward(_recoil, 0.0, 7.0 * delta)
 	_speed = lerpf(_speed, spd, clampf(10.0 * delta, 0.0, 1.0))
 	if spd > 0.15:
-		_move_dir = _move_dir.slerp(v / spd, clampf(10.0 * delta, 0.0, 1.0)).normalized()
+		_move_dir = _blend_dir(_move_dir, v / spd, clampf(10.0 * delta, 0.0, 1.0))
 	_gait_w = move_toward(_gait_w, 1.0 if _speed > 0.35 else 0.0, 4.0 * delta)
 	_crouch_amt = move_toward(_crouch_amt, crouch_goal, 5.0 * delta)
 	_phase = fposmod(_phase + _speed * delta / _cycle_length(), 1.0)
@@ -556,13 +609,53 @@ func _solve_arms() -> void:
 
 # ---------------------------------------------------------------- pose API
 
+## Raise the rifle to the shoulder and point it at `world_point`, or lower it
+## to low ready with Vector3.INF. Call every frame while engaging; the raise
+## and lower are eased in animate(). The aim swings at most a little off the
+## body's facing (the body itself turns toward the target).
+func set_aim_point(world_point: Vector3) -> void:
+	_aiming = world_point != Vector3.INF
+	if not _aiming:
+		_aim_goal = Vector3.FORWARD
+		return
+	var pocket_w := global_transform * Vector3(0.12, 1.42, -0.12)
+	var d := global_basis.inverse() * (world_point - pocket_w)
+	if d.length() < 0.1:
+		return
+	d = d.normalized()
+	var yaw := clampf(atan2(-d.x, -d.z), -AIM_YAW, AIM_YAW)
+	var pitch := clampf(asin(clampf(d.y, -1.0, 1.0)), -AIM_PITCH, AIM_PITCH)
+	_aim_goal = Vector3(-sin(yaw) * cos(pitch), sin(pitch), -cos(yaw) * cos(pitch))
+
+
+## One shot: the muzzle kicks up and the rifle rocks back into the shoulder.
+func recoil() -> void:
+	_recoil = minf(1.0, _recoil + 0.65)
+
+
+func is_shouldered() -> bool:
+	return _aim_amt > 0.85
+
+
 ## Model viewer: animate in place as if moving at `local_vel` (model space).
 func set_demo_motion(local_vel: Vector3) -> void:
 	_demo_vel = local_vel
-	set_process(local_vel != Vector3.ZERO)
+	set_process(local_vel != Vector3.ZERO or _demo_aim)
+
+
+## Model viewer: shoulder the rifle at a point straight ahead and fire bursts.
+func set_demo_aim(on: bool) -> void:
+	_demo_aim = on
+	set_process(on or _demo_vel != Vector3.ZERO)
 
 
 func _process(delta: float) -> void:
+	if _demo_aim:
+		set_aim_point(global_transform * Vector3(0.0, 1.35, -12.0))
+		_demo_fire_t -= delta
+		if _demo_fire_t <= 0.0 and _aim_amt > 0.95:
+			recoil()
+			_demo_fire_t = 0.1 if randf() < 0.7 else 0.9
 	animate_local(_demo_vel, delta)
 
 
@@ -673,6 +766,9 @@ func lay_down(face_up: bool) -> void:
 	_crouch_amt = 0.0
 	_gait_w = 0.0
 	_leg_yaw = 0.0
+	_aiming = false
+	_aim_amt = 0.0
+	_recoil = 0.0
 	_apply_pose()
 	if face_up:
 		_left_target = Vector3(-0.1, 1.12, -0.36)

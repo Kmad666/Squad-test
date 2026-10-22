@@ -89,6 +89,56 @@ func _run() -> void:
 					m._solve_arms()
 					_pose_checks(m, "%s/%s/%s@%d" % [role, side, g[0], k])
 				m.free()
+	# Aiming: shouldered at targets around him, standing / crouched / moving,
+	# with and without recoil. Both hands must stay on the rifle and the
+	# muzzle must point at the target (within the allowed swing).
+	var targets := [
+		["ahead", Vector3(0, 1.3, -20)], ["left", Vector3(-9, 1.3, -15)],
+		["right", Vector3(5, 1.3, -20)], ["up", Vector3(0, 8, -15)],
+		["down", Vector3(0, 0.2, -6)], ["far_right", Vector3(20, 1.3, -3)],
+	]
+	for role in ["rifleman", "grenadier", "anti_armor"]:
+		for crouch in [false, true]:
+			for vel in [Vector3.ZERO, Vector3(0, 0, -2.0), Vector3(3, 0, 0)]:
+				for tg in targets:
+					var m: Node3D = SoldierModel.new()
+					root.add_child(m)
+					m.build(role, "friendly", 0)
+					m.set_crouch(crouch)
+					for i in 60:
+						m.set_aim_point(m.global_transform * tg[1])
+						m.animate_local(vel, 1.0 / 60.0)
+					var label := "aim %s/%s crouch=%s vel=%s" % [role, tg[0], crouch, vel]
+					_check(m.is_shouldered(), label + ": rifle never came up")
+					for k in 4:
+						m._phase = k / 4.0
+						m._recoil = 0.0 if k % 2 == 0 else 1.0
+						m._apply_pose()
+						m._solve_arms()
+						_pose_checks(m, "%s@%d" % [label, k])
+					# muzzle on target (only where the target is inside the swing)
+					if tg[0] in ["ahead", "left", "right"]:
+						m._recoil = 0.0
+						m._apply_pose()
+						var mz: Vector3 = m.muzzle.global_position
+						var fwd: Vector3 = -m.muzzle.global_basis.z
+						var want: Vector3 = ((m.global_transform * tg[1]) - mz).normalized()
+						_check(fwd.angle_to(want) < 0.12, "%s: muzzle off target by %.2f rad" % [label, fwd.angle_to(want)])
+					m.free()
+	# Lowering again returns to low ready.
+	var m3: Node3D = SoldierModel.new()
+	root.add_child(m3)
+	m3.build("rifleman", "enemy", 0)
+	for i in 40:
+		m3.set_aim_point(Vector3(0, 1.3, -20))
+		m3.animate_local(Vector3.ZERO, 1.0 / 60.0)
+	for i in 60:
+		m3.set_aim_point(Vector3.INF)
+		m3.animate_local(Vector3.ZERO, 1.0 / 60.0)
+	_check(m3._aim_amt == 0.0, "rifle never lowered")
+	_pose_checks(m3, "lowered after aiming")
+	m3.free()
+
 	# Stopping, crouch toggling and a gesture mid-run: hand returns to the rifle.
 	var m2: Node3D = SoldierModel.new()
 	root.add_child(m2)

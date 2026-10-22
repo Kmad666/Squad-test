@@ -124,6 +124,9 @@ Movement: a procedural gait driven by each body's real velocity (`animate()`, ca
 feet alternate planted / swinging steps along the direction of travel, stride and cadence scale with speed,
 running adds a forward lean, lower hips and a heel kick, crouching gives short low steps, and when strafing or
 backing up the hips turn toward travel while the torso keeps facing the enemy. Crouch transitions ease in.
+Aiming: `set_aim_point(world point | Vector3.INF)` while engaging raises the rifle to the shoulder (bladed stance,
+torso turns with the aim, cheek on the stock, works through crouch / gait / lean); `recoil()` on each shot kicks the
+muzzle up. Friendlies shoulder when they have a shot and may fire; enemies when their gunner has a target and is up.
 Poses: idle (rifle at low ready), crouch (hips drop, torso leans forward from the waist, rifle stays level),
 left-hand signals, and dead (your men sprawl face down; enemies fall back onto their side; the rifle drops beside
 the body and the body is fitted to the ground so nothing sinks or floats).

@@ -618,6 +618,7 @@ func _update_combat(delta: float) -> void:
 	if not _special_order.is_empty():
 		# Winding up a throw / shot: he stands up for it, primary fire paused.
 		_set_crouch(false)
+		_model.set_aim_point(Vector3.INF)
 		_special_order["t"] -= delta
 		if _special_order["t"] <= 0.0:
 			_launch_special(_special_order["target"], _special_order["point"])
@@ -662,6 +663,14 @@ func _update_combat(delta: float) -> void:
 
 	if not has_shot:
 		can_fire = false
+	# Shoulder the rifle while engaging; low ready otherwise.
+	var aim_at := Vector3.INF
+	if can_fire:
+		if target and is_instance_valid(target):
+			aim_at = target.aim_point()
+		elif _has_aim:
+			aim_at = _aim_point
+	_model.set_aim_point(aim_at)
 
 	_fire_timer -= delta
 	if can_fire and _fire_timer <= 0.0:
@@ -730,6 +739,7 @@ func _shoot() -> void:
 	main.on_shot(_flash.global_position)
 	_flash.visible = true
 	_flash_timer = 0.05
+	_model.recoil()
 
 
 ## Throw / fire one special at a target (or a ground point). The hit roll

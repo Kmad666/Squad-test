@@ -29,6 +29,14 @@ var SHOTS := [
 	["sig_cover", "rifleman", "friendly", true, false, "cover", 0.0, Vector3(-0.7, 0, -0.7), 1.4, 2.8, 1.2],
 	["sig_fire", "rifleman", "friendly", true, false, "fire", 0.0, Vector3(-0.3, 0, -1), 1.4, 2.8, 1.2],
 	["sig_halt_crouch", "rifleman", "friendly", true, true, "halt", 0.0, Vector3(-0.7, 0, -0.7), 1.1, 2.8, 0.9],
+	["aim_34", "rifleman", "friendly", false, false, "aim", 0.0, Vector3(-0.7, 0, -0.7), 1.5, 2.6, 1.3],
+	["aim_side", "rifleman", "friendly", false, false, "aim", 0.0, Vector3(1, 0, 0), 1.4, 2.6, 1.2],
+	["aim_front", "rifleman", "enemy", false, false, "aim", 0.0, Vector3(0.15, 0, -1), 1.5, 2.6, 1.3],
+	["aim_back", "grenadier", "friendly", true, false, "aim", 0.0, Vector3(0.5, 0, 1), 1.7, 2.6, 1.3],
+	["aim_crouch", "rifleman", "friendly", false, true, "aim", 0.0, Vector3(-0.8, 0, -0.5), 1.2, 2.4, 0.9],
+	["aim_recoil", "rifleman", "friendly", false, false, "aim_recoil", 0.0, Vector3(1, 0, -0.2), 1.4, 2.6, 1.2],
+	["aim_left", "anti_armor", "friendly", false, false, "aim_left", 0.0, Vector3(-0.5, 0, -1), 1.5, 2.6, 1.3],
+	["aim_walk", "rifleman", "friendly", false, false, "aim_walk", 0.0, Vector3(1, 0, -0.4), 1.3, 2.6, 1.1],
 	["dead_down", "rifleman", "friendly", false, false, "dead_down", 0.0, Vector3(1, 0, 0.3), 1.0, 3.0, 0.1],
 	["dead_down_low", "grenadier", "friendly", false, true, "dead_down", 0.0, Vector3(1, 0, -0.5), 0.35, 3.2, 0.15],
 	["dead_up", "rifleman", "enemy", false, false, "dead_up", 0.0, Vector3(1, 0, -0.3), 1.0, 3.0, 0.1],
@@ -85,7 +93,17 @@ func _run(out: String) -> void:
 			m.set_sergeant(true)
 		if s[4]:
 			m.set_crouch(true)
-		if s[5].begins_with("dead"):
+		if s[5].begins_with("aim"):
+			var tgt := Vector3(-8, 1.3, -14) if s[5] == "aim_left" else Vector3(0, 1.3, -20)
+			var vel := Vector3(0, 0, -1.6) if s[5] == "aim_walk" else Vector3.ZERO
+			for i in 60:
+				m.set_aim_point(tgt)
+				m.animate_local(vel, 1.0 / 60.0)
+			if s[5] == "aim_recoil":
+				m._recoil = 1.0
+				m._apply_pose()
+				m._solve_arms()
+		elif s[5].begins_with("dead"):
 			m.lay_down(s[5] == "dead_up")
 			m.set_tint("dead")
 		elif s[5] != "":

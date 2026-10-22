@@ -125,6 +125,11 @@ func can_fire() -> bool:
 	return alive and not _crouched and state != State.MOVING
 
 
+## Called by his gunner on every shot.
+func on_fired() -> void:
+	_model.recoil()
+
+
 func on_spotted() -> void:
 	_alert_area()
 
@@ -251,6 +256,11 @@ func _physics_process(delta: float) -> void:
 
 	_update_stance(delta)
 	_move(delta)
+	# Shoulder the rifle while he has a target and is up to fire.
+	var aim_at := Vector3.INF
+	if _gun.target and is_instance_valid(_gun.target) and can_fire():
+		aim_at = _gun.target.exposed_point()
+	_model.set_aim_point(aim_at)
 
 
 func _update_stance(delta: float) -> void:
