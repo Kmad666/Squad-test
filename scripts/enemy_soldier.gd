@@ -157,8 +157,7 @@ func _die() -> void:
 	_release_cover()
 	_set_crouch(false)
 	collision_layer = 0
-	_model.rotation.x = PI / 2.0
-	_model.position.y = 0.2
+	_model.lay_down(true)
 	_model.set_tint("dead")
 	set_physics_process(false)
 	main.on_enemy_killed(self)

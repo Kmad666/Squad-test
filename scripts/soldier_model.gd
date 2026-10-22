@@ -41,6 +41,8 @@ const ANKLE_Y := 0.085
 const SHOULDER := Vector3(0.205, 1.47, 0.0)
 const UPPER_ARM := 0.29
 const FOREARM := 0.27
+const WAIST_Y := 0.99         # upper-body pivot (upper space, just above the belt)
+const LEAN := 0.25            # forward lean when crouched (radians)
 
 static var _mats := {}
 
@@ -62,6 +64,9 @@ var _left_target := Vector3.ZERO
 var _patch: MeshInstance3D
 var _sgt_parts: Array = []
 var _gesture: Tween
+var _rifle: Node3D
+var _rifle_base := Transform3D.IDENTITY   # rifle in upper space, standing
+var _guard_local := Vector3.ZERO          # left hand on the handguard, rifle space
 
 
 ## role: "rifleman" | "grenadier" | "anti_armor"; side: "friendly" | "enemy".
@@ -241,11 +246,11 @@ func _build_head() -> void:
 	var mg := Merger.new()
 	var c := _colors
 	mg.add(_sphere(0.1), _xf(Vector3(0, 0.07, -0.005), Vector3.ZERO, Vector3(0.95, 1.1, 1.0)), _skin)                 # head
-	mg.add(_box(Vector3(0.05, 0.02, 0.02)), _xf(Vector3(-0.035, 0.09, -0.095)), Color(0.05, 0.04, 0.03))              # eyes
-	mg.add(_box(Vector3(0.05, 0.02, 0.02)), _xf(Vector3(0.035, 0.09, -0.095)), Color(0.05, 0.04, 0.03))
+	mg.add(_box(Vector3(0.05, 0.02, 0.02)), _xf(Vector3(-0.035, 0.09, -0.1)), Color(0.05, 0.04, 0.03))              # eyes
+	mg.add(_box(Vector3(0.05, 0.02, 0.02)), _xf(Vector3(0.035, 0.09, -0.1)), Color(0.05, 0.04, 0.03))
 	mg.add(_sphere(0.132, true), _xf(Vector3(0, 0.1, 0.005), Vector3.ZERO, Vector3(1.0, 0.95, 1.08)), c["helmet"])  # helmet shell
 	mg.add(_cyl(0.137, 0.137, 0.022, 16), _xf(Vector3(0, 0.1, 0.005), Vector3.ZERO, Vector3(1, 1, 1.08)), c["helmet"].darkened(0.15))
-	mg.add(_box(Vector3(0.05, 0.04, 0.03)), _xf(Vector3(0, 0.17, -0.135)), METAL)                                    # NVG mount
+	mg.add(_box(Vector3(0.055, 0.04, 0.03)), _xf(Vector3(0, 0.13, -0.14), Vector3(0.35, 0, 0)), METAL)               # NVG mount, on the helmet front
 	mg.add(_box(Vector3(0.012, 0.09, 0.012)), _xf(Vector3(-0.09, 0.03, -0.03), Vector3(0, 0, 0.25)), c["gear"])       # chin strap
 	mg.add(_box(Vector3(0.012, 0.09, 0.012)), _xf(Vector3(0.09, 0.03, -0.03), Vector3(0, 0, -0.25)), c["gear"])
 	_instance(head, mg)
@@ -312,6 +317,8 @@ func _build_rifle(role: String) -> void:
 	var dir := Vector3(-0.32, -0.2, -1.0).normalized()
 	rifle.transform = Transform3D(Basis.looking_at(dir, Vector3.UP), _grip)
 	upper.add_child(rifle)
+	_rifle = rifle
+	_rifle_base = rifle.transform
 	var carbine := role == "anti_armor"
 	var front := 0.36 if carbine else 0.44          # handguard length
 	var mg := Merger.new()
@@ -337,20 +344,27 @@ func _build_rifle(role: String) -> void:
 		launch_tip.position = Vector3(0, -0.035, -0.47)
 		rifle.add_child(launch_tip)
 	# Left hand rests on the handguard.
-	_guard = rifle.transform * Vector3(0, 0.0, -0.2 - front * 0.55)
+	_guard_local = Vector3(0, 0.0, -0.2 - front * 0.55)
+	_guard = rifle.transform * _guard_local
 
 
-## Rocket tube carried on the right shoulder, pointing forward.
+## Rocket tube slung diagonally across the back of the pack, the muzzle end
+## up over the right shoulder (rockets leave from there).
 func _build_launcher() -> void:
 	var tube := Node3D.new()
-	tube.position = Vector3(0.26, 1.6, -0.05)
+	var d := Vector3(0.64, 0.77, 0.0).normalized()
+	tube.transform = Transform3D(Basis.looking_at(d, Vector3.BACK), Vector3(0.02, 1.38, 0.425))
 	upper.add_child(tube)
 	var mg := Merger.new()
 	mg.add(_cyl(0.065, 0.065, 1.1, 12), _xf(Vector3(0, 0, 0), Vector3(PI / 2, 0, 0)), _colors["gear"].darkened(0.1))
 	mg.add(_cyl(0.08, 0.075, 0.12, 12), _xf(Vector3(0, 0, -0.52), Vector3(PI / 2, 0, 0)), POLY)
 	mg.add(_cyl(0.08, 0.075, 0.1, 12), _xf(Vector3(0, 0, 0.52), Vector3(PI / 2, 0, 0)), POLY)
-	mg.add(_box(Vector3(0.04, 0.06, 0.08)), _xf(Vector3(-0.07, 0.03, -0.15)), METAL)                                # sight
+	mg.add(_box(Vector3(0.04, 0.08, 0.06)), _xf(Vector3(0, 0.07, -0.15)), METAL)                                   # sight
 	_instance(tube, mg)
+	# Sling: over the left shoulder, across the chest to the tube's lower end.
+	var sling := Merger.new()
+	sling.add(_box(Vector3(0.03, 0.62, 0.012)), _xf(Vector3(0.0, 1.36, -0.165), Vector3(0, 0, 0.62)), _colors["gear"].darkened(0.3))
+	_instance(upper, sling)
 	launch_tip = Node3D.new()
 	launch_tip.position = Vector3(0, 0, -0.62)
 	tube.add_child(launch_tip)
@@ -382,9 +396,22 @@ func _solve_legs() -> void:
 	var hip_drop := 0.33 if crouched else 0.02
 	var hip_back := 0.08 if crouched else 0.0
 	_hips.position = Vector3(0, HIP_Y - hip_drop, hip_back)
-	# The upper body was laid out for hips at 0.93 m: keep it on the hips.
-	upper.position = Vector3(0, HIP_Y - 0.93 - hip_drop, hip_back * 0.6)
-	upper.rotation.x = -0.25 if crouched else 0.0      # lean forward when low
+	# The upper body was laid out for hips at 0.93 m: keep it on the hips, and
+	# lean it forward when low by pivoting at the waist (not at the feet, which
+	# would swing the torso off the hips).
+	var lean := LEAN if crouched else 0.0
+	var waist := Vector3(0, WAIST_Y, 0)
+	var on_hips := Vector3(0, HIP_Y - 0.93 - hip_drop, hip_back)
+	var rot := Basis(Vector3.RIGHT, -lean)
+	upper.transform = Transform3D(rot, on_hips + waist - rot * waist)
+	head.rotation.x = lean * 0.7                         # keep eyes up
+	# Counter-rotate the rifle about the grip so the muzzle stays at low
+	# ready instead of pointing into the ground.
+	var counter := Transform3D(Basis(Vector3.RIGHT, lean * 0.8), Vector3.ZERO)
+	_rifle.transform = Transform3D(Basis.IDENTITY, _grip) * counter * Transform3D(Basis.IDENTITY, -_grip) * _rifle_base
+	_guard = _rifle.transform * _guard_local
+	if not (_gesture and _gesture.is_running()):
+		_left_target = _guard
 	for s in ["L", "R"]:
 		var sx := -1.0 if s == "L" else 1.0
 		var hip := _hips.position + Vector3(HIP_X * sx, -0.04, 0)
@@ -415,6 +442,7 @@ func set_crouch(on: bool) -> void:
 		return
 	crouched = on
 	_solve_legs()
+	_solve_arms()
 
 
 func _set_left_hand(p: Vector3) -> void:
@@ -453,6 +481,7 @@ func gesture(kind: String, yaw_off := 0.0) -> void:
 			step.call(sh + d * 0.56, 0.15)
 			tw.tween_interval(0.8)
 	step.call(_guard, 0.25)
+	tw.tween_callback(func() -> void: _set_left_hand(_guard))   # in case he crouched meanwhile
 
 
 func set_team_patch(t: int, visible_on: bool) -> void:
@@ -486,7 +515,9 @@ func set_sergeant(on: bool) -> void:
 			_sgt_parts.append(ch)
 	var ant := MeshInstance3D.new()
 	ant.mesh = _cyl(0.006, 0.01, 0.8, 6)
-	ant.material_override = _material("normal")
+	var dark := StandardMaterial3D.new()
+	dark.albedo_color = Color(0.08, 0.08, 0.08)
+	ant.material_override = dark
 	ant.position = Vector3(0.12, 1.88, 0.27)
 	ant.rotation.x = -0.15
 	upper.add_child(ant)
@@ -497,3 +528,88 @@ func set_sergeant(on: bool) -> void:
 	tip.position = Vector3(0.12, 2.27, 0.33)
 	upper.add_child(tip)
 	_sgt_parts.append(tip)
+
+
+## Dead. `face_up` false: sprawled on his front, arms out. `face_up` true:
+## fallen backwards and rolled onto his side (the pack won't let a body lie
+## flat on its back), arms in front. Feet go slack and the rifle drops flat on
+## the ground beside him. He bends at the waist until upper body and legs both
+## rest on the ground, then is lowered so nothing sinks or floats.
+func lay_down(face_up: bool) -> void:
+	if _gesture:
+		_gesture.kill()
+	if crouched:
+		crouched = false
+		_solve_legs()
+	if face_up:
+		_left_target = Vector3(-0.1, 1.12, -0.36)
+		_grip = Vector3(0.08, 1.0, -0.34)
+	else:
+		_left_target = Vector3(-0.42, 1.05, -0.05)
+		_grip = Vector3(0.42, 1.05, -0.05)
+	_solve_arms()
+	for s in ["L", "R"]:
+		var sx := -1.0 if s == "L" else 1.0
+		var foot: Node3D = _legs[s]["foot"]
+		if face_up:       # heels down, toes falling outward
+			foot.basis = Basis(Vector3.UP, -0.8 * sx) * Basis(Vector3.RIGHT, -0.35)
+		else:             # toes pointed, soles up
+			foot.basis = Basis(Vector3.UP, 0.1 * sx) * Basis(Vector3.RIGHT, -1.3)
+	# Lay him flat (legs along the ground), then bend at the waist until his
+	# upper body (chest kit face down, pack face up) rests on the ground too.
+	# Resting points are the corners of every body part's box.
+	rotation = Vector3.ZERO
+	var inv := global_transform.affine_inverse()
+	var inv_u := upper.global_transform.affine_inverse()
+	var pts_u := PackedVector3Array()   # upper space
+	var pts_l := PackedVector3Array()   # model space
+	for mi in _meshes:
+		if mi.get_parent() == _rifle:
+			continue
+		var is_upper: bool = upper.is_ancestor_of(mi)
+		var xf: Transform3D = (inv_u if is_upper else inv) * mi.global_transform
+		var bb: AABB = mi.get_aabb()
+		for c in 8:
+			if is_upper:
+				pts_u.append(xf * bb.get_endpoint(c))
+			else:
+				pts_l.append(xf * bb.get_endpoint(c))
+	var r := Basis(Vector3.RIGHT, -PI / 2.0)
+	if face_up:
+		r = Basis(Vector3.RIGHT, PI / 2.0) * Basis(Vector3.UP, 1.3)    # on his back, rolled onto his side
+	var ll := INF
+	for p in pts_l:
+		ll = minf(ll, (r * p).y)
+	var on_hips := upper.position - (Vector3(0, WAIST_Y, 0) - upper.basis * Vector3(0, WAIST_Y, 0))
+	var waist := Vector3(0, WAIST_Y, 0)
+	var best_w := 0.0
+	var best_err := INF
+	var best_lu := ll
+	for k in 51:
+		var w := -0.6 + 0.024 * k
+		var bend := Basis(Vector3.RIGHT, w)
+		var uxf := Transform3D(bend, on_hips + waist - bend * waist)
+		var lu := INF
+		for p in pts_u:
+			lu = minf(lu, (r * (uxf * p)).y)
+		# upper body may rest on the ground, never sink below the legs
+		var err := absf(lu - ll) + absf(w) * 0.02
+		if err < best_err:
+			best_err = err
+			best_w = w
+			best_lu = lu
+	var bend := Basis(Vector3.RIGHT, best_w)
+	upper.transform = Transform3D(bend, on_hips + waist - bend * waist)
+	head.rotation.x = -0.35 if face_up else 0.25      # head lolls back / turned down
+	basis = r
+	position.y = -minf(ll, best_lu)
+	# Rifle flat on the ground at his right side, along the body.
+	var along := global_basis.y
+	along.y = 0.0
+	along = along.normalized()
+	var side := along.cross(Vector3.UP).normalized() * (-1.0 if face_up else 1.0)
+	var ground := global_position.y - position.y
+	var at := global_position + side * 0.5 + along * 0.9
+	var b := Basis.looking_at(-along.rotated(Vector3.UP, 0.35), Vector3.UP)
+	b = b * Basis(Vector3.BACK, PI / 2.0)       # lying on its side
+	_rifle.global_transform = Transform3D(b, Vector3(at.x, ground + 0.03, at.z))

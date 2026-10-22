@@ -115,6 +115,12 @@ One universal soldier (`soldier_model.gd`) is built for everyone, friend and foe
 two-bone IK arms and legs) merged into one vertex-coloured mesh per part, so it stays cheap on integrated GPUs.
 Variants only change colours and kit: uniform/armband per side, skin tone, grenade launcher under the grenadier's
 rifle, tube launcher and carbine for the rocketman, amber chevrons and a radio antenna for the sergeant.
+Poses: idle (rifle at low ready), crouch (hips drop, torso leans forward from the waist, rifle stays level),
+left-hand signals, and dead (your men sprawl face down; enemies fall back onto their side; the rifle drops beside
+the body and the body is fitted to the ground so nothing sinks or floats).
+
+`tests/tools/render_models.gd` renders close-ups of every pose from several angles for visual review (needs a real
+renderer, e.g. under `xvfb-run`; usage is in the file). Not part of the test suite.
 
 Maps live in `scripts/maps/`. Each lists its boxes (`building`, `cwall`, `car`, `crate`, `dumpster`, `barrier`,
 `sandbag`, `wall`, `tall`), enemy areas, start point, anti-armor team spot, and adds its own lights.

@@ -302,8 +302,7 @@ func _die() -> void:
 	_set_crouch(false)
 	collision_layer = 0
 	_flash.visible = false
-	_model.rotation.x = -PI / 2.0
-	_model.position.y = 0.2
+	_model.lay_down(false)
 	_model.set_tint("dead")
 	_model.set_team_patch(-1, false)
 	set_physics_process(false)
