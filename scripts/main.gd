@@ -1025,6 +1025,11 @@ func on_vehicle_destroyed(v: Node3D) -> void:
 	notify("ENEMY %s DESTROYED" % v.vehicle_name)
 
 
+## The sergeant's spoken order, shown with his hand signal.
+func sgt_callout(text: String) -> void:
+	notify(text, 1.4)
+
+
 func notify(text: String, seconds := 4.0) -> void:
 	_notice = text
 	_notice_t = seconds
@@ -1230,7 +1235,8 @@ func _unit_text() -> String:
 			flag = "  [color=%s]PINNED[/color]" % C_WARN
 		elif s.hp < s.MAX_HP * 0.5:
 			flag = "  [color=%s]WOUNDED[/color]" % C_WARN
-		lines.append("%s%s %s  %s%s" % [team, role_short.get(s.role, "?   "), bar, sp, flag])
+		var rname: String = "SGT " if s.is_sergeant else role_short.get(s.role, "?   ")
+		lines.append("%s%s %s  %s%s" % [team, rname, bar, sp, flag])
 	return "\n".join(lines)
 
 

@@ -9,6 +9,11 @@ extends CharacterBody3D
 ## squad orders him to: one right click = one man uses one special.
 ## Soldiers not yet recruited stand at their post until the squad reaches them.
 ##
+## Orders reach him through the sergeant's hand signals: he reacts after a
+## delay that grows with his distance from the sergeant (schedule()). He
+## accelerates and slows with some weight, and when leaving cover he moves
+## low and slow for a moment, covering anything in the reticle.
+##
 ## Health 100: below 50 he's wounded (slower, less accurate), at 0 he's down.
 ## Suppression 0..1 builds from enemy rounds snapping past: suppressed
 ## soldiers peek less and shoot worse; pinned (>0.85) they stay down in cover.
@@ -26,6 +31,9 @@ const FIRE_HOLD := 0       # must match squad.gd
 const FIRE_AT_WILL := 1
 const FIRE_FOCUS := 2
 const MAX_HP := 100.0
+const ACCEL := 12.0            # m/s^2: how fast he gets up to speed / slows down
+const LOW_SPEED := 0.45        # speed factor while moving low out of cover
+const ARM_REST := Vector3(-0.35, -0.5, 0.0)   # left hand on the rifle
 
 static var _mats := {}
 
@@ -82,6 +90,17 @@ var _col: CollisionShape3D
 var _torso: MeshInstance3D
 var _model: Node3D
 var _patch: MeshInstance3D
+var is_sergeant := false
+var _left_arm: Node3D          # shoulder pivot; the sergeant signals with it
+var _arm_tween: Tween
+var _sgt_parts: Array = []
+var _pending: Array = []       # [[seconds_left, Callable]] delayed reactions to orders
+var _hold_point: Variant = null   # set while he holds his ground (not yet reacted / halted)
+var _low_t := 0.0              # leaving cover: crouched, slow, covering fire
+var _vel := Vector3.ZERO       # smoothed velocity (weight)
+var _mode_target := -1         # fire mode he's been told, applied after his reaction delay
+var _mode_timer := 0.0
+var _reticle_only := false     # covering fire: only enemies inside the reticle, no area fire
 
 
 func _ready() -> void:
@@ -197,7 +216,13 @@ func _build_model() -> void:
 	helmet.height = 0.33
 	_part(_upper, helmet, dark, Vector3(0, 1.66, 0), Vector3.ZERO, Vector3(1, 0.72, 1))
 	_part(_upper, _box(Vector3(0.11, 0.11, 0.40)), uniform, Vector3(0.27, 1.28, -0.16))  # right arm
-	_part(_upper, _box(Vector3(0.11, 0.11, 0.46)), uniform, Vector3(-0.17, 1.25, -0.24), Vector3(0, -0.5, 0))
+	# Left arm on a shoulder pivot so it can signal; at rest it holds the rifle.
+	_left_arm = Node3D.new()
+	_left_arm.position = Vector3(-0.29, 1.38, -0.02)
+	_left_arm.rotation = ARM_REST
+	_upper.add_child(_left_arm)
+	_part(_left_arm, _box(Vector3(0.11, 0.11, 0.55)), uniform, Vector3(0, 0, -0.27))
+	_part(_left_arm, _box(Vector3(0.12, 0.12, 0.1)), skin, Vector3(0, 0, -0.58))
 
 	var rifle_len := 0.7 if anti_armor else 0.85     # burst rifle is a shorter carbine
 	_part(_upper, _box(Vector3(0.07, 0.10, rifle_len)), black, Vector3(0.12, 1.27, -0.38 + (0.85 - rifle_len) * 0.5))
@@ -308,12 +333,97 @@ func take_damage(dmg: float, _from: Vector3) -> bool:
 
 
 func role_name() -> String:
+	if is_sergeant:
+		return "SERGEANT"
 	return {"rifleman": "RIFLEMAN", "grenadier": "GRENADIER", "anti_armor": "ROCKETMAN"}.get(role, "SOLDIER")
+
+
+# ---------------------------------------------------------------- sergeant & orders
+
+## Sergeant: amber chevrons on both sleeves and a radio antenna on the pack.
+func set_sergeant(on: bool) -> void:
+	is_sergeant = on
+	for p in _sgt_parts:
+		p.queue_free()
+	_sgt_parts.clear()
+	if not on:
+		return
+	var amber := _mat("chevron", Color(1.0, 0.72, 0.15), true)
+	for side in [-1.0, 1.0]:
+		for i in 2:
+			_sgt_parts.append(_part(_upper, _box(Vector3(0.03, 0.035, 0.16)), amber,
+				Vector3(0.265 * side, 1.27 - i * 0.06, 0.0), Vector3(0, 0, 0.5 * side)))
+	var ant := CylinderMesh.new()
+	ant.top_radius = 0.008
+	ant.bottom_radius = 0.012
+	ant.height = 0.9
+	_sgt_parts.append(_part(_upper, ant, _mat("black", Color(0.08, 0.08, 0.08)), Vector3(0.12, 1.75, 0.24), Vector3(-0.15, 0, 0)))
+
+
+## Run `cb` after `seconds` (his reaction time to an order).
+func schedule(seconds: float, cb: Callable) -> void:
+	_pending.append([seconds, cb])
+
+
+## Stay where you are until told otherwise.
+func hold_here() -> void:
+	if state == State.FOLLOW:
+		_hold_point = global_position
+
+
+func release_hold() -> void:
+	_hold_point = null
+
+
+## Halt signal received: stop where you are (unless badly out of position).
+func halt_here() -> void:
+	if state == State.FOLLOW and global_position.distance_to(move_target) < 4.0:
+		_hold_point = global_position
+
+
+## Out of cover: move low and slow for a moment, covering the reticle.
+func start_low(seconds: float) -> void:
+	_low_t = seconds
+
+
+## Sergeant hand signals with the left arm: "move", "halt", "cover", "fire".
+## `toward` (world direction) is where he points for "fire".
+func signal_hand(kind: String, toward := Vector3.ZERO) -> void:
+	if dead or _left_arm == null:
+		return
+	if _arm_tween:
+		_arm_tween.kill()
+	var tw := create_tween()
+	_arm_tween = tw
+	var arm := _left_arm
+	match kind:
+		"move":      # arm up and forward, chop forward twice: "move out"
+			for i in 2:
+				tw.tween_property(arm, "rotation", Vector3(1.2, 0.0, 0.0), 0.14)
+				tw.tween_property(arm, "rotation", Vector3(0.05, 0.0, 0.0), 0.16)
+			tw.tween_interval(0.15)
+		"halt":      # raised fist, held
+			tw.tween_property(arm, "rotation", Vector3(1.65, 0.0, 0.15), 0.15)
+			tw.tween_interval(0.9)
+		"cover":     # arm out, palm down, pump down: "get down / take cover"
+			tw.tween_property(arm, "rotation", Vector3(0.2, 0.5, 0.0), 0.12)
+			for i in 2:
+				tw.tween_property(arm, "rotation", Vector3(-0.65, 0.5, 0.0), 0.15)
+				tw.tween_property(arm, "rotation", Vector3(0.2, 0.5, 0.0), 0.13)
+		"fire":      # point at the target
+			var yaw_off := 0.0
+			if toward != Vector3.ZERO:
+				var local := global_transform.basis.inverse() * toward
+				yaw_off = clampf(atan2(-local.x, -local.z), -1.2, 1.2)
+			tw.tween_property(arm, "rotation", Vector3(0.12, yaw_off, 0.0), 0.15)
+			tw.tween_interval(0.8)
+	tw.tween_property(arm, "rotation", ARM_REST, 0.25)
 
 
 ## Static "down" pose: lies flat where he fell, no collision, no glow.
 func _die() -> void:
 	dead = true
+	_pending.clear()
 	hp = 0.0
 	target = null
 	_set_crouch(false)
@@ -370,7 +480,17 @@ func _physics_process(delta: float) -> void:
 		_hurt_t -= delta
 		if _hurt_t <= 0.0:
 			_torso.material_override = _mat("tan", Color(0.44, 0.40, 0.28)) if role == "anti_armor" else _mat("olive", Color(0.36, 0.40, 0.24))
+	for i in range(_pending.size() - 1, -1, -1):
+		_pending[i][0] -= delta
+		if _pending[i][0] <= 0.0:
+			var cb: Callable = _pending[i][1]
+			_pending.remove_at(i)
+			cb.call()
+	_low_t = maxf(0.0, _low_t - delta)
+
 	var dest: Vector3 = move_target if state == State.FOLLOW else cover_pos
+	if state == State.FOLLOW and _hold_point != null:
+		dest = _hold_point
 	if state == State.IN_COVER and _peeking and _is_tall():
 		dest = peek_pos   # lean out past the edge of the crate
 	_path_timer -= delta
@@ -410,16 +530,21 @@ func _physics_process(delta: float) -> void:
 		if hp < MAX_HP * 0.5:
 			spd *= 0.75        # wounded
 		if state == State.TO_COVER:
-			spd *= 1.35        # scramble!
+			spd *= 1.12        # running for cover: flat out, but carrying kit
+		elif _low_t > 0.0:
+			spd *= LOW_SPEED   # leaving cover: low and slow
 		elif dist > 5.0:
-			spd *= 1.3         # catch up with the group
+			spd *= 1.25        # catch up with the group
 		spd *= clampf(dist / 1.0, 0.35, 1.0)
 		vel = dir * spd
 
 	if state != State.IN_COVER:
 		vel += _separation() * 2.5
 
-	velocity = Vector3(vel.x, -4.0, vel.z)
+	# Weight: ease toward the wanted velocity instead of snapping to it.
+	vel.y = 0
+	_vel = _vel.move_toward(vel, ACCEL * delta)
+	velocity = Vector3(_vel.x, -4.0, _vel.z)
 	move_and_slide()
 
 	_update_combat(delta)
@@ -587,6 +712,8 @@ func _choose_aim() -> void:
 				target = _find_target(true)
 			if target:
 				_has_aim = false
+			elif _reticle_only:
+				_has_aim = false        # covering fire: only real targets
 			else:
 				_pick_focus_point()
 
@@ -599,7 +726,22 @@ func _update_combat(delta: float) -> void:
 
 	if target and not target.alive:
 		target = null
-	var mode: int = squad.fire_mode_for(self)
+	# Fire orders reach him after his reaction delay (ceasing fire is quicker).
+	var ordered: int = squad.fire_mode_for(self)
+	if ordered != _mode_target:
+		if _mode_target == -1:
+			_mode_target = ordered
+			_mode = ordered
+		else:
+			_mode_target = ordered
+			_mode_timer = squad.reaction_delay(self) * (0.6 if ordered == FIRE_HOLD else 1.0)
+	var mode: int = _mode if _mode_timer > 0.0 else _mode_target
+	_mode_timer = maxf(0.0, _mode_timer - delta)
+	# Coming out of cover: cover the reticle while moving low.
+	_reticle_only = false
+	if _low_t > 0.0 and state == State.FOLLOW and mode == FIRE_HOLD:
+		mode = FIRE_FOCUS
+		_reticle_only = true
 	if not _special_order.is_empty():
 		# Winding up a throw / shot: he stands up for it, primary fire paused.
 		_set_crouch(false)
@@ -620,7 +762,7 @@ func _update_combat(delta: float) -> void:
 	var can_fire := false
 	match state:
 		State.FOLLOW:
-			_set_crouch(false)
+			_set_crouch(_low_t > 0.0)     # low while coming out of cover
 			can_fire = true
 		State.TO_COVER:
 			_set_crouch(false)

@@ -217,14 +217,24 @@ const PAGES := [
   {k}M{/k}              Next map
   {k}R{/k}              Restart
 """],
-["MOVEMENT & COVER", """{h}THE SQUAD MOVES AS ONE{/h}
+["MOVEMENT & COVER", """{h}THE SERGEANT & HAND SIGNALS{/h}
+One man is the {h}sergeant{/h}: amber chevrons on his sleeves, radio antenna on his pack, {h}SGT{/h} in the squad panel. Your orders go through him: he signals with his left hand, and each man reacts after a beat that grows with his distance from him (roughly 0.3-0.8 s in a tight group, over a second if spread out). He reacts first.
+  - {h}Move out{/h}: forward chopping motion when you start moving
+  - {h}Halt{/h}: raised fist when the unit stops; men stop where they are
+  - {h}Take cover{/h}: palm-down pumping
+  - {h}Open fire{/h}: points at the reticle; ceasing fire is a little quicker
+If he goes down, a rifleman takes over. When split into teams, the other team's leader signals for it.
+Men speed up and slow down with weight; they don't snap to a run or a stop.
+
+{h}THE SQUAD MOVES AS ONE{/h}
 You steer an invisible point. Each man keeps his own spot in a loose cluster around it and finds his own way around cars and crates. Buildings and compound walls stop the squad; small cover doesn't. If men fall behind, the group slows so nobody gets left.
 
 {h}MOVE ORDER  ({k}E{/k}){/h}
 The squad (or your active team) moves to the ground under the reticle center. A green ring marks the spot. {k}WASD{/k} cancels.
 
 {h}TAKE COVER  ({k}C{/k} / {k}SPACE{/k}){/h}
-Every man runs to the nearest free spot that puts cover between him and {h}where the camera is looking{/h}, with a pull toward the group. No two men share a spot. Moving, or pressing {k}C{/k} again, brings them back out.
+After the sergeant's signal, every man runs (heavy, flat out) to the nearest free spot that puts cover between him and {h}where the camera is looking{/h}, with a pull toward the group. No two men share a spot.
+{h}Leaving cover{/h} (moving, or {k}C{/k} again): each man comes out on his own beat and moves {h}low and slow{/h} for about 2 s, firing at any enemy inside the reticle to cover the move, then stands and moves normally.
   - {h}Low cover{/h} (crates, cars, barriers, sandbags, dumpsters): crouched = hidden. He pops up to shoot, then ducks.
   - {h}Tall cover{/h} (tall crates, building corners, compound walls): can't shoot over it. He leans out past the edge, fires, and steps back. Each man claims his own corner.
   {d}Crouched behind low cover, enemies can't see or hit you. Only lobbed grenades reach over it.{/d}

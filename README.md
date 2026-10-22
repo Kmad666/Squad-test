@@ -119,3 +119,11 @@ that way. Rockets go to a man with a clear line of fire when possible. If the se
 kind is empty, the click switches to the next kind with ammo and uses it. When the whole unit is out, right click
 only flashes NO EXPLOSIVES LEFT. Flashbangs do no damage but blind (no shooting) and pin enemies in a 7 m radius
 for 3.5 s. The bar at the bottom shows what's left; the panel bottom-right shows every man's health and special.
+
+## Sergeant, hand signals and reaction time
+One soldier is the sergeant (amber chevrons, radio antenna, SGT in the squad panel). Orders go through his left-hand
+signals: move out (forward chop), halt (raised fist), take cover (palm-down pump), open fire (points at the reticle).
+Each man reacts after 0.22 s + 0.065 s per metre from his team leader (+ a little random); the leader reacts in ~0.1 s.
+Men accelerate and slow with weight, run for cover at a heavier pace, and when leaving cover move low and slow for
+~2 s while firing at enemies inside the reticle. A newer order cancels any reaction still pending from an older one.
+If the sergeant falls, a rifleman takes over; a split team without him is signalled by its first man.

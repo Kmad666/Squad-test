@@ -12,6 +12,10 @@ extends Node3D
 ## scouts ahead with the camera instead of moving anyone.
 ##
 ## Teams waiting in the field join when either fire team walks up to them.
+##
+## Orders go through the sergeant: he gives a hand signal (move out, halt,
+## take cover, open fire) and each man reacts after a delay that grows with
+## his distance from his team leader, so the unit moves with some weight.
 
 const CoverUtil = preload("res://scripts/cover_util.gd")
 const SoldierScript = preload("res://scripts/soldier.gd")
@@ -51,6 +55,8 @@ var holding := false
 var scout_offset := Vector3.ZERO
 var bound: Dictionary = {}         # {target, mover, phase, timer} while bounding
 
+var _was_moving := [false, false]   # per team, for move / halt signals
+var _last_fire_mode := HOLD
 var _ping: MeshInstance3D
 var _ping_t := 0.0
 
@@ -71,7 +77,8 @@ var threat_dir: Vector3:
 
 func _init() -> void:
 	for i in 2:
-		teams.append({"anchor": Vector3.ZERO, "in_cover": false, "order_target": null, "threat_dir": Vector3.FORWARD})
+		teams.append({"anchor": Vector3.ZERO, "in_cover": false, "order_target": null, "threat_dir": Vector3.FORWARD,
+			"order_id": 0, "move_id": 0})   # ids: a man's delayed reaction is dropped if a newer order replaced it
 
 
 func setup(m: Node3D, start: Vector3) -> void:
@@ -89,6 +96,7 @@ func setup(m: Node3D, start: Vector3) -> void:
 	for s in soldiers:
 		s.global_position = start + s.slot_offset
 		s.move_target = s.global_position
+	soldiers[0].set_sergeant(true)
 
 
 func _new_soldier(role: String, idx: int) -> CharacterBody3D:
@@ -145,6 +153,76 @@ func _check_joins() -> void:
 		if teams[joiner]["in_cover"]:
 			take_cover(joiner)
 		main.notify("%s JOINED %s  (+%d)" % [team["name"], ("TEAM " + TEAM_NAMES[joiner]) if split else "THE SQUAD", team["members"].size()])
+
+
+# ---------------------------------------------------------------- command chain
+
+func sergeant() -> Node3D:
+	for s in soldiers:
+		if s.is_sergeant:
+			return s
+	return null
+
+
+## Who signals for a team: the sergeant if he's in it, else its first man.
+func leader_of(t: int) -> Node3D:
+	var members := team_members(t if split else 0)
+	if members.is_empty():
+		return null
+	var sgt := sergeant()
+	if sgt and sgt in members:
+		return sgt
+	return members[0]
+
+
+## How long a man takes to react to an order: the leader almost at once,
+## everyone else a beat later, more the further they are from him.
+func reaction_delay(s: Node3D) -> float:
+	var lead := leader_of(s.team if split else 0)
+	if lead == null or lead == s:
+		return 0.12
+	return 0.22 + 0.065 * s.global_position.distance_to(lead.global_position) + randf() * 0.15
+
+
+func _signal(t: int, kind: String, callout: String, toward := Vector3.ZERO) -> void:
+	var lead := leader_of(t)
+	if lead:
+		lead.signal_hand(kind, toward)
+	main.sgt_callout(("SGT: " if lead and lead.is_sergeant else "TEAM %s: " % TEAM_NAMES[t]) + callout)
+
+
+func _on_move_start(t: int) -> void:
+	_signal(t, "move", "MOVE OUT")
+	teams[t]["move_id"] += 1
+	for s in team_members(t):
+		s.hold_here()
+		s.schedule(reaction_delay(s), _react_move.bind(s, t, teams[t]["move_id"]))
+
+
+func _on_halt(t: int) -> void:
+	_signal(t, "halt", "HALT")
+	teams[t]["move_id"] += 1
+	for s in team_members(t):
+		s.schedule(reaction_delay(s), _react_halt.bind(s, t, teams[t]["move_id"]))
+
+
+func _current(t: int, key: String, id: int) -> bool:
+	return teams[t][key] == id
+
+
+func _react_move(s: Node3D, t: int, id: int) -> void:
+	if _current(t, "move_id", id) and not s.dead:
+		s.release_hold()
+
+
+func _react_halt(s: Node3D, t: int, id: int) -> void:
+	if _current(t, "move_id", id) and not s.dead:
+		s.halt_here()
+
+
+func _react_cover(s: Node3D, t: int, id: int, pos: Vector3, real: bool, leans: Array) -> void:
+	if _current(t, "order_id", id) and not s.dead:
+		s.go_to_cover(pos, real, leans)
 
 
 func team_members(t: int) -> Array:
@@ -562,6 +640,26 @@ func _physics_process(delta: float) -> void:
 	if not bound.is_empty():
 		_update_bound(delta)
 
+	# Move-out / halt signals when a team starts or stops moving.
+	var pushing := input.length() > 0.05 and not holding
+	for t in (2 if split else 1):
+		var moving: bool = teams[t]["order_target"] != null or (t == active and pushing)
+		if moving and not _was_moving[t]:
+			_on_move_start(t)
+		elif not moving and _was_moving[t] and not teams[t]["in_cover"]:
+			_on_halt(t)
+		_was_moving[t] = moving
+
+	# Open fire: the leader points at the reticle; the men follow after their
+	# reaction delays (handled per soldier).
+	var fm := fire_mode()
+	if fm != _last_fire_mode:
+		if fm != HOLD and _last_fire_mode == HOLD:
+			_signal(active, "fire", "OPEN FIRE" if fm == FOCUS else "FIRE AT WILL", main.camera_forward())
+		elif fm == HOLD:
+			main.sgt_callout(("SGT: " if leader_of(active) and leader_of(active).is_sergeant else "") + "CEASE FIRE")
+		_last_fire_mode = fm
+
 	for t in (2 if split else 1):
 		var team: Dictionary = teams[t]
 		var ot: Variant = team["order_target"]
@@ -607,6 +705,9 @@ func take_cover(t := -1, facing := Vector3.ZERO) -> void:
 	team["threat_dir"] = facing if facing != Vector3.ZERO else main.camera_forward()
 	var tdir: Vector3 = team["threat_dir"]
 	var members := team_members(t)
+	_signal(t, "cover", "TAKE COVER")
+	team["order_id"] += 1
+	var oid: int = team["order_id"]
 	var centre: Vector3 = team["anchor"]
 
 	# Spots the other team already holds are off limits.
@@ -655,7 +756,8 @@ func take_cover(t := -1, facing := Vector3.ZERO) -> void:
 	var taken_leans: Array = []
 	for s in members:
 		if not assigned.has(s.index):
-			s.go_to_cover(s.global_position, false)  # no spot: get low where you are
+			# no spot: get low where you are (after seeing the signal)
+			s.schedule(0.3 + reaction_delay(s), _react_cover.bind(s, t, oid, s.global_position, false, []))
 			continue
 		var cp: Dictionary = assigned[s.index]
 		var leans: Array = []
@@ -672,7 +774,7 @@ func take_cover(t := -1, facing := Vector3.ZERO) -> void:
 		if leans.is_empty() and not cp["peeks"].is_empty():
 			leans = [_least_crowded(cp["peeks"], all_spots + taken_leans, cp["pos"])]
 		taken_leans.append_array(leans)
-		s.go_to_cover(cp["pos"], true, leans)
+		s.schedule(0.3 + reaction_delay(s), _react_cover.bind(s, t, oid, cp["pos"], true, leans))
 
 
 ## The lean spot furthest from everyone else's spots.
@@ -694,8 +796,18 @@ func leave_cover(t := -1) -> void:
 	if t < 0:
 		t = active
 	teams[t]["in_cover"] = false
+	teams[t]["order_id"] += 1
 	for s in team_members(t):
-		s.leave_cover()
+		s.schedule(reaction_delay(s), _break_cover.bind(s, t, teams[t]["order_id"]))
+
+
+## One man leaves cover: low and slow for ~2 s, covering the reticle.
+func _break_cover(s: Node3D, t: int, id: int) -> void:
+	if s.dead or not _current(t, "order_id", id):
+		return
+	s.leave_cover()
+	s.release_hold()
+	s.start_low(1.8 + randf() * 0.4)
 
 
 # ---------------------------------------------------------------- casualties & status
@@ -703,6 +815,14 @@ func leave_cover(t := -1) -> void:
 func on_soldier_killed(s: Node3D) -> void:
 	soldiers.erase(s)
 	kia += 1
+	if s.is_sergeant and not soldiers.is_empty():
+		var heir: Node3D = soldiers[0]
+		for c in soldiers:
+			if c.role == "rifleman":
+				heir = c
+				break
+		heir.set_sergeant(true)
+		main.sgt_callout("SERGEANT DOWN  -  %s TAKES COMMAND" % heir.role_name().replace("SERGEANT", "RIFLEMAN"))
 	for i in soldiers.size():
 		soldiers[i].index = i
 	if split and (team_members(0).is_empty() or team_members(1).is_empty()):
