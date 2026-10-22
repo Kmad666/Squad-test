@@ -39,8 +39,8 @@ const THIGH := 0.44
 const SHIN := 0.43
 const ANKLE_Y := 0.085
 const SHOULDER := Vector3(0.205, 1.47, 0.0)
-const UPPER_ARM := 0.29
-const FOREARM := 0.27
+const UPPER_ARM := 0.31
+const FOREARM := 0.28
 const WAIST_Y := 0.99         # upper-body pivot (upper space, just above the belt)
 const LEAN := 0.25            # forward lean when crouched (radians)
 
@@ -324,9 +324,11 @@ func _build_arms(side: String) -> void:
 func _build_rifle(role: String) -> void:
 	var rifle := Node3D.new()
 	rifle.name = "Rifle"
-	_grip = Vector3(0.14, 1.12, -0.2)
+	# Low ready, close enough to the body that the left hand really reaches
+	# the handguard (model_test checks both hands land on the rifle).
+	_grip = Vector3(0.13, 1.16, -0.15)
 	_grip_rest = _grip
-	var dir := Vector3(-0.32, -0.2, -1.0).normalized()
+	var dir := Vector3(-0.38, -0.16, -1.0).normalized()
 	rifle.transform = Transform3D(Basis.looking_at(dir, Vector3.UP), _grip)
 	upper.add_child(rifle)
 	_rifle = rifle
@@ -356,7 +358,7 @@ func _build_rifle(role: String) -> void:
 		launch_tip.position = Vector3(0, -0.035, -0.47)
 		rifle.add_child(launch_tip)
 	# Left hand rests on the handguard.
-	_guard_local = Vector3(0, 0.0, -0.2 - front * 0.55)
+	_guard_local = Vector3(-0.022, -0.025, -0.27)      # under / left side of the handguard
 	_guard = rifle.transform * _guard_local
 
 
@@ -485,6 +487,13 @@ func _apply_pose() -> void:
 			var gait := Vector3(_hips.position.x, ANKLE_Y + h, _hips.position.z * 0.5) + ly * local
 			ankle = rest.lerp(gait, w)
 			pitch *= w
+			# Keep the sole on or above the ground however the foot is pitched:
+			# the heel rises at toe-off instead of the toes digging in.
+			# (sole corners: toe 0.185 m ahead of the ankle, heel 0.085 behind,
+			# 0.0875 below; pitch > 0 lifts the toes)
+			var toe := -0.0875 * cos(pitch) + 0.185 * sin(pitch)
+			var heel := -0.0875 * cos(pitch) - 0.085 * sin(pitch)
+			ankle.y = maxf(ankle.y, -minf(toe, heel) + 0.002)
 		# Never ask a leg to reach further than it can.
 		var to := ankle - hip
 		var max_len := THIGH + SHIN - 0.015

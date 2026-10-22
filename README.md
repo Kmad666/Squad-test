@@ -98,6 +98,11 @@ GODOT=/path/to/godot tests/run_all.sh          # MINUTES=10 for longer soak runs
 - `lean_spot_test.gd`: checks no two soldiers share a lean-out spot at tall crates.
 - `manual_test.gd`: Esc opens / pages / closes the field manual and pauses / unpauses.
 - `mission_test.gd`: scripted run of the street mission using split, bound and flank orders.
+- `model_test.gd`: geometry checks on the soldier model in every pose and gait (~8000): torso attached to hips,
+  feet never below ground, legs never over-stretched, feet never crossing, both hands on the rifle, corpses resting
+  on the ground with the rifle beside them.
+- `death_test.gd`: in-game edge cases on both maps: men killed mid-run, mid-signal and crouched, the sergeant killed
+  (one heir promoted), crouch toggled every frame, enemies killed while peeking.
 - `soak_test.gd`: random orders (including split / switch / bound / hold), cover, fire modes, specials, graphics toggles and restarts; fails on any script error.
 
 ## Maps
