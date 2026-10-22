@@ -112,7 +112,8 @@ Maps live in `scripts/maps/`. Each lists its boxes (`building`, `cwall`, `car`, 
 ## Specials (limited ammo)
 Every rifleman carries one hand grenade (frags and flashbangs, mixed), the grenadier 6 launcher rounds, each
 rocket man 2 rockets. One right click = one man uses one special of the selected kind on the reticle (an enemy
-inside it, or the ground under it); rockets go to a man with a clear line of fire when possible. If the selected
+inside it that the special can reach, or the ground under it); aimed past his range, he throws as far as he can
+that way. Rockets go to a man with a clear line of fire when possible. If the selected
 kind is empty, the click switches to the next kind with ammo and uses it. When the whole unit is out, right click
 only flashes NO EXPLOSIVES LEFT. Flashbangs do no damage but blind (no shooting) and pin enemies in a 7 m radius
 for 3.5 s. The bar at the bottom shows what's left; the panel bottom-right shows every man's health and special.
