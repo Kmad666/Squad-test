@@ -59,6 +59,11 @@ jobs:
           touch build/web/.nojekyll
           ls -la build/web
 
+      - name: Add the modeller (plain web page, served at /modeller/)
+        run: |
+          cp -r modeller build/web/modeller
+          rm -f build/web/modeller/.gdignore
+
       - name: Publish to gh-pages
         uses: peaceiris/actions-gh-pages@v4
         with:

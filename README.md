@@ -4,6 +4,7 @@ Godot 4 third-person squad shooter prototype, playable in the browser (PC).
 You command a squad of six soldiers as one unit. Each soldier picks its own target and fires on its own.
 
 **Play:** https://kmad666.github.io/Squad-test/
+**Modeller:** https://kmad666.github.io/Squad-test/modeller/ (build characters, weapons and buildings for the game)
 
 ## Controls
 | Key | Action |
@@ -170,3 +171,25 @@ Each man reacts after 0.22 s + 0.065 s per metre from his team leader (+ a littl
 Men accelerate and slow with weight, run for cover at a heavier pace, and when leaving cover move low and slow for
 ~2 s while firing at enemies inside the reticle. A newer order cancels any reaction still pending from an older one.
 If the sergeant falls, a rifleman takes over; a split team without him is signalled by its first man.
+
+## Squad Modeller (`modeller/`)
+A browser tool for building PSX-style models from parts, Spore-style: drag body parts, gear, armour, weapon
+pieces or building pieces onto the model, recolour them (main / pattern ink / trim / detail, 16 pixel
+patterns), and reshape them with size, taper, bulge, bend, lean, twist and sides sliders. Symmetry gives
+every part a mirrored twin. Three modes:
+- **Character**: built directly on this game's soldier skeleton (bones and spaces ported from
+  `scripts/soldier_model.gd`), so parts follow the game's gait, crouch, aim and death poses with no rigging
+  step. The pose menu previews *Rifle ready* and *Walk* with the same maths.
+- **Weapon**: grip at the origin, barrel toward -Z (rifle space); ghost hands show where the soldier holds it;
+  a *Muzzle point* marks where shots leave.
+- **Building**: pieces on a 0.25 m grid, 1 m squares, origin at ground level.
+
+**Export .glb** writes one mesh per bone (`hips`, `torso`, `head`, `upper_arm_L/R`, `forearm_L/R`,
+`thigh_L/R`, `shin_L/R`, `foot_L/R`) in that bone's own space, under a `Character` root; weapons as `rifle`
+with a `muzzle` child; buildings as `building`. Textures are embedded with nearest filtering, and the
+editable design is stored in the scene extras so a .glb reopens in the modeller. Designs also save as
+`.squadmodel.json` and autosave in the browser.
+
+Plain HTML + JavaScript (three.js r170 vendored in `modeller/vendor/`, MIT), no build step. `modeller/.gdignore`
+keeps Godot from importing it; the deploy workflow copies it to `/modeller/` on GitHub Pages.
+Local run: `python3 -m http.server` inside `modeller/`, then open http://localhost:8000.
