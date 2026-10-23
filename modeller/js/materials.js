@@ -43,6 +43,11 @@ export function partMaterials(part) {
 		if (part.glow) { m.emissive = col(c.detail); m.emissiveIntensity = 0.9; }
 		_mats.set(keyDet, psxify(m));
 	}
+	if (part.vcol) {
+		// imported mesh in its own colours (per-triangle vertex colours)
+		if (!_mats.has('vcol')) _mats.set('vcol', psxify(new THREE.MeshLambertMaterial({ vertexColors: true, name: 'vcol' })));
+		return [_mats.get('vcol'), _mats.get(keyTrim), _mats.get(keyDet)];
+	}
 	return [_mats.get(keyMain), _mats.get(keyTrim), _mats.get(keyDet)];
 }
 
@@ -51,6 +56,7 @@ const _exp = new Map();
 export function exportMaterial(mat) {
 	if (_exp.has(mat)) return _exp.get(mat);
 	const m = new THREE.MeshStandardMaterial({ roughness: 1, metalness: 0, name: mat.name });
+	if (mat.vertexColors) m.vertexColors = true;
 	if (mat.map) m.map = mat.map;
 	else m.color.copy(mat.color);
 	if (mat.emissive && mat.emissive.getHex() !== 0) { m.emissive.copy(mat.emissive); m.emissiveIntensity = 1; }

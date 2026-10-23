@@ -5,7 +5,8 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { TransformControls } from 'three/addons/controls/TransformControls.js';
 import { PARTS, CATEGORIES, TEMPLATES, SWATCHES } from './parts.js';
-import { buildPartGeometry, partPivot, MORPHS, triangleCount } from './geometry.js';
+import { buildPartGeometry, partPivot, MORPHS, triangleCount, MESHES, clusterTris } from './geometry.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { partMaterials, psxUniforms, ghostMat, selectMat } from './materials.js';
 import { PATTERNS, patternSwatch } from './textures.js';
 import { BONES, poseFor, otherSide, boneSide, mirrorLocal } from './skeleton.js';
@@ -44,6 +45,7 @@ const state = {
 	turn: 0,                   // upright parts: yaw for the next placement (Q)
 	settings: {},              // per mode: { sym, snap }
 	clipboard: null,
+	meshes: {},                // imported .glb meshes in this design (see importGLB)
 };
 
 // ================================================================ scene
@@ -214,6 +216,8 @@ function newPart(defId, bone, pos, quat, ov = {}) {
 		patScale: ov.patScale || def.patScale,
 		glow: ov.glow ?? def.glow,
 		flip: !!ov.flip,
+		vcol: ov.vcol ?? !!def.imported,
+		simplify: ov.simplify || 0,
 		pair: null,
 	};
 }
@@ -258,6 +262,8 @@ function copyLook(p, t) {
 	t.patScale = p.patScale;
 	t.glow = p.glow;
 	t.verts = JSON.parse(JSON.stringify(p.verts || {}));
+	t.vcol = p.vcol;
+	t.simplify = p.simplify;
 }
 
 // Apply `fn` to the selected part and its twin, then rebuild both.
@@ -656,7 +662,14 @@ function buildPalette() {
 	const pal = $('#palette');
 	pal.innerHTML = '';
 	const pending = [];
-	for (const cat of CATEGORIES[state.mode]) {
+	const imp = document.createElement('div');
+	imp.style.padding = '8px';
+	imp.append(el('button', { class: 'btn', style: 'width:100%', title: 'Add any .glb model as a part (or drop a .glb onto the page)', onclick: () => $('#importIn').click() }, '⇪ Import .glb model'));
+	pal.append(imp);
+	const cats = [];
+	const ids = Object.keys(state.meshes).map((id) => 'imp:' + id).filter((id) => PARTS[id]);
+	if (ids.length) cats.push({ name: 'Imported', parts: ids });
+	for (const cat of cats.concat(CATEGORIES[state.mode])) {
 		const sec = document.createElement('div');
 		sec.className = 'cat' + (closedCats.has(state.mode + cat.name) ? ' closed' : '');
 		const h = document.createElement('h3');
@@ -959,7 +972,9 @@ function resetCamera() {
 const hist = {};
 
 function serialize() {
-	return { format: FORMAT, version: VERSION, mode: state.mode, name: state.name, parts: state.parts };
+	const d = { format: FORMAT, version: VERSION, mode: state.mode, name: state.name, parts: state.parts };
+	if (Object.keys(state.meshes).length) d.meshes = state.meshes;
+	return d;
 }
 
 function commit() {
@@ -979,6 +994,7 @@ function commit() {
 function restore(snap) {
 	const d = JSON.parse(snap);
 	state.name = d.name;
+	useMeshes(d.meshes);
 	state.parts = d.parts;
 	rebuildAll();
 	updateStats();
@@ -1016,6 +1032,125 @@ function templateParts(mode, key) {
 	return out;
 }
 
+// ================================================================ imported models
+
+function registerImport(id, rec) {
+	MESHES.set(id, rec);
+	const n = rec.pos.length / 9;
+	PARTS['imp:' + id] = {
+		id: 'imp:' + id, name: rec.name, mode: state.mode, cat: 'Imported',
+		shapes: [{ p: 'mesh', mesh: id }], mount: 'upright', home: null,
+		colors: { main: '#9a9a9a', ink: '#1a1b1d', trim: '#2f3235', detail: '#6ce0d0' },
+		pattern: 'solid', patScale: 0.25, glow: false, morph: {}, marker: null, imported: true,
+		desc: `Imported model, ${n} triangles. Use Simplify to cut triangles.`,
+	};
+}
+
+// Make `meshes` (from a design) the current imported set.
+function useMeshes(meshes) {
+	const before = Object.keys(state.meshes).join();
+	state.meshes = meshes || {};
+	for (const [id, rec] of Object.entries(state.meshes)) registerImport(id, rec);
+	if (Object.keys(state.meshes).join() !== before) buildPalette();
+}
+
+const MAX_IMPORT_TRIS = 4000;
+
+// Reads any .glb: every mesh is flattened into one part (in its own colours:
+// material colour x texture colour sampled at each triangle), stood on its
+// base at the origin, scaled to a sensible size if it is huge or tiny, and
+// thinned to at most MAX_IMPORT_TRIS triangles.
+async function importGLB(file) {
+	const buf = await file.arrayBuffer();
+	const gltf = await new Promise((res, rej) => new GLTFLoader().parse(buf, '', res, rej));
+	gltf.scene.updateMatrixWorld(true);
+	const samplers = new Map();
+	const sampler = (tex) => {
+		if (!tex || !tex.image) return null;
+		if (samplers.has(tex)) return samplers.get(tex);
+		let fn = null;
+		try {
+			const img = tex.image;
+			const w = Math.min(img.width || 256, 256), h = Math.min(img.height || 256, 256);
+			const cv = document.createElement('canvas');
+			cv.width = w; cv.height = h;
+			const ctx = cv.getContext('2d');
+			ctx.drawImage(img, 0, 0, w, h);
+			const data = ctx.getImageData(0, 0, w, h).data;
+			fn = (u, v) => {
+				u = u - Math.floor(u); v = v - Math.floor(v);
+				if (!tex.flipY) v = v; else v = 1 - v;
+				const x = Math.min(w - 1, Math.floor(u * w)), y = Math.min(h - 1, Math.floor(v * h));
+				const i = (y * w + x) * 4;
+				return [data[i] / 255, data[i + 1] / 255, data[i + 2] / 255];
+			};
+		} catch (e) { fn = null; }
+		samplers.set(tex, fn);
+		return fn;
+	};
+	const toLinear = (c) => new THREE.Color().setRGB(c[0], c[1], c[2], THREE.SRGBColorSpace);
+	let tris = [];
+	gltf.scene.traverse((o) => {
+		if (!o.isMesh || !o.geometry || !o.geometry.attributes.position) return;
+		const g = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry;
+		const P = g.attributes.position, UV = g.attributes.uv, VC = g.attributes.color;
+		const mats = Array.isArray(o.material) ? o.material : [o.material];
+		const groups = g.groups.length ? g.groups : [{ start: 0, count: P.count, materialIndex: 0 }];
+		for (const gr of groups) {
+			const mat = mats[gr.materialIndex || 0] || mats[0] || {};
+			const base = mat.color ? mat.color.clone() : new THREE.Color(1, 1, 1);
+			const smp = sampler(mat.map);
+			for (let i = gr.start; i + 2 < gr.start + gr.count; i += 3) {
+				const v = [0, 1, 2].map((k) => new THREE.Vector3().fromBufferAttribute(P, i + k).applyMatrix4(o.matrixWorld));
+				const c = base.clone();
+				if (smp && UV) {
+					const u = (UV.getX(i) + UV.getX(i + 1) + UV.getX(i + 2)) / 3, w = (UV.getY(i) + UV.getY(i + 1) + UV.getY(i + 2)) / 3;
+					c.multiply(toLinear(smp(u, w)));
+				}
+				if (VC) c.multiply(new THREE.Color(VC.getX(i), VC.getY(i), VC.getZ(i)));
+				// stored as display colours (sRGB) so the swatches and export match
+				const sc = c.clone().convertLinearToSRGB();
+				tris.push({ v, m: 0, c: [sc.r, sc.g, sc.b] });
+			}
+		}
+	});
+	if (!tris.length) throw new Error('No meshes found in that .glb.');
+	const box = new THREE.Box3();
+	for (const t of tris) for (const v of t.v) box.expandByPoint(v);
+	const size = box.getSize(new THREE.Vector3());
+	const big = Math.max(size.x, size.y, size.z);
+	const fit = { humanoid: 0.4, weapon: 0.8, building: 4 }[state.mode];
+	const k = big > fit * 8 || big < fit / 8 ? fit / big : 1;
+	const c = box.getCenter(new THREE.Vector3());
+	for (const t of tris) for (const v of t.v) { v.x = (v.x - c.x) * k; v.y = (v.y - box.min.y) * k; v.z = (v.z - c.z) * k; }
+	const orig = tris.length;
+	let cell = big * k * 0.004;
+	while (tris.length > MAX_IMPORT_TRIS) { tris = clusterTris(tris, cell); cell *= 1.4; }
+	const r4 = (n) => Math.round(n * 10000) / 10000;
+	const r3 = (n) => Math.round(n * 1000) / 1000;
+	const rec = { name: file.name.replace(/\.glb$/i, '').slice(0, 40), pos: [], col: [] };
+	for (const t of tris) {
+		for (const v of t.v) rec.pos.push(r4(v.x), r4(v.y), r4(v.z));
+		rec.col.push(r3(t.c[0]), r3(t.c[1]), r3(t.c[2]));
+	}
+	const id = 'm' + Date.now().toString(36);
+	state.meshes[id] = rec;
+	registerImport(id, rec);
+	buildPalette();
+	const def = PARTS['imp:' + id];
+	const pl = defaultPlacement(def) || { bone: Object.keys(bones)[0], pos: [0, 0, 0], quat: [0, 0, 0, 1], flip: false };
+	const p = placeNew(def, pl);
+	status(`Imported ${rec.name}: ${tris.length} triangles` + (orig > tris.length ? ` (thinned from ${orig})` : '') + (k !== 1 ? `, rescaled ×${k.toPrecision(2)}` : '') + '. Drag it into place; Simplify cuts triangles.');
+	renderProps();
+}
+
+async function importFiles(files) {
+	for (const f of files) {
+		if (!/\.glb$/i.test(f.name)) { toast(`${f.name}: only .glb files can be imported.`); continue; }
+		try { await importGLB(f); } catch (err) { console.error(err); toast(`Could not import ${f.name}: ${err.message}`); }
+	}
+}
+
 function loadTemplate(key) {
 	state.parts = templateParts(state.mode, key);
 	state.name = key;
@@ -1027,8 +1162,9 @@ function loadTemplate(key) {
 
 function loadDesign(d) {
 	if (!d || d.format !== FORMAT || !Array.isArray(d.parts)) throw new Error('That file is not a Squad Modeller design.');
-	const missing = d.parts.filter((p) => !PARTS[p.def]).length;
 	if (d.mode !== state.mode) setMode(d.mode, false);
+	useMeshes(d.meshes);
+	const missing = d.parts.filter((p) => !PARTS[p.def]).length;
 	state.parts = d.parts.filter((p) => PARTS[p.def]);
 	state.name = d.name || 'model';
 	state.selected = null;
@@ -1070,6 +1206,7 @@ function setMode(mode, loadSaved = true) {
 			let saved = null;
 			try { saved = JSON.parse(localStorage.getItem('sqm.autosave.' + mode) || 'null'); } catch (e) { saved = null; }
 			if (saved && Array.isArray(saved.parts)) {
+				useMeshes(saved.meshes);
 				state.parts = saved.parts.filter((p) => PARTS[p.def]);
 				state.name = saved.name || mode;
 				rebuildAll();
@@ -1118,6 +1255,17 @@ $('#btnBones').onclick = () => { state.showBones = !state.showBones; proxyMat.vi
 $('#poseSel').onchange = (e) => { state.pose = e.target.value; applyPose(clock.getElapsedTime()); status(e.target.selectedOptions[0].textContent + ' — the same pose code the game uses.'); };
 $('#btnSave').onclick = saveFile;
 $('#btnOpen').onclick = () => $('#fileIn').click();
+$('#btnImport').onclick = () => $('#importIn').click();
+$('#importIn').onchange = (e) => { const fs = [...e.target.files]; e.target.value = ''; importFiles(fs); };
+window.addEventListener('dragover', (e) => { if ([...e.dataTransfer.items].some((i) => i.kind === 'file')) { e.preventDefault(); $('#dropHint').textContent = 'Drop a .glb to import it'; $('#dropHint').style.display = 'flex'; } });
+window.addEventListener('dragleave', (e) => { if (!e.relatedTarget) $('#dropHint').style.display = 'none'; });
+window.addEventListener('drop', (e) => {
+	$('#dropHint').style.display = 'none';
+	$('#dropHint').textContent = 'Drop onto the model';
+	if (!e.dataTransfer.files.length) return;
+	e.preventDefault();
+	importFiles([...e.dataTransfer.files]);
+});
 $('#btnExport').onclick = exportFile;
 $('#btnHelp').onclick = () => { $('#help').style.display = 'flex'; };
 $('#helpClose').onclick = () => { $('#help').style.display = 'none'; };
@@ -1229,6 +1377,7 @@ function renderProps() {
 	box.append(acts);
 	if (def.desc) box.append(el('div', { class: 'tip' }, def.desc));
 
+	if (!p.vcol) {
 	// colours
 	box.append(el('h4', {}, 'Colours'));
 	const slots = [['main', 'Main'], ['ink', 'Pattern'], ['trim', 'Trim'], ['detail', 'Detail']];
@@ -1282,6 +1431,7 @@ function renderProps() {
 	refreshPatternSwatches();
 	box.append(slider('Pattern size', 0.03, 2, 0.01, p.patScale, (v) => editSelected((q) => { q.patScale = v; }), (v) => (+v).toFixed(2) + 'm'));
 
+	}
 	// size
 	box.append(el('h4', {}, 'Size'));
 	const geo = (v) => Math.cbrt(v[0] * v[1] * v[2]);
@@ -1294,6 +1444,20 @@ function renderProps() {
 	['X (width)', 'Y (height)', 'Z (depth)'].forEach((lab, i) => {
 		box.append(slider(lab, 0.1, 4, 0.01, p.size[i], (v) => editSelected((q) => { q.size[i] = v; })));
 	});
+
+	if (def.imported) {
+		box.append(el('h4', {}, 'Imported model'));
+		const own = el('input', { type: 'checkbox' });
+		own.checked = !!p.vcol;
+		own.onchange = () => { editSelected((q) => { q.vcol = own.checked; }); commit(); renderProps(); };
+		box.append(el('label', { class: 'chk' }, own, 'Use its own colours (off: use Main colour + pattern)'));
+		const tc = el('div', { class: 'tip' }, `${triangleCount(partMeshes.get(p.id).geometry)} triangles`);
+		box.append(slider('Simplify', 0, 1, 0.01, p.simplify || 0, (v) => {
+			editSelected((q) => { q.simplify = v; if (q.verts && Object.keys(q.verts).length) q.verts = {}; });
+			tc.textContent = `${triangleCount(partMeshes.get(p.id).geometry)} triangles`;
+		}));
+		box.append(tc);
+	}
 
 	// points
 	box.append(el('h4', {}, 'Points'));
@@ -1496,4 +1660,4 @@ const projectPoint = (pt) => {
 };
 window.sqmCam = (pos, target) => { camera.position.set(...pos); orbit.target.set(...(target || MODES[state.mode].target)); orbit.update(); };
 window.sqmHandle = handle;
-window.sqm = { setEditPts, selectDot, vertHandle, gizmo, projectPoint, state, PARTS, serialize, loadDesign, loadTemplate, setMode, exportGLB, placementFor, hitTest, rayFromEvent, select, commit, undo, redo, templateParts, partMeshes, bones };
+window.sqm = { importFiles, setEditPts, selectDot, vertHandle, gizmo, projectPoint, state, PARTS, serialize, loadDesign, loadTemplate, setMode, exportGLB, placementFor, hitTest, rayFromEvent, select, commit, undo, redo, templateParts, partMeshes, bones };

@@ -39,9 +39,10 @@ export function boneGeometry(parts) {
 		m.compose(new THREE.Vector3(...p.pos), new THREE.Quaternion(...p.quat), new THREE.Vector3(1, 1, 1));
 		nm.getNormalMatrix(m);
 		const P = geo.attributes.position.array, N = geo.attributes.normal.array, UV = geo.attributes.uv.array;
+		const COL = geo.attributes.color ? geo.attributes.color.array : null;
 		for (const g of geo.groups) {
 			const mat = exportMaterial(mats[g.materialIndex]);
-			if (!buckets.has(mat)) buckets.set(mat, { pos: [], nrm: [], uv: [] });
+			if (!buckets.has(mat)) buckets.set(mat, { pos: [], nrm: [], uv: [], col: [] });
 			const b = buckets.get(mat);
 			for (let i = g.start; i < g.start + g.count; i++) {
 				v.set(P[i * 3], P[i * 3 + 1], P[i * 3 + 2]).applyMatrix4(m);
@@ -49,17 +50,18 @@ export function boneGeometry(parts) {
 				v.set(N[i * 3], N[i * 3 + 1], N[i * 3 + 2]).applyMatrix3(nm).normalize();
 				b.nrm.push(v.x, v.y, v.z);
 				b.uv.push(UV[i * 2], UV[i * 2 + 1]);
+				if (COL) b.col.push(COL[i * 3], COL[i * 3 + 1], COL[i * 3 + 2]); else b.col.push(1, 1, 1);
 			}
 		}
 		geo.dispose();
 	}
 	if (!buckets.size) return null;
-	let pos = [], nrm = [], uv = [];
+	let pos = [], nrm = [], uv = [], col = [];
 	const mats = [];
 	const geo = new THREE.BufferGeometry();
 	let start = 0;
 	for (const [mat, b] of buckets) {
-		pos = pos.concat(b.pos); nrm = nrm.concat(b.nrm); uv = uv.concat(b.uv);
+		pos = pos.concat(b.pos); nrm = nrm.concat(b.nrm); uv = uv.concat(b.uv); col = col.concat(b.col);
 		const count = b.pos.length / 3;
 		geo.addGroup(start, count, mats.length);
 		mats.push(mat);
@@ -68,6 +70,8 @@ export function boneGeometry(parts) {
 	geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
 	geo.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3));
 	geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+	// only when something uses its own colours (glTF multiplies COLOR_0 into every material)
+	if (mats.some((m) => m.vertexColors)) geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
 	return { geo, mats };
 }
 

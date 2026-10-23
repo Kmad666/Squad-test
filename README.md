@@ -176,7 +176,10 @@ If the sergeant falls, a rifleman takes over; a split team without him is signal
 A browser tool for building PSX-style models from parts, Spore-style: drag body parts, gear, armour, weapon
 pieces or building pieces onto the model, recolour them (main / pattern ink / trim / detail, 16 pixel
 patterns), and reshape them with size, taper, bulge, bend, lean, twist and sides sliders. Symmetry gives
-every part a mirrored twin. Three modes:
+every part a mirrored twin. **Edit points** (V) moves individual corners. **Import** (or drag a .glb onto the
+page) adds any .glb as a part in its own colours (material x texture colour per triangle, exported as vertex
+colours), stood on its base, rescaled if huge or tiny, capped at 4000 triangles, with a Simplify slider (vertex
+clustering); the mesh is stored inside the design. Three modes:
 - **Character**: built directly on this game's soldier skeleton (bones and spaces ported from
   `scripts/soldier_model.gd`), so parts follow the game's gait, crouch, aim and death poses with no rigging
   step. The pose menu previews *Rifle ready* and *Walk* with the same maths.

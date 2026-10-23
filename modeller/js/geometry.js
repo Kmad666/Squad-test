@@ -128,9 +128,54 @@ function cylAB(out, a, b, ra, rb, n, slot, caps = true) {
 	}
 }
 
+// ------------------------------------------------------------ imported meshes
+
+// Uploaded .glb meshes, by id: { name, pos: [x,y,z per corner, 9 per
+// triangle], col: [r,g,b per triangle, 0..1] }. Filled from the design.
+export const MESHES = new Map();
+
+// Vertex clustering: snap corners to a grid of `cell` metres and drop the
+// triangles that collapse. Fast, keeps the silhouette, very PSX.
+export function clusterTris(tris, cell) {
+	if (!(cell > 0)) return tris;
+	const sums = new Map();
+	const key = (v) => `${Math.floor(v.x / cell)},${Math.floor(v.y / cell)},${Math.floor(v.z / cell)}`;
+	for (const t of tris) for (const v of t.v) {
+		const k = key(v);
+		const s = sums.get(k) || { x: 0, y: 0, z: 0, n: 0 };
+		s.x += v.x; s.y += v.y; s.z += v.z; s.n += 1;
+		sums.set(k, s);
+	}
+	const out = [];
+	for (const t of tris) {
+		const ks = t.v.map(key);
+		if (ks[0] === ks[1] || ks[1] === ks[2] || ks[0] === ks[2]) continue;
+		const v = ks.map((k) => { const s = sums.get(k); return new THREE.Vector3(s.x / s.n, s.y / s.n, s.z / s.n); });
+		out.push({ v, m: t.m, c: t.c });
+	}
+	return out;
+}
+
+function meshTris(sh, simplify) {
+	const rec = MESHES.get(sh.mesh);
+	if (!rec) return [];
+	const tris = [];
+	const P = rec.pos, Cc = rec.col;
+	const box = new THREE.Box3();
+	for (let i = 0; i + 8 < P.length; i += 9) {
+		const v = [0, 3, 6].map((o) => new THREE.Vector3(P[i + o], P[i + o + 1], P[i + o + 2]));
+		for (const x of v) box.expandByPoint(x);
+		const ti = i / 9;
+		tris.push({ v, m: 0, c: Cc ? [Cc[ti * 3], Cc[ti * 3 + 1], Cc[ti * 3 + 2]] : null });
+	}
+	if (simplify > 0) return clusterTris(tris, box.getSize(new THREE.Vector3()).length() * (0.004 + simplify * simplify * 0.2));
+	return tris;
+}
+
 // ------------------------------------------------------------ shapes
 
-function buildShape(sh, adj) {
+function buildShape(sh, adj, opts = {}) {
+	if (sh.p === 'mesh') return meshTris(sh, opts.simplify || 0);
 	const out = new TriList();
 	const slot = SLOT_INDEX[sh.m || 'main'];
 	switch (sh.p) {
@@ -229,7 +274,7 @@ export function partPivot(def) {
 export function buildPartGeometry(def, part) {
 	const adj = part.sides || 0;
 	let tris = [];
-	for (const sh of def.shapes) tris = tris.concat(buildShape(sh, adj));
+	for (const sh of def.shapes) tris = tris.concat(buildShape(sh, adj, { simplify: part.simplify }));
 	morphTris(tris, new THREE.Vector3(...(part.size || [1, 1, 1])), part.morph, partPivot(def));
 	// Corner points: every distinct vertex position, numbered in a fixed
 	// order, so hand edits (part.verts: { index: [dx, dy, dz] }) stick to the
@@ -268,7 +313,7 @@ export function buildPartGeometry(def, part) {
 
 export function trisToGeometry(tris, tile) {
 	tris.sort((a, b) => a.m - b.m);
-	const pos = [], nrm = [], uv = [];
+	const pos = [], nrm = [], uv = [], col = [];
 	const e1 = new THREE.Vector3(), e2 = new THREE.Vector3(), n = new THREE.Vector3();
 	const groups = [];
 	let cur = -1, start = 0;
@@ -283,6 +328,7 @@ export function trisToGeometry(tris, tile) {
 		for (const v of t.v) {
 			pos.push(v.x, v.y, v.z);
 			nrm.push(n.x, n.y, n.z);
+			if (t.c) col.push(t.c[0], t.c[1], t.c[2]); else col.push(1, 1, 1);
 			if (ax >= ay && ax >= az) uv.push(v.z / tile, v.y / tile);
 			else if (ay >= az) uv.push(v.x / tile, v.z / tile);
 			else uv.push(v.x / tile, v.y / tile);
@@ -293,6 +339,7 @@ export function trisToGeometry(tris, tile) {
 	g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
 	g.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3));
 	g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+	if (tris.some((t) => t.c)) g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
 	for (const [s, c, m] of groups) g.addGroup(s, c, m);
 	g.computeBoundingSphere();
 	g.computeBoundingBox();

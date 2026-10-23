@@ -98,7 +98,7 @@ footer #status { flex: 1; overflow: hidden; text-overflow: ellipsis; }
 <body>
 <div id="app">
 	<header>
-		<span class="logo">▲ SQUAD MODELLER</span>
+		<span class="logo">▲ SQM</span>
 		<div class="tabs" id="modeTabs">
 			<button class="btn" data-mode="humanoid">Character</button>
 			<button class="btn" data-mode="weapon">Weapon</button>
@@ -122,10 +122,12 @@ footer #status { flex: 1; overflow: hidden; text-overflow: ellipsis; }
 		<button class="btn" id="btnBones" title="Show the skeleton">Bones</button>
 		<div class="sep"></div>
 		<button class="btn" id="btnOpen" title="Open a saved design (.json or .glb)">Open</button>
+		<button class="btn" id="btnImport" title="Add any .glb model as a part (or drop a .glb onto the page)">Import</button>
 		<button class="btn" id="btnSave" title="Download the design to edit later (Ctrl+S)">Save</button>
-		<button class="btn primary" id="btnExport" title="Download a .glb for the game">Export .glb</button>
+		<button class="btn primary" id="btnExport" title="Download a .glb for the game">Export</button>
 		<button class="btn" id="btnHelp">?</button>
 		<input type="file" id="fileIn" accept=".json,.glb" hidden>
+		<input type="file" id="importIn" accept=".glb" multiple hidden>
 	</header>
 
 	<aside id="palette"></aside>
@@ -154,6 +156,7 @@ footer #status { flex: 1; overflow: hidden; text-overflow: ellipsis; }
 		<li><b>Drag</b> a part from the left onto the model. Body parts, clothes and armour snap to their place on the skeleton (drop a boot anywhere on a leg); pouches, spikes and bits stick where you drop them. Click a part in the list to add it without dragging.</li>
 		<li><b>Symmetry</b> gives every part a mirrored twin on the other side. Edit either one and the twin follows. <i>Unlink</i> splits them.</li>
 		<li><b>Click</b> a part to select it, then <b>drag it</b> to slide it across the surface. Use Move / Rotate / Scale for exact tweaks.</li>
+		<li><b>Import .glb</b> (or drop a .glb on the page) adds any model as a part in its own colours. <i>Simplify</i> cuts its triangles. It is saved inside your design.</li>
 		<li><b>Edit points</b> (<kbd>V</kbd>): drag a part's individual corners for custom shapes.</li>
 		<li>Every part has colours (main, pattern ink, trim, detail), a pattern, size and shape sliders (taper, bulge, bend, lean, twist, sides).</li>
 		<li>With nothing selected, the right panel's <i>Colours used</i> recolours every part using a colour at once.</li>
