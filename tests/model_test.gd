@@ -6,6 +6,9 @@ extends SceneTree
 ##  - hands actually reach the rifle (IK targets reachable)
 ##  - dead bodies rest on the ground: nothing sinks, nothing floats,
 ##    rifle lies on the ground
+##  - prone and crawling (HD and RETRO): lying on the ground, nothing sunk
+##    into it, hands on the rifle, rifle pointed where he aims; the drop to
+##    prone and getting back up never put a foot through the ground
 ## Prints FAIL lines and exits 1 on any failure.
 
 const SoldierModel = preload("res://scripts/soldier_model.gd")
@@ -157,10 +160,11 @@ func _run() -> void:
 	_check(m2._gait_w == 0.0, "gait never settled after stopping")
 	m2.free()
 
-	# Corpses, HD and RETRO bodies.
+	# Corpses and prone bodies, HD and RETRO.
 	for retro in [false, true]:
 		SoldierModel.retro = retro
 		_corpses(retro)
+		_prone(retro)
 	SoldierModel.retro = false
 	# Triangle budget (weak integrated GPUs, in a browser): per soldier,
 	# close-up and far meshes.
@@ -193,6 +197,82 @@ func _corpses(retro: bool) -> void:
 					var ry: float = d._rifle.global_position.y
 					_check(ry > 0.0 and ry < 0.08, "%s: rifle not on the ground (%.3f)" % [label, ry])
 					d.free()
+
+
+## Lowest drawn vertex of the parts accepted by `keep` (world height).
+func _low(m: Node3D, keep: Callable) -> float:
+	var low := INF
+	for mi in m.shown_meshes():
+		if not keep.call(mi):
+			continue
+		var xf: Transform3D = mi.global_transform
+		for v in mi.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]:
+			low = minf(low, (xf * v).y)
+	return low
+
+
+func _prone(retro: bool) -> void:
+	var aims := [["rest", Vector3.INF], ["ahead", Vector3(0, 0.4, -20)], ["left", Vector3(-6, 0.4, -20)], ["right", Vector3(6, 0.6, -20)]]
+	for role in ["rifleman", "grenadier", "anti_armor"]:
+		for side in ["friendly", "enemy"]:
+			for vel in [Vector3.ZERO, Vector3(0, 0, -1.0)]:
+				for aim in aims:
+					var body := Node3D.new()          # stands in for the soldier node
+					root.add_child(body)
+					body.position = Vector3(2, 0, -1)
+					body.rotation.y = 0.6
+					var m: Node3D = SoldierModel.new()
+					body.add_child(m)
+					m.build(role, side, 3)
+					m.animate_local(Vector3.ZERO, 1.0 / 60.0)
+					m.set_prone(true)
+					var label := "prone %s/%s vel=%.1f aim=%s retro=%s" % [role, side, -vel.z, aim[0], retro]
+					var worst_drop := INF
+					for i in 90:
+						if aim[1] != Vector3.INF:
+							m.set_aim_point(body.global_transform * aim[1])
+						else:
+							m.set_aim_point(Vector3.INF)
+						m.animate_local(vel, 1.0 / 60.0)
+						if i < 40:            # on the way down
+							worst_drop = minf(worst_drop, _low(m, func(mi): return mi.get_parent() == m._legs["L"]["foot"] or mi.get_parent() == m._legs["R"]["foot"]))
+					_check(worst_drop > -0.04, "%s: foot through the ground going down (%.3f)" % [label, worst_drop])
+					_check(m.prone_amount() == 1.0, label + ": never got all the way down")
+					for k in 8:
+						m._phase = k / 8.0
+						m._recoil = 0.0 if k % 2 == 0 else 1.0
+						m._apply_pose()
+						m._solve_arms()
+						var tag := "%s@%d" % [label, k]
+						_pose_checks(m, tag)
+						var body_low := _low(m, func(mi): return mi.get_parent() != m._rifle)
+						_check(body_low > -0.03, "%s: body sunk into the ground (%.3f)" % [tag, body_low])
+						var torso_low := _low(m, func(mi): return mi.get_parent() == m.upper or mi.get_parent() == m._hips)
+						_check(torso_low < 0.09, "%s: torso floating (%.3f)" % [tag, torso_low])
+						var rifle_low := _low(m, func(mi): return mi.get_parent() == m._rifle)
+						_check(rifle_low > -0.06, "%s: rifle buried (%.3f)" % [tag, rifle_low])
+						_check(m.head.global_position.y < 0.45, "%s: head too high for prone (%.2f)" % [tag, m.head.global_position.y])
+					# muzzle points where he aims (rest: straight ahead of his facing)
+					m._recoil = 0.0
+					m._apply_pose()
+					m._solve_arms()
+					var mz: Vector3 = m.muzzle.global_position
+					var fwd: Vector3 = -m.muzzle.global_basis.z
+					var want: Vector3 = -body.global_basis.z
+					if aim[1] != Vector3.INF:
+						want = ((body.global_transform * aim[1]) - mz).normalized()
+					_check(fwd.angle_to(want) < 0.12, "%s: muzzle off by %.2f rad" % [label, fwd.angle_to(want)])
+					# and back up again
+					m.set_prone(false)
+					m.set_aim_point(Vector3.INF)
+					var worst_up := INF
+					for i in 90:
+						m.animate_local(Vector3.ZERO, 1.0 / 60.0)
+						worst_up = minf(worst_up, _low(m, func(mi): return mi.get_parent() == m._legs["L"]["foot"] or mi.get_parent() == m._legs["R"]["foot"]))
+					_check(worst_up > -0.04, "%s: foot through the ground getting up (%.3f)" % [label, worst_up])
+					_check(m.transform.is_equal_approx(Transform3D.IDENTITY), label + ": model not back in place after getting up")
+					_pose_checks(m, label + " back up")
+					body.free()
 
 
 func _budget() -> void:

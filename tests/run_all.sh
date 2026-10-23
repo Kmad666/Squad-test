@@ -9,7 +9,7 @@ if ! command -v "$GODOT" >/dev/null 2>&1; then
 fi
 "$GODOT" --headless --import >/dev/null 2>&1
 fail=0
-for t in model_test battle_test lean_spot_test mission_test manual_test; do
+for t in model_test battle_test lean_spot_test cover_move_test mission_test manual_test; do
   echo "== $t"
   out=$("$GODOT" --headless --fixed-fps 60 -s "tests/$t.gd" 2>&1); code=$?
   echo "$out" | grep -v "^Godot" | grep -v "^$" | tail -15

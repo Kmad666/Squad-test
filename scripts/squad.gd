@@ -5,6 +5,12 @@ extends Node3D
 ## it, and the cover order sends each soldier to his own cover spot on the far
 ## side of a crate from where the camera faces.
 ##
+## Cover is a state the unit stays in until you call it off (C again). Moving
+## while in cover (WASD or a move order) goes cover to cover: each man heads
+## where you're sending the unit and makes for the nearest cover to get
+## behind there, running low from spot to spot. Where there's no cover, he
+## goes prone and crawls.
+##
 ## Split (T): two fire teams, A and B (coloured helmet patches). You command
 ## the active team (Q switches); the other team holds where it is and gives
 ## covering fire at will. B: bounding advance to the point under the reticle,
@@ -30,6 +36,11 @@ const MIN_COVER_GAP := 0.95      # two soldiers never share a spot
 const JOIN_DISTANCE := 7.0       # how close the squad must get to pick up a team
 const BOUND_STEP := 9.0          # how far each bound goes past the covering team
 const SCOUT_RANGE := 30.0        # how far the camera may scout while holding
+const COVER_REACH := 4.5         # cover move: a spot counts if it's this close to where he's headed
+const COVER_SWITCH := 1.5        # ...and must beat the spot he holds by this much
+const COVER_LEAD := 6.0          # cover move: the unit's point stays this close to the men
+const SHIFT_EVERY := 0.4         # cover move: how often the men re-pick their spots
+const COVER_SPREAD := 4.5        # cover move: furthest a man keeps from the unit's point
 const TEAM_NAMES := ["A", "B"]
 
 ## Starting squad: five riflemen and a grenadier.
@@ -78,7 +89,8 @@ var threat_dir: Vector3:
 func _init() -> void:
 	for i in 2:
 		teams.append({"anchor": Vector3.ZERO, "in_cover": false, "order_target": null, "threat_dir": Vector3.FORWARD,
-			"order_id": 0, "move_id": 0})   # ids: a man's delayed reaction is dropped if a newer order replaced it
+			"order_id": 0, "move_id": 0,    # ids: a man's delayed reaction is dropped if a newer order replaced it
+			"shift_t": 0.0, "shifted": false})   # cover move: next re-pick, and one last re-pick owed on stopping
 
 
 func setup(m: Node3D, start: Vector3) -> void:
@@ -192,7 +204,7 @@ func _signal(t: int, kind: String, callout: String, toward := Vector3.ZERO) -> v
 
 
 func _on_move_start(t: int) -> void:
-	_signal(t, "move", "MOVE OUT")
+	_signal(t, "move", "COVER TO COVER, MOVE" if teams[t]["in_cover"] else "MOVE OUT")
 	teams[t]["move_id"] += 1
 	for s in team_members(t):
 		s.hold_here()
@@ -223,6 +235,11 @@ func _react_halt(s: Node3D, t: int, id: int) -> void:
 func _react_cover(s: Node3D, t: int, id: int, pos: Vector3, real: bool, leans: Array) -> void:
 	if _current(t, "order_id", id) and not s.dead:
 		s.go_to_cover(pos, real, leans)
+
+
+func _react_prone(s: Node3D, t: int, id: int) -> void:
+	if _current(t, "order_id", id) and not s.dead:
+		s.go_prone(s.global_position)
 
 
 func team_members(t: int) -> Array:
@@ -434,16 +451,18 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 
-## Send the active team to a point. They break cover and move as a group;
-## WASD cancels the order.
+## Send the active team to a point; WASD cancels the order. In cover, they
+## go there cover to cover (crawling where there's none); otherwise they move
+## as a group. A bound (`t` given) always breaks cover and runs.
 func move_to(p: Vector3, t := -1) -> void:
-	if t < 0:
+	var ordered := t < 0
+	if ordered:
 		t = active
 		bound = {}
 		set_holding(false)
 	var lim: float = main.NAV_HALF - 2.0
 	teams[t]["order_target"] = CoverUtil.push_out(main.solid_defs, Vector3(clampf(p.x, -lim, lim), 0, clampf(p.z, -lim, lim)), 1.0)
-	if teams[t]["in_cover"]:
+	if teams[t]["in_cover"] and not ordered:
 		leave_cover(t)
 	_show_ping(teams[t]["order_target"])
 
@@ -475,6 +494,13 @@ func split_teams() -> void:
 		teams[t]["in_cover"] = was_in_cover
 		teams[t]["order_target"] = null
 		teams[t]["threat_dir"] = teams[0]["threat_dir"]
+		teams[t]["shifted"] = false
+		if was_in_cover:
+			# each team keeps its men's spread, measured from its own middle
+			var at := {}
+			for s in members:
+				at[s.index] = s.cover_pos if s.state != 0 else s.global_position
+			_set_cover_offsets(t, at)
 	_make_offsets()
 	main.notify("SPLIT INTO FIRE TEAMS A + B  -  Q SWITCHES TEAM")
 
@@ -602,7 +628,10 @@ func _show_ping(p: Vector3) -> void:
 # ---------------------------------------------------------------- movement
 
 func get_focus() -> Vector3:
-	return teams[active]["anchor"] + scout_offset
+	var a: Vector3 = teams[active]["anchor"]
+	if teams[active]["in_cover"] and not team_members(active).is_empty():
+		a = a.lerp(centroid(active), 0.5)    # cover move: the point runs ahead, keep the men in view
+	return a + scout_offset
 
 
 func centroid(t := -1) -> Vector3:
@@ -627,14 +656,14 @@ func _physics_process(delta: float) -> void:
 		else:
 			bound = {}
 			order_target = null
-			if in_cover:
-				leave_cover()
 			# Slow the anchor down if the team is lagging so the group stays tight.
 			var lag: float = anchor.distance_to(centroid(active))
 			var speed := MOVE_SPEED * clampf(1.0 - (lag - 3.0) / 4.0, 0.3, 1.0)
+			if in_cover:
+				speed = MOVE_SPEED   # held to the men by _lead() instead
 			# The anchor is a ghost point with no collision: it passes straight
 			# through crates, and each soldier finds his own way around.
-			var a: Vector3 = anchor + dir * speed * delta
+			var a: Vector3 = _lead(active, anchor + dir * speed * delta)
 			# ...but buildings and compound walls stop it, like a real street.
 			anchor = CoverUtil.push_out(main.solid_defs, Vector3(clampf(a.x, -lim, lim), 0, clampf(a.z, -lim, lim)), 1.0)
 	if not bound.is_empty():
@@ -671,10 +700,23 @@ func _physics_process(delta: float) -> void:
 			else:
 				var lag: float = team["anchor"].distance_to(centroid(t))
 				var speed := MOVE_SPEED * clampf(1.0 - (lag - 3.0) / 4.0, 0.3, 1.0)
-				team["anchor"] += to.normalized() * minf(speed * delta, to.length())
+				if team["in_cover"]:
+					speed = MOVE_SPEED
+				team["anchor"] = _lead(t, team["anchor"] + to.normalized() * minf(speed * delta, to.length()))
 		if not team["in_cover"]:
 			for s in team_members(t):
 				s.move_target = CoverUtil.push_out(main.cover_defs, team["anchor"] + s.slot_offset, 0.6)
+		elif _was_moving[t]:
+			# Cover move: re-pick spots as the unit's point moves on.
+			team["shift_t"] -= delta
+			if team["shift_t"] <= 0.0:
+				team["shift_t"] = SHIFT_EVERY
+				_cover_shift(t)
+			team["shifted"] = true
+		elif team["shifted"]:
+			team["shifted"] = false          # stopped: one last pick for where he ended up
+			team["shift_t"] = 0.0
+			_cover_shift(t)
 
 	if _ping and _ping.visible:
 		_ping_t -= delta
@@ -702,6 +744,7 @@ func take_cover(t := -1, facing := Vector3.ZERO) -> void:
 	var team: Dictionary = teams[t]
 	team["in_cover"] = true
 	team["order_target"] = null
+	team["shifted"] = false
 	team["threat_dir"] = facing if facing != Vector3.ZERO else main.camera_forward()
 	var tdir: Vector3 = team["threat_dir"]
 	var members := team_members(t)
@@ -754,27 +797,165 @@ func take_cover(t := -1, facing := Vector3.ZERO) -> void:
 	# otherwise lean out at the same corner. Each man claims his own.
 	var all_spots: Array = claimed + mine
 	var taken_leans: Array = []
+	var at := {}
+	for s in members:
+		at[s.index] = assigned[s.index]["pos"] if assigned.has(s.index) else s.global_position
+	_set_cover_offsets(t, at)
 	for s in members:
 		if not assigned.has(s.index):
-			# no spot: get low where you are (after seeing the signal)
-			s.schedule(0.3 + reaction_delay(s), _react_cover.bind(s, t, oid, s.global_position, false, []))
+			# no spot: get down flat where you are (after seeing the signal)
+			s.schedule(0.3 + reaction_delay(s), _react_prone.bind(s, t, oid))
 			continue
 		var cp: Dictionary = assigned[s.index]
-		var leans: Array = []
-		for lp in cp["peeks"]:
-			var clear := true
-			for c in all_spots:
-				if c != cp["pos"] and c.distance_to(lp) < 1.0:
-					clear = false
-			for x in taken_leans:
-				if x.distance_to(lp) < 1.0:
-					clear = false
-			if clear:
-				leans.append(lp)
-		if leans.is_empty() and not cp["peeks"].is_empty():
-			leans = [_least_crowded(cp["peeks"], all_spots + taken_leans, cp["pos"])]
+		var leans := _leans_for(cp, all_spots, taken_leans)
 		taken_leans.append_array(leans)
 		s.schedule(0.3 + reaction_delay(s), _react_cover.bind(s, t, oid, cp["pos"], true, leans))
+
+
+## The unit's point moves to the middle of where its men are taking cover
+## (`at`: soldier index -> his spot), and each man remembers where he is in
+## that spread (within COVER_SPREAD). A cover move keeps that shape:
+## left-hand men stay on the left, and so on.
+func _set_cover_offsets(t: int, at: Dictionary) -> void:
+	var members := team_members(t)
+	if members.is_empty():
+		return
+	var c := Vector3.ZERO
+	for s in members:
+		c += at[s.index]
+	c /= float(members.size())
+	c.y = 0
+	teams[t]["anchor"] = c
+	for s in members:
+		var off: Vector3 = at[s.index] - c
+		off.y = 0
+		s.cover_off = off.limit_length(COVER_SPREAD)
+
+
+## Lean-out spots for a man behind tall cover `cp`, clear of everyone else's
+## spots and of lean spots already handed out.
+func _leans_for(cp: Dictionary, all_spots: Array, taken_leans: Array) -> Array:
+	var leans: Array = []
+	for lp in cp["peeks"]:
+		var clear := true
+		for c in all_spots:
+			if c != cp["pos"] and c.distance_to(lp) < 1.0:
+				clear = false
+		for x in taken_leans:
+			if x.distance_to(lp) < 1.0:
+				clear = false
+		if clear:
+			leans.append(lp)
+	if leans.is_empty() and not cp["peeks"].is_empty():
+		leans = [_least_crowded(cp["peeks"], all_spots + taken_leans, cp["pos"])]
+	return leans
+
+
+## Cover move: the unit's point may run ahead of the men, but no further
+## than COVER_LEAD from them, so it waits while they work their way up.
+func _lead(t: int, p: Vector3) -> Vector3:
+	if not teams[t]["in_cover"]:
+		return p
+	var c := centroid(t)
+	var off := p - c
+	off.y = 0
+	if off.length() <= COVER_LEAD:
+		return p
+	return Vector3(c.x, p.y, c.z) + off.normalized() * COVER_LEAD
+
+
+## Cover move: every man in team `t` looks at where the unit is sending him
+## (its point plus his place in the spread) and takes the nearest free cover
+## spot within COVER_REACH of there that shields him from the threat (the
+## way the camera faces). He keeps the spot he has unless a new one is
+## clearly better, so a short nudge doesn't shuffle everyone. No such spot:
+## he goes prone and crawls to where he's headed.
+func _cover_shift(t: int) -> void:
+	var team: Dictionary = teams[t]
+	team["order_id"] += 1              # this supersedes any reaction still pending
+	if t == active:
+		team["threat_dir"] = main.camera_forward()
+	var tdir: Vector3 = team["threat_dir"]
+	var members := team_members(t)
+	var centre: Vector3 = team["anchor"]
+	var claimed: Array = []
+	for s in soldiers:
+		if split and s.team != t and s.state != 0:   # 0 = FOLLOW
+			claimed.append(s.cover_pos)
+	var want := {}
+	for s in members:
+		want[s.index] = CoverUtil.push_out(main.cover_defs, centre + s.cover_off, 0.6)
+	var candidates: Array = []
+	for cp in main.cover_points:
+		if cp["normal"].dot(tdir) <= -0.3 and cp["pos"].distance_to(centre) < COVER_SEARCH:
+			candidates.append(cp)
+	var pairs: Array = []
+	for s in members:
+		var w: Vector3 = want[s.index]
+		var holding_spot: bool = s.state != 0 and s.has_real_cover
+		for ci in candidates.size():
+			var cpos: Vector3 = candidates[ci]["pos"]
+			var d := cpos.distance_to(w)
+			if d > COVER_REACH:
+				continue
+			var cost: float = d + 0.25 * s.global_position.distance_to(cpos)
+			if holding_spot and s.cover_pos.distance_to(cpos) < 0.3:
+				cost -= COVER_SWITCH       # staying put beats a marginal move
+			pairs.append([cost, s.index, ci])
+	pairs.sort_custom(func(a, b): return a[0] < b[0])
+	var assigned := {}
+	var mine: Array = []
+	for p in pairs:
+		if assigned.has(p[1]):
+			continue
+		var cpos: Vector3 = candidates[p[2]]["pos"]
+		var free := true
+		for c in claimed + mine:
+			if c.distance_to(cpos) < MIN_COVER_GAP:
+				free = false
+				break
+		if free:
+			assigned[p[1]] = candidates[p[2]]
+			mine.append(cpos)
+	var all_spots: Array = claimed + mine
+	var taken_leans: Array = []
+	var flat: Array = []         # where the men going prone will lie
+	for s in members:
+		if assigned.has(s.index):
+			var cp: Dictionary = assigned[s.index]
+			if s.state != 0 and s.has_real_cover and s.cover_pos.distance_to(cp["pos"]) < 0.3:
+				taken_leans.append_array(s.peeks)
+				continue                   # already there, or on his way
+			var leans := _leans_for(cp, all_spots, taken_leans)
+			taken_leans.append_array(leans)
+			s.go_to_cover(cp["pos"], true, leans, true)
+	for s in members:
+		if assigned.has(s.index):
+			continue
+		var spot := _crawl_spot(want[s.index], tdir, flat + all_spots)
+		flat.append(spot)
+		if s.is_prone() and s.cover_pos.distance_to(spot) < 1.0:
+			continue                       # close enough: keep crawling where he was
+		s.go_prone(spot)
+
+
+## Where a prone man lies: near `p`, but not on top of anyone (bodies are
+## long, so men lying one behind the other need more room than side by side).
+func _crawl_spot(p: Vector3, tdir: Vector3, taken: Array) -> Vector3:
+	var across := tdir.cross(Vector3.UP).normalized()
+	for k in [0, 1, -1, 2, -2, 3, -3]:
+		var q := CoverUtil.push_out(main.cover_defs, p + across * 1.1 * k, 0.6)
+		var clear := true
+		for o in taken:
+			var off: Vector3 = q - o
+			var along := off.dot(tdir) / 2.0
+			var side := off.dot(across) / 1.0
+			if along * along + side * side < 1.0:
+				clear = false
+				break
+		if clear:
+			return q
+	return p
 
 
 ## The lean spot furthest from everyone else's spots.
@@ -796,6 +977,7 @@ func leave_cover(t := -1) -> void:
 	if t < 0:
 		t = active
 	teams[t]["in_cover"] = false
+	teams[t]["shifted"] = false
 	teams[t]["order_id"] += 1
 	for s in team_members(t):
 		s.schedule(reaction_delay(s), _break_cover.bind(s, t, teams[t]["order_id"]))
@@ -845,15 +1027,22 @@ func avg_suppression() -> float:
 
 func _team_status(t: int) -> String:
 	var members := team_members(t)
-	if teams[t]["order_target"] != null:
-		return "MOVING"
 	if not teams[t]["in_cover"]:
+		if teams[t]["order_target"] != null:
+			return "MOVING"
 		return "HOLDING" if holding else "READY"
 	var settled := 0
+	var flat := 0
 	for s in members:
 		if s.is_settled():
 			settled += 1
-	return ("IN COVER" if settled == members.size() else "TAKING COVER") + " %d/%d" % [settled, members.size()]
+		if s.is_prone():
+			flat += 1
+	var txt := "COVER MOVE" if _was_moving[t] else ("IN COVER" if settled == members.size() else "TAKING COVER")
+	txt += " %d/%d" % [settled, members.size()]
+	if flat > 0:
+		txt += " %d PRONE" % flat
+	return txt
 
 
 func status_text() -> String:
@@ -866,16 +1055,18 @@ func status_text() -> String:
 		if not in_cover:
 			return ("HOLDING POSITION" if holding else "MOVING (loose cluster)") + tag
 		var settled := 0
-		var exposed := 0
+		var flat := 0
 		for s in soldiers:
 			if s.is_settled():
 				settled += 1
-			if not s.has_real_cover:
-				exposed += 1
+			if s.is_prone():
+				flat += 1
 		var txt := "IN COVER" if settled == soldiers.size() else "TAKING COVER"
+		if _was_moving[0]:
+			txt = "MOVING COVER TO COVER"
 		txt += "  (%d/%d in position" % [settled, soldiers.size()]
-		if exposed > 0:
-			txt += ", %d with no cover" % exposed
+		if flat > 0:
+			txt += ", %d prone" % flat
 		return txt + ")" + tag
 	var parts: Array = []
 	for t in 2:

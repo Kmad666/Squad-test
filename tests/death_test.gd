@@ -1,7 +1,8 @@
 extends SceneTree
 ## In-game edge cases for the soldier model: men killed mid-run, crouched and
 ## mid-signal; the sergeant killed (promotion); crouch toggled every frame;
-## enemies killed while peeking. Corpses must rest on the ground, no errors.
+## killed while dropping prone and lying prone; enemies killed while peeking.
+## Corpses must rest on the ground, no errors.
 ## MAP env var picks the map (default 1, TEST FIELD).
 
 var main
@@ -60,6 +61,14 @@ func _physics_process(_d) -> bool:
 		sq.soldiers[1]._set_crouch(true)
 	if frame == 175 and sq.soldiers.size() > 1:
 		sq.soldiers[1].take_damage(500.0, Vector3.ZERO)     # dies crouched, still easing down
+	if frame == 180:
+		for s in sq.soldiers:
+			s.go_prone(s.global_position)
+	if frame == 196 and sq.soldiers.size() > 0:
+		sq.soldiers[0].take_damage(500.0, Vector3.ZERO)     # dies halfway down to prone
+	if frame == 240 and sq.soldiers.size() > 0:
+		_check(sq.soldiers[0]._model.prone_amount() == 1.0, "prone man never got all the way down")
+		sq.soldiers[0].take_damage(500.0, Vector3.ZERO)     # dies lying prone
 	if frame == 200:
 		# enemies: kill everyone, whatever they are doing
 		var n := 0

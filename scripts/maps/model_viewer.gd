@@ -13,7 +13,7 @@ const NIGHT := false
 const GROUND := "field"
 const START := Vector3(0, 0, 26)
 const AT_TEAM := Vector3(40, 0, 44)
-const OBJECTIVE := "MODEL VIEWER  -  UNIVERSAL SOLDIER: POSES, GAITS, FIRING  -  WASD TO PAN  -  M FOR NEXT MAP"
+const OBJECTIVE := "MODEL VIEWER  -  UNIVERSAL SOLDIER: POSES, GAITS, FIRING, PRONE  -  WASD TO PAN  -  M FOR NEXT MAP"
 const COMPLETE := ""
 const BOXES := []
 const AREAS := []
@@ -35,6 +35,9 @@ const LINEUP := [
 	["FIRING", "rifleman", "friendly", false, false, "aim", Vector3.ZERO],
 	["FIRING CROUCHED", "rifleman", "enemy", false, true, "aim", Vector3.ZERO],
 	["FIRING ON THE MOVE", "grenadier", "friendly", false, false, "aim", Vector3(0, 0, -1.6)],
+	["PRONE", "rifleman", "friendly", false, false, "prone", Vector3.ZERO],
+	["CRAWL", "rifleman", "friendly", false, false, "prone", Vector3(0, 0, -1.0)],
+	["FIRING PRONE", "rifleman", "enemy", false, false, "prone_aim", Vector3.ZERO],
 ]
 
 
@@ -72,9 +75,11 @@ static func build_extras(main: Node3D) -> void:
 			m.set_sergeant(true)
 		if e[4]:
 			m.set_crouch(true)
+		if e[5].begins_with("prone"):
+			m.set_prone(true)
 		if e[6] != Vector3.ZERO:
 			m.set_demo_motion(e[6])
-		if e[5] == "aim":
+		if e[5].ends_with("aim"):
 			m.set_demo_aim(true)
 		var tw := turntable.create_tween().set_loops()
 		tw.tween_property(turntable, "rotation:y", PI + TAU, 14.0).from(PI)

@@ -18,8 +18,8 @@ You command a squad of six soldiers as one unit. Each soldier picks its own targ
 | F1 | Show / hide the controls panel |
 | Esc | Field manual: pauses and explains every mechanic (tabs; Esc again to resume) |
 | F | Auto fire toggle: fire at will (each soldier picks any target he can see) |
-| E | Move the squad to the spot under the reticle (WASD cancels) |
-| C / Space | Take cover against the direction the camera faces / leave cover (moving also leaves cover) |
+| E | Move the squad to the spot under the reticle (WASD cancels); in cover, they go cover to cover |
+| C / Space | Take cover against the direction the camera faces / leave cover. Cover stays on while you move: WASD / E go cover to cover |
 | T | Split into fire teams A + B (helmet patches: A green, B amber) / join back up |
 | Q | Switch which fire team you command (the other gives covering fire at will) |
 | B | Bounding advance to the point under the reticle: teams leapfrog, one moves while one covers |
@@ -35,6 +35,16 @@ You command a squad of six soldiers as one unit. Each soldier picks its own targ
 On the cover order, each soldier runs to the closest free spot behind a box, on the far side from where
 the camera is facing (the arrow at the squad marker shows that direction). The squad's center pulls the choice so the
 group stays together. In cover, soldiers crouch and pop up to fire over low crates. Behind tall crates they lean out past the edge to shoot, then duck back.
+A man with no spot within reach goes prone where he is.
+
+Cover is a persistent state of the unit: it stays in cover until you press C again. Moving while in cover (WASD or
+E) goes **cover to cover**: the unit's point moves (never more than 6 m ahead of the men), each man heads for the
+point plus his place in the spread the unit had when it took cover, and every 0.4 s takes the nearest free cover
+spot within 4.5 m of there that shields him from where the camera faces, running low (x0.85 speed) between spots.
+He keeps the spot he holds unless a new one is at least 1.5 m better. With no cover within reach he goes **prone and
+crawls** (1 m/s) to where he's headed, and gets up again as soon as cover is in reach. Prone men fire from where
+they lie once stopped, are hit x0.45 as often, take 40% less from blasts, and show only a low, small target.
+Bounding advances still leave cover and run.
 
 Every push to `main` builds the web version and publishes it to GitHub Pages (gh-pages branch).
 
@@ -76,7 +86,7 @@ so the blast can still catch the target.
 | APC cannon | 50% | 45 / 70 m | 55, 3.5 m blast (x0.3 behind cover), 7 s reload |
 
 Enemy hit chance: weapon accuracy x range falloff x0.75 vs moving soldiers x0.6 vs soldiers fighting from cover
-x(1 - 0.75 x the shooter's suppression).
+(prone instead: x0.45, crawling or not) x(1 - 0.75 x the shooter's suppression).
 
 ## Test field (daytime)
 Three defended areas, each with a floating label showing hostiles left:
@@ -100,12 +110,15 @@ GODOT=/path/to/godot tests/run_all.sh          # MINUTES=10 for longer soak runs
 - `lean_spot_test.gd`: checks no two soldiers share a lean-out spot at tall crates.
 - `manual_test.gd`: Esc opens / pages / closes the field manual and pauses / unpauses.
 - `mission_test.gd`: scripted run of the street mission using split, bound and flank orders.
-- `model_test.gd`: geometry checks on the soldier model in every pose and gait (~8000): torso attached to hips,
+- `model_test.gd`: geometry checks on the soldier model in every pose and gait: torso attached to hips,
   feet never below ground, legs never over-stretched, feet never crossing, both hands on the rifle, corpses resting
-  on the ground with the rifle beside them.
+  on the ground with the rifle beside them, and prone / crawling bodies (HD and RETRO) lying on the ground without
+  sinking into it, rifle pointed ahead.
+- `cover_move_test.gd`: persistent cover on the test field: the unit stays in cover while you move it, men go cover
+  to cover, go prone and crawl in the open, prone men are harder to hit, and leaving cover stands everyone up.
 - `death_test.gd`: in-game edge cases on both maps: men killed mid-run, mid-signal and crouched, the sergeant killed
   (one heir promoted), crouch toggled every frame, enemies killed while peeking.
-- `soak_test.gd`: random orders (including split / switch / bound / hold), cover, fire modes, specials, graphics toggles and restarts; fails on any script error.
+- `soak_test.gd`: random orders (including split / switch / bound / hold), WASD bursts in and out of cover, cover toggles, fire modes, specials, graphics toggles and restarts; fails on any script error.
 
 ## Maps
 - **OPERATION LAMPLIGHTER** (default, night): a street between two rows of buildings, a back alley joined to the road
@@ -115,7 +128,8 @@ GODOT=/path/to/godot tests/run_all.sh          # MINUTES=10 for longer soak runs
   first side passage. At night enemies only spot you within 35 m. Objective: secure the compound.
 - **TEST FIELD** (day): open ground with three small enemy positions, for tuning mechanics.
 - **MODEL VIEWER** (day, no enemies): every variant of the universal soldier (`scripts/soldier_model.gd`) on a
-  turntable in its idle pose: rifleman, sergeant, grenadier, rocketman, enemy, crouched, and a hand-signal loop.
+  turntable in its idle pose: rifleman, sergeant, grenadier, rocketman, enemy, crouched, and a hand-signal loop;
+  then the gaits, firing poses, and prone (lying still, crawling, firing prone).
 
 ## Soldier model
 One universal soldier (`soldier_model.gd`) is built for everyone, friend and foe: a jointed body (hips, torso, head,
@@ -145,10 +159,14 @@ Aiming: `set_aim_point(world point | Vector3.INF)` while engaging raises the rif
 torso turns with the aim, cheek on the stock, works through crouch / gait / lean); `recoil()` on each shot kicks the
 muzzle up. Friendlies shoulder when they have a shot and may fire; enemies when their gunner has a target and is up.
 Poses: idle (rifle at low ready), crouch (hips drop, torso leans forward from the waist, rifle stays level),
+prone (`set_prone()`: the whole body pivots forward about the hips onto the ground over ~0.5 s, angled off the line
+of fire with the chest up on the elbows, rifle shouldered and pointed ahead, legs apart with toes pointed; crawling,
+each knee in turn is drawn up and out along the ground while the shoulders roll and the elbows take turns forward),
 left-hand signals, and dead (your men sprawl face down; enemies fall back onto their side; the rifle drops beside
 the body and the body is fitted to the ground so nothing sinks or floats).
 
-`tests/tools/render_gait.gd` renders each gait at six points of its stride; `tests/tools/capture_game.gd`
+`tests/tools/render_gait.gd` renders each gait at six points of its stride; `tests/tools/render_prone.gd` the drop
+to prone, the prone pose from five sides and the crawl cycle; `tests/tools/capture_game.gd`
 screenshots the real game mid-move. `tests/tools/render_models.gd` renders close-ups of every pose from several angles for visual review (needs a real
 renderer, e.g. under `xvfb-run`; usage is in the file). Not part of the test suite.
 

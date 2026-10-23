@@ -121,16 +121,22 @@ const APC_CANNON := {
 
 ## Enemy shots at a soldier: weapon accuracy x range falloff,
 ## x0.75 if the soldier is moving, x0.6 if he's fighting from cover
-## (only part of him shows), x(1 - 0.75 x the shooter's own suppression).
+## (only part of him shows), x PRONE_HIT if he's lying flat (crawling or
+## not), x(1 - 0.75 x the shooter's own suppression).
+const PRONE_HIT := 0.45
+
 static func enemy_hit_chance(w: Dictionary, soldier: Node3D, dist: float, own_suppression: float) -> float:
 	if dist > w["max"]:
 		return 0.0
 	var p: float = w["acc"]
 	if dist > w["eff"]:
 		p *= lerpf(1.0, 0.3, clampf((dist - w["eff"]) / (w["max"] - w["eff"]), 0.0, 1.0))
-	if soldier.is_moving():
-		p *= 0.75
-	if soldier.is_in_cover():
-		p *= 0.6
+	if soldier.has_method("is_prone") and soldier.is_prone():
+		p *= PRONE_HIT
+	else:
+		if soldier.is_moving():
+			p *= 0.75
+		if soldier.is_in_cover():
+			p *= 0.6
 	p *= 1.0 - 0.75 * own_suppression
 	return clampf(p, 0.02, 0.9)

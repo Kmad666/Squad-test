@@ -878,7 +878,8 @@ func spawn_explosion(pos: Vector3, w: Dictionary, direct: Node3D, hostile := fal
 
 
 ## Enemy shell landing: damage with falloff, cut to 30% if a crate is between
-## the blast and the soldier, and heavy suppression around it.
+## the blast and the soldier (60% if he's lying prone), and heavy suppression
+## around it.
 func _blast_soldiers(pos: Vector3, w: Dictionary, direct: Node3D) -> void:
 	var radius: float = w["radius"]
 	var space := get_world_3d().direct_space_state
@@ -893,6 +894,8 @@ func _blast_soldiers(pos: Vector3, w: Dictionary, direct: Node3D) -> void:
 		var q := PhysicsRayQueryParameters3D.create(pos + Vector3(0, 0.3, 0), p, 1)
 		if not space.intersect_ray(q).is_empty():
 			f *= 0.3
+		elif s.is_prone() and s != direct:
+			f *= 0.6      # flat on the ground, most of the blast goes over him
 		s.take_damage(w["soft"] * f, pos)
 
 
@@ -1174,7 +1177,7 @@ func _build_hud() -> void:
 	ui_root.add_child(help_panel)
 	help_label = Label.new()
 	help_label.add_theme_font_size_override("font_size", 12)
-	help_label.text = "WASD move   MOUSE aim   WHEEL zoom   E move to reticle   C / SPACE cover\n" \
+	help_label.text = "WASD move   MOUSE aim   WHEEL zoom   E move to reticle   C / SPACE cover on / off\n" \
 		+ "LMB focus fire   RMB throw / fire special   1-4 pick special   X next special\n" \
 		+ "F auto fire   T split / join teams   Q switch team   B bound   H hold + scout\n" \
 		+ "ESC manual   TAB reticle   G graphics   V retro   M map   R restart   F1 help"

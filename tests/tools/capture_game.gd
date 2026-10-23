@@ -5,6 +5,8 @@ extends SceneTree
 ## run:   TEST FIELD, the squad ordered forward, frames mid-move.
 ## fight: TEST FIELD, the squad advances on ALPHA at fire-at-will, frames of
 ##        the firefight (shouldered rifles, recoil).
+## cover: TEST FIELD, the squad takes cover, then W is held: frames of the
+##        cover-to-cover move (men hopping low, others prone and crawling).
 var main
 var frame := 0
 var out := "user://capture"
@@ -27,9 +29,42 @@ func _initialize():
 	main = load("res://main.tscn").instantiate()
 	root.add_child(main)
 
+var _cover_shots := [400, 480, 560, 640, 760, 1150]
+var _cover_i := 0
+
+
+## cover mode: scheduled on physics frames (the software renderer runs many
+## physics steps per drawn frame).
+func _cover(pf: int) -> bool:
+	if frame == 20:
+		main.cam_rig.dist = 6.5
+		main.cam_rig.pitch = -0.42
+		if main.retro != (OS.get_environment("RETRO") == "1"):
+			main.toggle_retro()
+	if pf >= 30 and not main.squad.in_cover and _cover_i == 0:
+		main.squad.take_cover()
+	if pf >= 300 and pf < 720 and not Input.is_action_pressed("move_forward"):
+		Input.action_press("move_forward")
+	if pf >= 720 and Input.is_action_pressed("move_forward"):
+		Input.action_release("move_forward")
+	if _cover_i < _cover_shots.size() and pf >= _cover_shots[_cover_i]:
+		root.get_viewport().get_texture().get_image().save_png(out.path_join("c%02d.png" % _cover_i))
+		var prone := 0
+		for s in main.squad.soldiers:
+			if s.is_prone():
+				prone += 1
+		print("physics frame ", pf, "  prone ", prone, "  ", main.squad.status_text())
+		_cover_i += 1
+	if _cover_i >= _cover_shots.size():
+		quit()
+	return false
+
+
 func _process(_d) -> bool:
 	frame += 1
-	if frame == 5 and OS.get_environment("RETRO") == "1" and not main.retro:
+	if mode == "cover":
+		return _cover(Engine.get_physics_frames())
+	if frame == 5 and OS.get_environment("RETRO") == "1" and not main.retro and mode != "cover":
 		main.toggle_retro()
 	if frame == 20:
 		main.cam_rig.dist = 4.0 if mode == "run" else 5.0

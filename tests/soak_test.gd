@@ -1,10 +1,13 @@
 extends SceneTree
-## Randomised long soak: random move orders, cover toggles, fire modes,
-## specials, quality toggles and restarts. Watches for errors.
+## Randomised long soak: random move orders, WASD bursts (in and out of
+## cover), cover toggles, fire modes, specials, quality toggles and restarts.
+## Watches for errors.
 var main
 var f := 0
 var rng := RandomNumberGenerator.new()
 var restarts := 0
+var held := ""                  # WASD action being held, released at release_f
+var release_f := 0
 var duration := 60 * 60 * int(OS.get_environment("MINUTES") if OS.get_environment("MINUTES") != "" else "5")
 func _initialize():
 	rng.seed = int(OS.get_environment("SEED")) if OS.get_environment("SEED") != "" else 1
@@ -17,8 +20,11 @@ func _physics_process(_d):
 		return false
 	var sq = main.squad
 	if f % 3 == 0: main.debug_reticle_all = rng.randf() < 0.5
+	if held != "" and f >= release_f:
+		Input.action_release(held)
+		held = ""
 	if f % 90 == 0:
-		match rng.randi_range(0, 11):
+		match rng.randi_range(0, 12):
 			0, 1: sq.move_to(Vector3(rng.randf_range(-45, 45), 0, rng.randf_range(-45, 45)))
 			2: sq.take_cover() if not sq.in_cover else sq.leave_cover()
 			3: sq.forced_mode = rng.randi_range(0, 2)
@@ -30,6 +36,11 @@ func _physics_process(_d):
 			9: sq.switch_team()
 			10: sq.start_bound(Vector3(rng.randf_range(-40, 40), 0, rng.randf_range(-45, 45)))
 			11: sq.set_holding(not sq.holding)
+			12:
+				if held == "":
+					held = ["move_forward", "move_back", "move_left", "move_right"][rng.randi_range(0, 3)]
+					Input.action_press(held)
+					release_f = f + rng.randi_range(30, 300)
 	if f % 1800 == 0:
 		var alive = 0
 		for t in main.targets: alive += int(t.alive)

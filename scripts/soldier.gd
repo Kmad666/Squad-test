@@ -34,6 +34,9 @@ const FIRE_FOCUS := 2
 const MAX_HP := 100.0
 const ACCEL := 12.0            # m/s^2: how fast he gets up to speed / slows down
 const LOW_SPEED := 0.45        # speed factor while moving low out of cover
+const HOP_SPEED := 0.85        # speed factor running low from one cover to the next
+const CRAWL_SPEED := 1.0       # m/s, prone
+const PRONE_EYE := 0.3         # eye / rifle height lying prone
 
 static var _mats := {}
 
@@ -42,6 +45,7 @@ var main: Node3D
 var index := 0
 var team := 0                  # fire team (0 = A, 1 = B) when the squad is split
 var slot_offset := Vector3.ZERO
+var cover_off := Vector3.ZERO  # his place in the unit's spread while it's in cover
 var role := "rifleman"
 var recruited := true
 var home_pos := Vector3.ZERO
@@ -72,6 +76,8 @@ var _rng := RandomNumberGenerator.new()
 var _speed_mul := 1.0
 var _moving := false
 var _crouched := false
+var _prone := false            # lying flat: no cover where the team is headed
+var _hop := false              # moving cover to cover: low and quick, not a sprint
 var _path_timer := 0.0
 var _retarget_timer := 0.0
 var _fire_timer := 0.0
@@ -199,15 +205,41 @@ func _set_crouch(on: bool) -> void:
 		return
 	_crouched = on
 	_model.set_crouch(on)
-	# Shrink the hitbox too, so a crouched man really is hidden behind a crate.
-	_cap.height = 1.25 if on else 1.8
-	_col.position.y = 0.625 if on else 0.9
+	_fit_hitbox()
+
+
+## Prone: flat on the ground, a small target.
+func _set_prone(on: bool) -> void:
+	if on == _prone:
+		return
+	_prone = on
+	_model.set_prone(on)
+	_fit_hitbox()
+
+
+## Shrink the hitbox with the pose, so a crouched man really is hidden
+## behind a crate and a prone one is hard to hit.
+func _fit_hitbox() -> void:
+	var h := 0.64 if _prone else (1.25 if _crouched else 1.8)
+	_cap.height = h
+	_col.position.y = h * 0.5
+
+
+func is_prone() -> bool:
+	return _prone
+
+
+## How high his eyes (and muzzle) are off the ground.
+func _eye_h() -> float:
+	return PRONE_EYE if _prone else EYE_HEIGHT
 
 
 # ---------------------------------------------------------------- health & suppression
 
 ## The part of him an enemy can see and aim at.
 func exposed_point() -> Vector3:
+	if _prone:
+		return global_position + Vector3(0, 0.28, 0)
 	return global_position + Vector3(0, 0.95 if _crouched else 1.35, 0)
 
 
@@ -215,8 +247,9 @@ func is_moving() -> bool:
 	return _moving
 
 
+## Behind something (a man lying in the open is prone, not in cover).
 func is_in_cover() -> bool:
-	return state == State.IN_COVER
+	return state == State.IN_COVER and not _prone
 
 
 func pinned() -> bool:
@@ -300,6 +333,7 @@ func _die() -> void:
 	hp = 0.0
 	target = null
 	_set_crouch(false)
+	_prone = false
 	collision_layer = 0
 	_flash.visible = false
 	_model.lay_down(false)
@@ -311,23 +345,44 @@ func _die() -> void:
 
 # ---------------------------------------------------------------- orders
 
-func go_to_cover(pos: Vector3, real: bool, lean_spots: Array = []) -> void:
+## Run to a cover spot. `hop`: the team is already in cover and moving up,
+## so he goes low and quick from one spot to the next rather than sprinting.
+func go_to_cover(pos: Vector3, real: bool, lean_spots: Array = [], hop := false) -> void:
 	cover_pos = pos
 	peeks = lean_spots
 	if not peeks.is_empty():
 		peek_pos = peeks[0]
 	has_real_cover = real
 	state = State.TO_COVER
+	_hop = hop
 	_cover_timer = 0.0
 	_peeking = false
 	_path_timer = 0.0
+	_set_prone(false)
+
+
+## No cover where he's going: get down and crawl to `pos` (or just get down
+## where he is). Prone counts as his cover until told otherwise.
+func go_prone(pos: Vector3) -> void:
+	cover_pos = pos
+	peeks = []
+	has_real_cover = false
+	if state != State.IN_COVER or global_position.distance_to(pos) > 0.3:
+		state = State.TO_COVER
+		_cover_timer = 0.0
+	_hop = false
+	_peeking = false
+	_path_timer = 0.0
+	_set_prone(true)
 
 
 func leave_cover() -> void:
 	state = State.FOLLOW
 	peeks = []
 	_peeking = false
+	_hop = false
 	_path_timer = 0.0
+	_set_prone(false)
 
 
 func _is_tall() -> bool:
@@ -398,19 +453,26 @@ func _physics_process(delta: float) -> void:
 			dir = to_dest
 		dir = dir.normalized()
 		var spd := BASE_SPEED * _speed_mul
+		var down: float = _model.prone_amount()
+		if _prone:
+			spd = CRAWL_SPEED * _speed_mul * smoothstep(0.75, 1.0, down)   # get down first, then crawl
+		else:
+			spd *= 1.0 - down      # still getting up
+			if state == State.TO_COVER:
+				spd *= HOP_SPEED if _hop else 1.12   # running for cover: flat out, but carrying kit
+			elif _low_t > 0.0:
+				spd *= LOW_SPEED   # leaving cover: low and slow
+			elif dist > 5.0:
+				spd *= 1.25        # catch up with the group
 		if hp < MAX_HP * 0.5:
-			spd *= 0.75        # wounded
-		if state == State.TO_COVER:
-			spd *= 1.12        # running for cover: flat out, but carrying kit
-		elif _low_t > 0.0:
-			spd *= LOW_SPEED   # leaving cover: low and slow
-		elif dist > 5.0:
-			spd *= 1.25        # catch up with the group
+			spd *= 0.75            # wounded
 		spd *= clampf(dist / 1.0, 0.35, 1.0)
 		vel = dir * spd
 
 	if state != State.IN_COVER:
-		vel += _separation() * 2.5
+		vel += _separation() * (0.4 if _prone else 2.5)
+	if _prone:
+		vel = vel.limit_length(CRAWL_SPEED * _speed_mul)   # nobody gets shoved faster than he can crawl
 
 	# Weight: ease toward the wanted velocity instead of snapping to it.
 	vel.y = 0
@@ -446,7 +508,15 @@ func _separation() -> Vector3:
 
 func _update_facing(delta: float, vel: Vector3) -> void:
 	var look := Vector3.ZERO
-	if target and is_instance_valid(target):
+	var rate := 10.0
+	if _prone:
+		rate = 3.0        # a man lying down turns slowly
+	if _prone and _moving and Vector2(vel.x, vel.z).length() > 0.1:
+		look = vel        # crawls head first...
+		var threat: Vector3 = squad.threat_dir_for(team)
+		if vel.normalized().dot(threat) < -0.3:
+			look = threat  # ...except backing away: feet first, face to the enemy
+	elif target and is_instance_valid(target):
 		look = target.global_position - global_position
 	elif _has_aim:
 		look = _aim_point - global_position
@@ -457,7 +527,7 @@ func _update_facing(delta: float, vel: Vector3) -> void:
 	look.y = 0
 	if look.length() > 0.01:
 		var yaw := atan2(-look.x, -look.z)
-		rotation.y = lerp_angle(rotation.y, yaw, clampf(10.0 * delta, 0.0, 1.0))
+		rotation.y = lerp_angle(rotation.y, yaw, clampf(rate * delta, 0.0, 1.0))
 
 
 # ---------------------------------------------------------------- combat
@@ -473,7 +543,7 @@ var _using_secondary := false
 
 
 func _eye() -> Vector3:
-	return global_position + Vector3(0, EYE_HEIGHT, 0)
+	return global_position + Vector3(0, _eye_h(), 0)
 
 
 func _weapon() -> Dictionary:
@@ -487,13 +557,13 @@ func _spot() -> Vector3:
 
 func _has_los(t: Node3D, from_ground := Vector3.INF) -> bool:
 	var origin: Vector3 = global_position if from_ground == Vector3.INF else from_ground
-	var q := PhysicsRayQueryParameters3D.create(origin + Vector3(0, EYE_HEIGHT, 0), t.aim_point(), RAY_MASK)
+	var q := PhysicsRayQueryParameters3D.create(origin + Vector3(0, _eye_h(), 0), t.aim_point(), RAY_MASK)
 	var hit := get_world_3d().direct_space_state.intersect_ray(q)
 	return not hit.is_empty() and hit["collider"] == t
 
 
 func _point_los(from_ground: Vector3, p: Vector3) -> bool:
-	var q := PhysicsRayQueryParameters3D.create(from_ground + Vector3(0, EYE_HEIGHT, 0), p, RAY_MASK)
+	var q := PhysicsRayQueryParameters3D.create(from_ground + Vector3(0, _eye_h(), 0), p, RAY_MASK)
 	var hit := get_world_3d().direct_space_state.intersect_ray(q)
 	return hit.is_empty() or (hit["position"] as Vector3).distance_to(p) < 0.6
 
@@ -616,7 +686,8 @@ func _update_combat(delta: float) -> void:
 		mode = FIRE_FOCUS
 		_reticle_only = true
 	if not _special_order.is_empty():
-		# Winding up a throw / shot: he stands up for it, primary fire paused.
+		# Winding up a throw / shot: he stands up for it (or throws from
+		# where he lies), primary fire paused.
 		_set_crouch(false)
 		_model.set_aim_point(Vector3.INF)
 		_special_order["t"] -= delta
@@ -639,27 +710,17 @@ func _update_combat(delta: float) -> void:
 			_set_crouch(_low_t > 0.0)     # low while coming out of cover
 			can_fire = true
 		State.TO_COVER:
-			_set_crouch(false)
+			_set_crouch(_hop)            # cover to cover: stays low
 		State.IN_COVER:
-			if not has_shot or pinned():
-				_peeking = false          # pinned: keep your head down
-				_peek_timer = maxf(minf(_peek_timer, 0.5), 0.3 if pinned() else 0.0)
-			_peek_timer -= delta
-			if _peek_timer <= 0.0 and has_shot and not pinned():
-				_peeking = not _peeking
-				# Under fire: shorter looks, longer time ducked.
-				var up_time := (_rng.randf_range(1.0, 1.8) + (1.0 if _is_tall() else 0.0)) * (1.0 - 0.5 * suppression)
-				var down_time := _rng.randf_range(0.8, 2.0) * (1.0 + 1.5 * suppression)
-				_peek_timer = up_time if _peeking else down_time
-				_peek_age = 0.0
-			_peek_age += delta
-			_set_crouch(not _peeking)
-			if _is_tall():
-				var off := peek_pos - global_position
-				off.y = 0
-				can_fire = _peeking and off.length() < 0.3
+			if _prone:
+				# Lying flat: shoots from where he lies once he's settled,
+				# keeps his face in the dirt when pinned.
+				_peeking = false
+				_set_crouch(false)
+				_peek_age = 0.0 if _moving else _peek_age + delta
+				can_fire = not _moving and not pinned() and _peek_age > 0.3 and _model.prone_amount() > 0.95
 			else:
-				can_fire = _peeking and _peek_age > 0.25
+				can_fire = _peek_cycle(delta, has_shot)
 
 	if not has_shot:
 		can_fire = false
@@ -684,6 +745,29 @@ func _update_combat(delta: float) -> void:
 		if _mode == FIRE_FOCUS:
 			pause *= 0.5
 		_fire_timer = primary["cycle"] if _burst_left > 0 else pause
+
+
+## Behind cover: pop up (or lean out past tall cover) to shoot, duck back
+## down, and stay down while pinned. Returns whether he can fire right now.
+func _peek_cycle(delta: float, has_shot: bool) -> bool:
+	if not has_shot or pinned():
+		_peeking = false          # pinned: keep your head down
+		_peek_timer = maxf(minf(_peek_timer, 0.5), 0.3 if pinned() else 0.0)
+	_peek_timer -= delta
+	if _peek_timer <= 0.0 and has_shot and not pinned():
+		_peeking = not _peeking
+		# Under fire: shorter looks, longer time ducked.
+		var up_time := (_rng.randf_range(1.0, 1.8) + (1.0 if _is_tall() else 0.0)) * (1.0 - 0.5 * suppression)
+		var down_time := _rng.randf_range(0.8, 2.0) * (1.0 + 1.5 * suppression)
+		_peek_timer = up_time if _peeking else down_time
+		_peek_age = 0.0
+	_peek_age += delta
+	_set_crouch(not _peeking)
+	if _is_tall():
+		var off := peek_pos - global_position
+		off.y = 0
+		return _peeking and off.length() < 0.3
+	return _peeking and _peek_age > 0.25
 
 
 ## Suppressed or wounded soldiers shoot worse.

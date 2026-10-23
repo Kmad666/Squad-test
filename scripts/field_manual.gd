@@ -195,6 +195,7 @@ const PAGES := [
   {k}WHEEL{/k}          Zoom
   {k}E{/k}              Move to the spot under the reticle
   {k}C / SPACE{/k}      Take cover against where the camera faces / leave cover
+                 (in cover, WASD and E move cover to cover)
   {k}H{/k}              Hold position (WASD scouts with the camera instead)
 
 {h}FIRE{/h}
@@ -231,14 +232,19 @@ Men speed up and slow down with weight; they don't snap to a run or a stop.
 You steer an invisible point. Each man keeps his own spot in a loose cluster around it and finds his own way around cars and crates. Buildings and compound walls stop the squad; small cover doesn't. If men fall behind, the group slows so nobody gets left.
 
 {h}MOVE ORDER  ({k}E{/k}){/h}
-The squad (or your active team) moves to the ground under the reticle center. A green ring marks the spot. {k}WASD{/k} cancels.
+The squad (or your active team) moves to the ground under the reticle center. A green ring marks the spot. {k}WASD{/k} cancels. In cover, they go there {h}cover to cover{/h} (below).
 
 {h}TAKE COVER  ({k}C{/k} / {k}SPACE{/k}){/h}
-After the sergeant's signal, every man runs (heavy, flat out) to the nearest free spot that puts cover between him and {h}where the camera is looking{/h}, with a pull toward the group. No two men share a spot.
-{h}Leaving cover{/h} (moving, or {k}C{/k} again): each man comes out on his own beat and moves {h}low and slow{/h} for about 2 s, firing at any enemy inside the reticle to cover the move, then stands and moves normally.
+After the sergeant's signal, every man runs (heavy, flat out) to the nearest free spot that puts cover between him and {h}where the camera is looking{/h}, with a pull toward the group. No two men share a spot. A man with no cover within reach {h}goes prone{/h} where he is.
+Cover is a state the unit {h}stays in{/h} until you press {k}C{/k} again.
   - {h}Low cover{/h} (crates, cars, barriers, sandbags, dumpsters): crouched = hidden. He pops up to shoot, then ducks.
   - {h}Tall cover{/h} (tall crates, building corners, compound walls): can't shoot over it. He leans out past the edge, fires, and steps back. Each man claims his own corner.
   {d}Crouched behind low cover, enemies can't see or hit you. Only lobbed grenades reach over it.{/d}
+
+{h}COVER TO COVER  ({k}WASD{/k} or {k}E{/k} while in cover){/h}
+The unit moves {h}without leaving cover{/h}. Each man heads where you're sending the unit, keeping his place in its spread, and makes for the {h}nearest free cover there{/h} that shields him from where the camera faces, running low from one spot to the next. He stays put until a new spot is clearly better, so a short nudge doesn't shuffle everyone. The unit's point waits for the men if it gets more than 6 m ahead.
+{h}No cover where he's going: he goes prone and crawls{/h} (about 1 m/s). Prone, he's a small target: enemy hit chance x0.45, and blasts that reach him do 40% less. He fires from where he lies once he's stopped, and gets up again as soon as there's cover in reach.
+{h}Leaving cover{/h} ({k}C{/k} again): each man gets up and comes out on his own beat, moving {h}low and slow{/h} for about 2 s, firing at any enemy inside the reticle to cover the move, then stands and moves normally. A bounding advance ({k}B{/k}) always leaves cover and runs.
 
 {h}HOLD & SCOUT  ({k}H{/k}){/h}
 Nobody moves. {k}WASD{/k} slides the camera up to 30 m ahead so you can look around corners. {k}H{/k} again snaps back.
@@ -334,7 +340,7 @@ accuracy x range x target size x modifiers, always between 3% and 95%.
   Enemy rifle       32%       30 / 60 m     16 damage
   APC machine gun   30%       40 / 65 m     14 damage
   APC cannon        50%       45 / 70 m     55 damage, 3.5 m blast (x0.3 behind cover), 7 s reload
-Enemy hit chance is lower against men who are moving (x0.75) or fighting from cover (x0.6), and drops as the shooter gets suppressed.
+Enemy hit chance is lower against men who are moving (x0.75), fighting from cover (x0.6) or prone (x0.45, crawling or not), and drops as the shooter gets suppressed. Shell blasts do 40% less to a man lying prone.
 """],
 ["ENEMIES", """{h}RIFLEMEN{/h}  {d}(olive-brown camo, red armband, red mask lenses that glow at night){/d}
 They guard an area. Until alerted they stand at their post and only notice you within {h}45 m in daylight, 35 m at night{/h}, or when they're shot at. Once one spots you, the whole area goes on alert (CONTACT in the HUD).
@@ -364,7 +370,7 @@ You start at the south end of a street between two rows of buildings.
 Open ground with crates and walls. Three small positions: {h}ALPHA{/h} (2 riflemen), {h}BRAVO{/h} (3), {h}CHARLIE{/h} (2 + APC on patrol). Good for trying mechanics.
 
 {h}MODEL VIEWER{/h}  {d}(day, no enemies){/d}
-Every variant of the universal soldier on a turntable: rifleman, sergeant, grenadier, rocketman, enemy, crouched, and a sergeant looping his hand signals. Further along: the gaits, animated in place: walk, run, crouch-walk, strafe and backpedal, then firing (standing, crouched, on the move). Your squad holds back; {k}WASD{/k} pans along the line-up, wheel zooms.
+Every variant of the universal soldier on a turntable: rifleman, sergeant, grenadier, rocketman, enemy, crouched, and a sergeant looping his hand signals. Further along: the gaits, animated in place: walk, run, crouch-walk, strafe and backpedal, then firing (standing, crouched, on the move), then prone: lying still, crawling, and firing prone. Your squad holds back; {k}WASD{/k} pans along the line-up, wheel zooms.
 
 {h}SWITCHING{/h}
 {k}M{/k} loads the next map (remembered). {k}R{/k} restarts the current one.

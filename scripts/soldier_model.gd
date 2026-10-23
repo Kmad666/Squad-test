@@ -31,6 +31,12 @@ const BLADE := 0.6            # torso turn when shouldering (left shoulder forwa
 const POCKET := Vector3(0.15, 1.46, -0.12)   # rifle butt in the shoulder (upper space)
 const AIM_YAW := 0.6         # how far the rifle can swing off the body's facing
 const AIM_PITCH := 0.4
+# Prone: the whole body pivots forward about the hips onto the ground.
+const PRONE_HIP_H := 0.17     # hip joints this high off the ground when lying flat
+const PRONE_BACK := 0.3       # hips behind his origin, so the body is centred on it
+const PRONE_YAW := -0.3       # body angled off the line of fire, legs out to the left rear
+const PRONE_ARCH := -0.38     # chest up on the elbows
+const PRONE_HEAD := 1.05      # chin up to look ahead
 
 static var _mats := {}
 static var low_quality := false
@@ -42,6 +48,7 @@ var head: Node3D
 var muzzle: Node3D           # rifle muzzle (tracers / flash)
 var launch_tip: Node3D       # grenade launcher / rocket tube exit, if any
 var crouched := false
+var prone := false
 
 var _palette: Dictionary
 var _meshes: Array = []      # HD mesh instances, close-up and far (for tints)
@@ -68,6 +75,10 @@ var _move_dir := Vector3.FORWARD   # travel direction, model space
 var _driven := false         # animate() is being called each frame
 var _leg_yaw := 0.0          # hips and legs turned toward travel (strafing)
 var _laid := false           # dead: no stance styling
+var _prone_amt := 0.0        # 0 up .. 1 lying flat (eased)
+var _pr := 0.0               # smoothed prone weight used by the last pose
+var _root_posed := false     # the prone pose has moved the model node itself
+var _foot_box: Array = []    # corners of the foot's bounding box (foot space), for ground clearance
 var _demo_vel := Vector3.ZERO
 # aiming (see set_aim_point / recoil)
 var _aiming := false
@@ -131,6 +142,13 @@ func build(role: String, side := "friendly", variant := 0) -> void:
 		add_child(foot)
 		_attach(foot, "foot")
 		_legs[s] = {"thigh": thigh, "shin": shin, "foot": foot}
+		if _foot_box.is_empty():
+			var box := AABB()
+			for mi in foot.get_children():
+				if mi is MeshInstance3D:
+					box = mi.get_aabb() if box.size == Vector3.ZERO else box.merge(mi.get_aabb())
+			for c in 8:
+				_foot_box.append(box.get_endpoint(c))
 	_solve_legs()
 	_left_target = _guard
 	_solve_arms()
@@ -337,17 +355,21 @@ func _solve_legs() -> void:
 ## forward lean. Crouch-walk: short low steps. Hands stay on the rifle; the
 ## torso twists a little against the hips instead of swinging arms.
 func _apply_pose() -> void:
-	var c := _crouch_amt
-	var w := _gait_w
+	var pr := smoothstep(0.0, 1.0, _prone_amt)
+	_pr = pr
+	var c := _crouch_amt * (1.0 - pr)
+	var w := _gait_w * (1.0 - pr)         # walking / running
+	var cw := _gait_w * pr                # crawling
 	var run_t := clampf((_speed - 2.6) / 2.4, 0.0, 1.0) * (1.0 - c)
 	var stance := lerpf(lerpf(0.62, 0.34, run_t), 0.62, c)
 	var fwd := clampf(-_move_dir.z, 0.0, 1.0)
 	var bob := w * lerpf(0.022, -0.04, run_t) * cos(TAU * 2.0 * (_phase - stance * 0.5))
-	var st := (1.0 if retro and not _laid else 0.0) * (1.0 - c)   # retro guard stance weight
+	var st := (1.0 if retro and not _laid else 0.0) * (1.0 - c) * (1.0 - pr)   # retro guard stance weight
 	var hip_drop := lerpf(0.02, 0.33, c) + 0.06 * run_t * w + 0.045 * st
 	var hip_back := 0.08 * c
 	_hips.position = Vector3(0, HIP_Y - hip_drop + bob, hip_back)
-	var a := smoothstep(0.0, 1.0, _aim_amt)
+	# Prone, the rifle is always up and pointed ahead.
+	var a := smoothstep(0.0, 1.0, maxf(_aim_amt, _prone_amt))
 	var twist := w * (0.07 + 0.05 * run_t) * sin(TAU * _phase) * (0.3 + 0.7 * fwd) * (1.0 - 0.6 * a)
 	# Shouldered: bladed stance (left shoulder forward), and the torso turns
 	# with the aim so the arms keep the same reach wherever he points.
@@ -355,17 +377,31 @@ func _apply_pose() -> void:
 	twist += -BLADE * a + 0.8 * aim_yaw
 	var leg_yaw := _leg_yaw * w
 	var ly := Basis(Vector3.UP, leg_yaw)
-	_hips.rotation.y = leg_yaw * 0.85 - twist * 0.6 - 0.25 * a * (1.0 - w)
+	_hips.rotation.y = (leg_yaw * 0.85 - twist * 0.6 - 0.25 * a * (1.0 - w)) * (1.0 - pr)
+	# Crawling: the shoulders roll with each stroke.
+	twist = twist * (1.0 - pr) + 0.12 * cw * sin(TAU * _phase)
+	# Prone: the whole model pivots forward about the hips and comes down
+	# until the hips are just off the ground, body angled off the line of fire.
+	# Aiming off to one side, a prone man shifts his whole body round.
+	var root_b := Basis(Vector3.UP, (PRONE_YAW + 0.85 * aim_yaw) * pr) * Basis(Vector3.RIGHT, -PI / 2.0 * pr)
+	if pr > 0.0:
+		var hip_at := Vector3(0, lerpf(_hips.position.y, PRONE_HIP_H, pr), PRONE_BACK * pr)
+		transform = Transform3D(root_b, hip_at - root_b * _hips.position)
+		_root_posed = true
+	elif _root_posed:
+		transform = Transform3D.IDENTITY
+		_root_posed = false
 	# The upper body was laid out for hips at 0.93 m: keep it on the hips, and
 	# lean it forward by pivoting at the waist (not at the feet, which would
-	# swing the torso off the hips).
-	var lean := LEAN * c + 0.28 * run_t * w * (0.4 + 0.6 * fwd) + 0.06 * a - 0.05 * _recoil + RETRO_HUNCH * st * (1.0 - 0.4 * w)
+	# swing the torso off the hips). Prone: arched back, chest up on the elbows.
+	var lean := (LEAN * c + 0.28 * run_t * w * (0.4 + 0.6 * fwd) + 0.06 * a + RETRO_HUNCH * st * (1.0 - 0.4 * w)) * (1.0 - pr) \
+			+ PRONE_ARCH * pr - 0.05 * _recoil
 	var waist := Vector3(0, WAIST_Y, 0)
 	var on_hips := Vector3(0, HIP_Y - 0.93 - hip_drop + bob, hip_back)
 	var rot := Basis(Vector3.UP, twist) * Basis(Vector3.RIGHT, -lean)
 	upper.transform = Transform3D(rot, on_hips + waist - rot * waist)
 	# Head: eyes stay up and ahead; shouldered, cheek down onto the stock.
-	head.rotation = Vector3(lean * 0.7 + 0.14 * a, (aim_yaw - twist) * 0.9, -0.1 * a)
+	head.rotation = Vector3((lean * 0.7 + 0.14 * a) * (1.0 - pr) + PRONE_HEAD * pr, (aim_yaw - twist) * 0.9 * (1.0 - pr), -0.1 * a * (1.0 - pr))
 	# Low ready: counter-rotate the rifle about the grip so the muzzle stays
 	# up instead of pointing into the ground when he leans.
 	var counter := Transform3D(Basis(Vector3.RIGHT, lean * 0.8), Vector3.ZERO)
@@ -376,13 +412,16 @@ func _apply_pose() -> void:
 		# (worked out in upper space, so it stays on target through the
 		# blade, lean, gait twist and bob). Recoil kicks the muzzle up and
 		# the rifle back into the shoulder.
-		var d := (upper.basis.inverse() * _aim_dir).normalized()
+		# (_aim_dir is in his facing frame; prone, the body is turned off it)
+		var to_upper := upper.basis.inverse() * root_b.inverse()
+		var d := (to_upper * _aim_dir).normalized()
+		var up := (to_upper * Vector3.UP).normalized()
 		if _recoil > 0.0:
-			var axis := d.cross(Vector3.UP)
+			var axis := d.cross(up)
 			if axis.length() > 0.01:
 				d = d.rotated(axis.normalized(), 0.09 * _recoil)
-		var pocket := POCKET - d * 0.035 * _recoil
-		var aim_xf := Transform3D(Basis.looking_at(d, Vector3.UP), pocket + d * 0.31)
+		var pocket := POCKET + Vector3(0.03 * pr, 0, 0) - d * 0.035 * _recoil
+		var aim_xf := Transform3D(Basis.looking_at(d, up), pocket + d * 0.31)
 		xf = Transform3D(low.basis.slerp(aim_xf.basis, a), low.origin.lerp(aim_xf.origin, a))
 	_rifle.transform = xf
 	_grip = xf.origin
@@ -440,15 +479,41 @@ func _apply_pose() -> void:
 			var toe := -0.0875 * cos(pitch) + 0.185 * sin(pitch)
 			var heel := -0.0875 * cos(pitch) - 0.085 * sin(pitch)
 			ankle.y = maxf(ankle.y, -minf(toe, heel) + 0.002)
+		var knee_pole := ly * Vector3(0.1 * sx, 0, -1)
+		var bone_pole := ly * Vector3(0, 0, -1)
+		var foot_yaw := leg_yaw + 0.08 * sx
+		if pr > 0.0:
+			# Prone: legs straight back and apart, toes pointed (tops of the
+			# feet on the ground). Crawling: each knee in turn is drawn up and
+			# out to the side along the ground, then pushes back.
+			var u := cw * (0.5 - 0.5 * cos(TAU * fposmod(_phase + (0.5 if s == "R" else 0.0), 1.0)))
+			var flat := Vector3(sx * (0.2 + 0.2 * u), hip.y - 0.83 + 0.42 * u, -PRONE_HIP_H + 0.075 + 0.03 * u)
+			ankle = ankle.lerp(flat, pr)
+			pitch = lerpf(pitch, -1.25, pr)
+			var side := Vector3(sx, 0, -0.35 + 0.4 * u)      # drawn-up knee goes out flat, not down
+			knee_pole = knee_pole.lerp(side, pr)
+			bone_pole = bone_pole.lerp(side, pr)
+			foot_yaw += 0.3 * sx * pr
+			# Never into the ground: lift the ankle until the whole foot clears
+			# it at the angle it's at (on the way down that means kneeling on
+			# tucked toes before the legs go back).
+			var fb := root_b * Basis(Vector3.UP, foot_yaw) * Basis(Vector3.RIGHT, pitch)
+			var under := 0.0
+			for corner in _foot_box:
+				under = minf(under, (fb * corner).y)
+			var aw := transform * ankle
+			if aw.y < 0.005 - under:
+				aw.y = 0.005 - under
+				ankle = transform.affine_inverse() * aw
 		# Never ask a leg to reach further than it can.
 		var to := ankle - hip
 		var max_len := THIGH + SHIN - 0.015
 		if to.length() > max_len:
 			ankle = hip + to.normalized() * max_len
-		var knee := _solve(hip, ankle, THIGH, SHIN, ly * Vector3(0.1 * sx, 0, -1))
-		_aim_bone(_legs[s]["thigh"], hip, knee, ly * Vector3(0, 0, -1))
-		_aim_bone(_legs[s]["shin"], knee, ankle, ly * Vector3(0, 0, -1))
-		_legs[s]["foot"].transform = Transform3D(Basis(Vector3.UP, leg_yaw + 0.08 * sx) * Basis(Vector3.RIGHT, pitch), ankle)
+		var knee := _solve(hip, ankle, THIGH, SHIN, knee_pole)
+		_aim_bone(_legs[s]["thigh"], hip, knee, bone_pole)
+		_aim_bone(_legs[s]["shin"], knee, ankle, bone_pole)
+		_legs[s]["foot"].transform = Transform3D(Basis(Vector3.UP, foot_yaw) * Basis(Vector3.RIGHT, pitch), ankle)
 
 
 ## Eases unit vector `from` toward `to`. (Vector3.slerp loses precision and
@@ -462,13 +527,13 @@ static func _blend_dir(from: Vector3, to: Vector3, t: float) -> Vector3:
 
 ## Metres travelled per full gait cycle (two steps): longer strides when fast.
 func _cycle_length() -> float:
-	return lerpf(0.9 + 0.38 * _speed, 0.7 + 0.35 * _speed, _crouch_amt)
+	return lerpf(lerpf(0.9 + 0.38 * _speed, 0.7 + 0.35 * _speed, _crouch_amt), 0.6, smoothstep(0.0, 1.0, _prone_amt))
 
 
 ## Call every physics frame with the body's actual world velocity. Advances
 ## the gait, eases into / out of walking, and eases crouch transitions.
 func animate(world_vel: Vector3, delta: float) -> void:
-	var v := global_basis.inverse() * Vector3(world_vel.x, 0, world_vel.z)
+	var v := _frame().basis.inverse() * Vector3(world_vel.x, 0, world_vel.z)
 	v.y = 0.0
 	animate_local(v, delta)
 
@@ -479,9 +544,11 @@ func animate_local(v: Vector3, delta: float) -> void:
 	var spd := v.length()
 	var crouch_goal := 1.0 if crouched else 0.0
 	var aim_goal := 1.0 if _aiming else 0.0
+	var prone_goal := 1.0 if prone else 0.0
 	if spd < 0.05 and _speed < 0.02 and _gait_w == 0.0 and _crouch_amt == crouch_goal \
-			and _aim_amt == aim_goal and not _aiming and _recoil == 0.0:
+			and _aim_amt == aim_goal and not _aiming and _recoil == 0.0 and _prone_amt == prone_goal:
 		return                                              # settled: nothing to pose
+	_prone_amt = move_toward(_prone_amt, prone_goal, (1.8 if prone else 2.2) * delta)
 	_aim_amt = move_toward(_aim_amt, aim_goal, (4.5 if _aiming else 2.5) * delta)
 	_aim_dir = _blend_dir(_aim_dir, _aim_goal, clampf(14.0 * delta, 0.0, 1.0))
 	_recoil = move_toward(_recoil, 0.0, 7.0 * delta)
@@ -508,7 +575,8 @@ func _solve_arms() -> void:
 		var sx := -1.0 if s == "L" else 1.0
 		var sh := SHOULDER * Vector3(sx, 1, 1)
 		var hand: Vector3 = _left_target if s == "L" else _grip
-		var pole := Vector3(0.7 * sx, -0.7, 0.35)
+		# Prone: elbows down on the ground; crawling, they take turns forward.
+		var pole := Vector3(0.7 * sx, -0.7, 0.35).lerp(Vector3(0.8 * sx, -0.2 + 0.5 * _gait_w * sin(TAU * _phase) * sx, -0.6), _pr)
 		var elbow := _solve(sh, hand, UPPER_ARM, FOREARM, pole)
 		_aim_bone(_arms[s]["upper"], sh, elbow, Vector3(sx, 0, 0))
 		_aim_bone(_arms[s]["fore"], elbow, hand, Vector3(sx, 0, 0))
@@ -525,8 +593,9 @@ func set_aim_point(world_point: Vector3) -> void:
 	if not _aiming:
 		_aim_goal = Vector3.FORWARD
 		return
-	var pocket_w := global_transform * Vector3(0.12, 1.42, -0.12)
-	var d := global_basis.inverse() * (world_point - pocket_w)
+	var frame := _frame()
+	var pocket_w: Vector3 = upper.global_transform * POCKET if _pr > 0.0 else frame * Vector3(0.12, 1.42, -0.12)
+	var d := frame.basis.inverse() * (world_point - pocket_w)
 	if d.length() < 0.1:
 		return
 	d = d.normalized()
@@ -536,6 +605,12 @@ func set_aim_point(world_point: Vector3) -> void:
 
 
 ## One shot: the muzzle kicks up and the rifle rocks back into the shoulder.
+## His facing frame (the parent's): -Z ahead, Y up, whatever the prone pose
+## has done to the model node itself.
+func _frame() -> Transform3D:
+	return global_transform * transform.affine_inverse()
+
+
 func recoil() -> void:
 	_recoil = minf(1.0, _recoil + 0.65)
 
@@ -558,12 +633,27 @@ func set_demo_aim(on: bool) -> void:
 
 func _process(delta: float) -> void:
 	if _demo_aim:
-		set_aim_point(global_transform * Vector3(0.0, 1.35, -12.0))
+		set_aim_point(_frame() * Vector3(0.0, 0.3 if prone else 1.35, -12.0))
 		_demo_fire_t -= delta
 		if _demo_fire_t <= 0.0 and _aim_amt > 0.95:
 			recoil()
 			_demo_fire_t = 0.1 if randf() < 0.7 else 0.9
 	animate_local(_demo_vel, delta)
+
+
+## Down on the ground (eased in animate()), or back up.
+func set_prone(on: bool) -> void:
+	if on == prone:
+		return
+	prone = on
+	if not _driven:
+		_prone_amt = 1.0 if on else 0.0
+		_apply_pose()
+		_solve_arms()
+
+
+func prone_amount() -> float:
+	return _prone_amt
 
 
 func set_crouch(on: bool) -> void:
@@ -682,6 +772,11 @@ func lay_down(face_up: bool) -> void:
 	_laid = true
 	crouched = false
 	_crouch_amt = 0.0
+	prone = false
+	_prone_amt = 0.0
+	if _root_posed:
+		transform = Transform3D.IDENTITY
+		_root_posed = false
 	_gait_w = 0.0
 	_leg_yaw = 0.0
 	_aiming = false
