@@ -231,13 +231,39 @@ export function buildPartGeometry(def, part) {
 	let tris = [];
 	for (const sh of def.shapes) tris = tris.concat(buildShape(sh, adj));
 	morphTris(tris, new THREE.Vector3(...(part.size || [1, 1, 1])), part.morph, partPivot(def));
+	// Corner points: every distinct vertex position, numbered in a fixed
+	// order, so hand edits (part.verts: { index: [dx, dy, dz] }) stick to the
+	// same corner. Shared corners move together, so faces stay closed.
+	const keyOf = (v) => `${Math.round(v.x * 1e5)},${Math.round(v.y * 1e5)},${Math.round(v.z * 1e5)}`;
+	const index = new Map();
+	const base = [];
+	const refs = [];
+	for (const t of tris) for (const v of t.v) {
+		const k = keyOf(v);
+		if (!index.has(k)) { index.set(k, base.length); base.push(v.clone()); refs.push([]); }
+		refs[index.get(k)].push(v);
+	}
+	const offs = part.verts || {};
+	for (const [i, d] of Object.entries(offs)) {
+		const list = refs[+i];
+		if (!list) continue;
+		for (const v of list) { v.x += d[0]; v.y += d[1]; v.z += d[2]; }
+	}
+	const sx = part.flip ? -1 : 1;
+	const points = base.map((b, i) => {
+		const d = offs[i] || [0, 0, 0];
+		return new THREE.Vector3((b.x + d[0]) * sx, b.y + d[1], b.z + d[2]);
+	});
 	if (part.flip) {
 		for (const t of tris) {
 			for (const v of t.v) v.x = -v.x;
 			const tmp = t.v[1]; t.v[1] = t.v[2]; t.v[2] = tmp;
 		}
 	}
-	return trisToGeometry(tris, part.patScale || 0.25);
+	const geo = trisToGeometry(tris, part.patScale || 0.25);
+	geo.userData.points = points;              // shown corners (part space)
+	geo.userData.base = base;                  // corners before hand edits, unflipped
+	return geo;
 }
 
 export function trisToGeometry(tris, tile) {

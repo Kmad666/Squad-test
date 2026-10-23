@@ -257,6 +257,7 @@ function copyLook(p, t) {
 	t.pattern = p.pattern;
 	t.patScale = p.patScale;
 	t.glow = p.glow;
+	t.verts = JSON.parse(JSON.stringify(p.verts || {}));
 }
 
 // Apply `fn` to the selected part and its twin, then rebuild both.
@@ -290,6 +291,105 @@ function rebuildMesh(p) {
 	mesh.geometry = buildPartGeometry(PARTS[p.def], p);
 	mesh.material = partMaterials(p);
 	for (const c of mesh.children) if (c.userData.fx) c.geometry = mesh.geometry;
+	if (p.id === state.selected) refreshDots();
+}
+
+// ================================================================ point editing
+// Select a part, press V (or "Edit points"), click a corner dot and drag it.
+
+const vertHandle = new THREE.Object3D();
+const dotMat = new THREE.PointsMaterial({ color: 0x6ce0d0, size: 9, sizeAttenuation: false, depthTest: false, transparent: true });
+const dotSelMat = new THREE.PointsMaterial({ color: 0xffc847, size: 13, sizeAttenuation: false, depthTest: false, transparent: true });
+let dots = null, dotSel = null;
+
+function clearDots() {
+	for (const d of [dots, dotSel]) if (d) { d.parent && d.parent.remove(d); d.geometry.dispose(); }
+	dots = dotSel = null;
+}
+
+function refreshDots() {
+	clearDots();
+	const p = getPart(state.selected);
+	if (!state.editPts || !p) return;
+	const mesh = partMeshes.get(p.id);
+	const pts = mesh.geometry.userData.points;
+	dots = new THREE.Points(new THREE.BufferGeometry().setFromPoints(pts), dotMat);
+	dots.renderOrder = 20;
+	dots.raycast = () => {};
+	mesh.add(dots);
+	if (state.vsel != null && pts[state.vsel]) {
+		dotSel = new THREE.Points(new THREE.BufferGeometry().setFromPoints([pts[state.vsel]]), dotSelMat);
+		dotSel.renderOrder = 21;
+		dotSel.raycast = () => {};
+		mesh.add(dotSel);
+	}
+}
+
+function setEditPts(on) {
+	state.editPts = on;
+	state.vsel = null;
+	const p = getPart(state.selected);
+	if (on && p) {
+		gizmo.detach();
+		setGizmoMode('translate');
+		status('Edit points: click a corner dot, then drag the arrows. V or Esc to finish.');
+	} else if (p) {
+		placeHandle(p);
+		gizmo.attach(handle);
+	}
+	refreshDots();
+	renderProps();
+}
+
+// Nearest corner dot to the cursor (within 12 px), or null.
+function pickDot(x, y) {
+	const p = getPart(state.selected);
+	if (!p || !dots) return null;
+	const mesh = partMeshes.get(p.id);
+	const r = renderer.domElement.getBoundingClientRect();
+	let best = null, bd = 12;
+	mesh.geometry.userData.points.forEach((pt, i) => {
+		const v = pt.clone().applyMatrix4(mesh.matrixWorld).project(camera);
+		const d = Math.hypot(r.left + (v.x + 1) / 2 * r.width - x, r.top + (1 - v.y) / 2 * r.height - y);
+		if (d < bd) { bd = d; best = i; }
+	});
+	return best;
+}
+
+function selectDot(i) {
+	const p = getPart(state.selected);
+	state.vsel = i;
+	const mesh = partMeshes.get(p.id);
+	mesh.add(vertHandle);
+	vertHandle.position.copy(mesh.geometry.userData.points[i]);
+	vertHandle.quaternion.identity();
+	vertHandle.scale.set(1, 1, 1);
+	gizmo.setSpace('local');
+	setGizmoMode('translate');
+	gizmo.attach(vertHandle);
+	refreshDots();
+}
+
+function moveDot() {
+	const p = getPart(state.selected);
+	if (!p || state.vsel == null) return;
+	const mesh = partMeshes.get(p.id);
+	const b = mesh.geometry.userData.base[state.vsel];
+	const v = vertHandle.position.clone();
+	if (p.flip) v.x = -v.x;
+	p.verts = p.verts || {};
+	const d = [v.x - b.x, v.y - b.y, v.z - b.z].map((n) => Math.round(n * 10000) / 10000);
+	p.verts[state.vsel] = d;
+	const t = twinOf(p);
+	// a centred part with symmetry on: the matching corner on the other side mirrors
+	if (!t && state.settings[state.mode].sym && Math.abs(b.x) > 1e-4) {
+		const base = mesh.geometry.userData.base;
+		const j = base.findIndex((q) => Math.abs(q.x + b.x) < 1e-4 && Math.abs(q.y - b.y) < 1e-4 && Math.abs(q.z - b.z) < 1e-4);
+		if (j >= 0) p.verts[j] = [-d[0], d[1], d[2]];
+	}
+	if (t) { copyLook(p, t); rebuildMesh(t); }
+	rebuildMesh(p);
+	updateStats();
 }
 
 function syncTransform(p) {
@@ -370,11 +470,14 @@ function select(id, keepPanel = false) {
 			fx2.raycast = () => {};
 			tm.add(fx2);
 		}
-		placeHandle(p);
-		gizmo.attach(handle);
+		state.vsel = null;
+		if (state.editPts) gizmo.detach();
+		else { placeHandle(p); gizmo.attach(handle); }
 	} else {
 		gizmo.detach();
+		state.editPts = false;
 	}
+	refreshDots();
 	renderProps();
 }
 const selectMatDim = selectMat.clone();
@@ -672,6 +775,10 @@ let vdown = null;
 
 renderer.domElement.addEventListener('pointerdown', (e) => {
 	if (e.button !== 0 || gizmo.dragging) return;
+	if (state.editPts && state.selected) {
+		const i = pickDot(e.clientX, e.clientY);
+		if (i != null) { selectDot(i); vdown = null; return; }
+	}
 	const hit = hitTest(rayFromEvent(e.clientX, e.clientY));
 	vdown = { x: e.clientX, y: e.clientY, id: hit && hit.partId, moved: false };
 	if (hit && hit.partId) {
@@ -682,7 +789,7 @@ renderer.domElement.addEventListener('pointerdown', (e) => {
 });
 
 renderer.domElement.addEventListener('pointermove', (e) => {
-	if (!vdown || !vdown.id) return;
+	if (!vdown || !vdown.id || state.editPts) return;
 	if (!vdown.moved && Math.hypot(e.clientX - vdown.x, e.clientY - vdown.y) < 5) return;
 	vdown.moved = true;
 	const p = getPart(vdown.id);
@@ -721,6 +828,7 @@ gizmo.addEventListener('dragging-changed', (e) => {
 	const p = getPart(state.selected);
 	if (e.value) { gizmoStart = true; return; }
 	if (!p) return;
+	if (state.editPts) { commit(); renderProps(); return; }
 	const mesh = partMeshes.get(p.id);
 	if (gizmo.mode === 'scale') {
 		const s = handle.scale;
@@ -742,6 +850,7 @@ gizmo.addEventListener('dragging-changed', (e) => {
 gizmo.addEventListener('objectChange', () => {
 	const p = getPart(state.selected);
 	if (!p) return;
+	if (state.editPts) { moveDot(); return; }
 	const mesh = partMeshes.get(p.id);
 	mesh.quaternion.copy(handle.quaternion);
 	mesh.scale.copy(handle.scale);
@@ -1186,13 +1295,22 @@ function renderProps() {
 		box.append(slider(lab, 0.1, 4, 0.01, p.size[i], (v) => editSelected((q) => { q.size[i] = v; })));
 	});
 
+	// points
+	box.append(el('h4', {}, 'Points'));
+	const nMoved = Object.keys(p.verts || {}).length;
+	box.append(el('div', { class: 'btns' },
+		el('button', { class: 'btn' + (state.editPts ? ' on' : ''), title: 'V', onclick: () => setEditPts(!state.editPts) }, state.editPts ? 'Done editing' : 'Edit points'),
+		nMoved ? el('button', { class: 'btn', onclick: () => { editSelected((q) => { q.verts = {}; }); commit(); refreshDots(); renderProps(); } }, `Reset ${nMoved} moved`) : null,
+	));
+	box.append(el('div', { class: 'tip' }, state.editPts ? 'Click a corner dot, then drag the arrows. Shared corners move together; the twin mirrors it.' : 'Move individual corners for custom shapes.'));
+
 	// shape
 	box.append(el('h4', {}, 'Shape'));
 	for (const m of MORPHS) {
 		box.append(slider(m.label, m.min, m.max, m.step, p.morph[m.key] || 0, (v) => editSelected((q) => { q.morph[m.key] = v; }), m.key === 'twist' ? (v) => `${(+v).toFixed(0)}°` : undefined));
 	}
 	const round = def.shapes.some((s) => (s.n || (s.p === 'cyl' || s.p === 'sph' ? 8 : 0)) >= 5 || ['tube', 'torus'].includes(s.p));
-	if (round) box.append(slider('Sides', -4, 8, 1, p.sides || 0, (v) => editSelected((q) => { q.sides = v; }), (v) => (v > 0 ? '+' : '') + v));
+	if (round) box.append(slider('Sides', -4, 8, 1, p.sides || 0, (v) => editSelected((q) => { q.sides = v; if (q.verts && Object.keys(q.verts).length) { q.verts = {}; status('Changing sides resets moved points.'); } }), (v) => (v > 0 ? '+' : '') + v));
 	box.append(el('div', { class: 'tip' }, 'Double-click a slider to reset it.'));
 
 	// style clipboard
@@ -1346,7 +1464,8 @@ window.addEventListener('keydown', (e) => {
 	else if (k === 'p') togglePsx();
 	else if (k === 'q') turnSelected();
 	else if (k === 'f') frameSelected();
-	else if (k === 'escape') { select(null); $('#help').style.display = 'none'; }
+	else if (k === 'v') { if (state.selected) setEditPts(!state.editPts); }
+	else if (k === 'escape') { if (state.editPts) setEditPts(false); else select(null); $('#help').style.display = 'none'; }
 	else if (k === '?' || k === 'h') $('#help').style.display = 'flex';
 });
 
@@ -1377,4 +1496,4 @@ const projectPoint = (pt) => {
 };
 window.sqmCam = (pos, target) => { camera.position.set(...pos); orbit.target.set(...(target || MODES[state.mode].target)); orbit.update(); };
 window.sqmHandle = handle;
-window.sqm = { projectPoint, state, PARTS, serialize, loadDesign, loadTemplate, setMode, exportGLB, placementFor, hitTest, rayFromEvent, select, commit, undo, redo, templateParts, partMeshes, bones };
+window.sqm = { setEditPts, selectDot, vertHandle, gizmo, projectPoint, state, PARTS, serialize, loadDesign, loadTemplate, setMode, exportGLB, placementFor, hitTest, rayFromEvent, select, commit, undo, redo, templateParts, partMeshes, bones };
