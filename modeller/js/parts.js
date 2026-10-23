@@ -64,6 +64,53 @@ const H = (bone, at = [0, 0, 0], rot = [0, 0, 0]) => ({ bone, at, rot });
 // ================================================================ HUMANOID
 const U = 'humanoid';
 
+// ---- boxy (one box per piece, 12 triangles each): a whole soldier in < 300
+const BX = 'Boxy (low poly)';
+P(U, BX, 'bx_hips', 'Box hips', [
+	{ p: 'box', s: [0.26, 0.24, 0.18], top: [1.1, 1.05], at: [0, -0.01, 0] },
+], { home: H('hips'), colors: cols(C.uniform, C.uniform2) });
+P(U, BX, 'bx_torso', 'Box torso', [
+	{ p: 'box', s: [0.32, 0.56, 0.22], top: [1.4, 1.15], at: [0, 1.27, -0.005] },
+], { home: H('torso'), colors: cols(C.uniform, C.uniform2) });
+P(U, BX, 'bx_head', 'Box head', [
+	{ p: 'box', s: [0.15, 0.32, 0.17], top: [1.15, 1.12], at: [0, 0.06, 0] },
+], { home: H('head'), colors: cols(C.hood, C.hood) });
+P(U, BX, 'bx_upper_arm', 'Box upper arm', [
+	{ p: 'box', s: [0.11, 0.36, 0.11], top: [1.15, 1.15], at: [0, -0.14, 0] },
+], { home: H('upper_arm_*'), colors: cols(C.uniform, C.uniform2) });
+P(U, BX, 'bx_forearm', 'Box forearm + fist', [
+	{ p: 'box', s: [0.1, 0.27, 0.1], top: [1.1, 1.1], at: [0, -0.12, 0] },
+	{ p: 'box', s: [0.1, 0.12, 0.065], at: [0, -0.32, -0.004], m: 'trim' },
+], { home: H('forearm_*'), colors: cols(C.uniform, C.uniform2, C.gloves) });
+P(U, BX, 'bx_thigh', 'Box thigh', [
+	{ p: 'box', s: [0.14, 0.5, 0.15], top: [1.2, 1.15], at: [0, -0.21, 0] },
+], { home: H('thigh_*'), colors: cols(C.uniform, C.uniform2) });
+P(U, BX, 'bx_shin', 'Box shin', [
+	{ p: 'box', s: [0.11, 0.38, 0.12], top: [1.15, 1.1], at: [0, -0.21, 0] },
+], { home: H('shin_*'), colors: cols(C.uniform, C.uniform2) });
+P(U, BX, 'bx_foot', 'Box boot', [
+	{ p: 'box', s: [0.11, 0.095, 0.25], top: [0.9, 0.8], at: [0, -0.04, -0.05] },
+], { home: H('foot_*'), colors: cols(C.boots, C.boots) });
+P(U, BX, 'bx_helmet', 'Box helmet', [
+	{ p: 'box', s: [0.21, 0.1, 0.23], top: [0.75, 0.75], at: [0, 0.205, 0.005] },
+], { home: H('head'), colors: cols('#3a3d40', '#4a4e52') });
+P(U, BX, 'bx_visor', 'Box visor', [
+	{ p: 'box', s: [0.18, 0.045, 0.03], at: [0, 0.12, -0.095], m: 'detail' },
+], { home: H('head'), colors: cols(C.kit, C.kit, C.kit, C.red), glow: true });
+P(U, BX, 'bx_carrier', 'Box plate carrier', [
+	{ p: 'box', s: [0.3, 0.3, 0.05], at: [0, 1.3, -0.14] },
+	{ p: 'box', s: [0.3, 0.3, 0.05], at: [0, 1.3, 0.135] },
+], { home: H('torso'), colors: cols(C.kit, C.kit) });
+P(U, BX, 'bx_pack', 'Box pack', [
+	{ p: 'box', s: [0.28, 0.36, 0.13], top: [0.9, 0.85], at: [0, 1.3, 0.215] },
+], { home: H('torso'), colors: cols('#3b4228', '#565f36'), pattern: 'grain' });
+P(U, BX, 'bx_belt', 'Box belt', [
+	{ p: 'box', s: [0.3, 0.06, 0.21], at: [0, 0.1, 0] },
+], { home: H('hips'), colors: cols('#141416', '#141416') });
+P(U, BX, 'bx_pouch', 'Box pouch', [
+	{ p: 'box', s: [0.065, 0.04, 0.09], at: [0, 0.02, 0] },
+], { colors: cols(C.kit, C.kit) });
+
 // ---- body
 P(U, 'Body', 'hips_basic', 'Hips', [
 	{ p: 'box', s: [0.19, 0.26, 0.16], top: [1.37, 1.19], at: [0, -0.01, 0] },
@@ -755,8 +802,16 @@ const KNIGHT = [
 	['shin_greave', 'shin_*'], ['foot_sabaton', 'foot_*'],
 ];
 
+const BOXY = [
+	['bx_hips'], ['bx_belt'], ['bx_torso'], ['bx_carrier'], ['bx_pack'],
+	['bx_head'], ['bx_helmet'], ['bx_visor'],
+	['bx_upper_arm', 'upper_arm_*'], ['bx_forearm', 'forearm_*'],
+	['bx_thigh', 'thigh_*'], ['bx_shin', 'shin_*'], ['bx_foot', 'foot_*'],
+	['bx_pouch', 'torso', { pos: [-0.06, 1.24, -0.165], normal: [0, 0, -1] }],
+];
+
 export const TEMPLATES = {
-	humanoid: { trooper: { name: 'Trooper', parts: TROOPER }, knight: { name: 'Knight', parts: KNIGHT }, mannequin: { name: 'Mannequin', parts: MANNEQUIN }, blank: { name: 'Blank skeleton', parts: [] } },
+	humanoid: { boxy: { name: 'Boxy trooper (<300)', parts: BOXY }, trooper: { name: 'Trooper', parts: TROOPER }, knight: { name: 'Knight', parts: KNIGHT }, mannequin: { name: 'Mannequin', parts: MANNEQUIN }, blank: { name: 'Blank skeleton', parts: [] } },
 	weapon: {
 		carbine: {
 			name: 'Carbine', parts: [

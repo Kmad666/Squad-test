@@ -17,7 +17,7 @@ const DEG = Math.PI / 180;
 const MODES = {
 	humanoid: {
 		label: 'Character', target: [0, 0.92, 0], cam: [1.9, 1.5, -3.3], grid: [4, 16, 0], sym: true, snap: false,
-		step: 0.01, budget: 1500, template: 'trooper',
+		step: 0.01, budget: 300, template: 'boxy',
 		hint: 'Front of the character faces you (−Z). Parts snap to the game\'s soldier skeleton.',
 	},
 	weapon: {
@@ -1281,7 +1281,7 @@ function renderModelPanel(box) {
 	for (const b of BONES[state.mode]) if (per[b.name]) tbl.append(el('tr', {}, el('td', {}, b.label), el('td', {}, String(per[b.name]))));
 	tbl.append(el('tr', {}, el('td', {}, 'Total'), el('td', {}, String(total))));
 	box.append(tbl);
-	box.append(el('div', { class: 'tip' }, `PS1 characters ran about 500–1500 triangles. The game's own retro soldier is ~950.`));
+	box.append(el('div', { class: 'tip' }, `Budget: 300 triangles. Each box is 12, so the Boxy parts keep a whole soldier under it.`));
 
 	box.append(el('h4', {}, 'How to'));
 	const tips = {
