@@ -7,7 +7,6 @@ extends RefCounted
 
 const SoldierModel = preload("res://scripts/soldier_model.gd")
 const UI_FONT = preload("res://fonts/ShareTechMono-Regular.ttf")
-const PS2Soldier = preload("res://scripts/models/ps2_soldier.gd")
 
 const NAME := "MODEL VIEWER"
 const NIGHT := false
@@ -96,35 +95,3 @@ static func build_extras(main: Node3D) -> void:
 		label.text = e[0]
 		label.position = base + Vector3(0, 2.35, 0)
 		main.add_child(label)
-
-	# A static PS2-era soldier at the end of the line-up (no rig), on its own
-	# slow turntable.
-	var x := (float(LINEUP.size()) - float(LINEUP.size() - 1) * 0.5) * 2.6 + 0.6
-	var plinth2 := MeshInstance3D.new()
-	var cm2 := CylinderMesh.new()
-	cm2.top_radius = 0.75
-	cm2.bottom_radius = 0.8
-	cm2.height = 0.06
-	plinth2.mesh = cm2
-	plinth2.material_override = plinth_mat
-	plinth2.position = Vector3(x, 0.03, 0)
-	main.add_child(plinth2)
-	var table := Node3D.new()
-	table.position = Vector3(x, 0.06, 0)
-	table.rotation.y = PI
-	main.add_child(table)
-	table.add_child(PS2Soldier.build())
-	var tw2 := table.create_tween().set_loops()
-	tw2.tween_property(table, "rotation:y", PI + TAU, 14.0).from(PI)
-	var l2 := Label3D.new()
-	l2.font = UI_FONT
-	l2.font_size = 36
-	l2.outline_size = 8
-	l2.pixel_size = 0.005
-	l2.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	l2.modulate = Color(0.45, 1.0, 0.3)
-	l2.outline_modulate = Color(0, 0.08, 0, 0.8)
-	l2.text = "PS2-ERA SOLDIER (STATIC)"
-	l2.position = Vector3(x, 2.35, 0)
-	main.add_child(l2)
-
