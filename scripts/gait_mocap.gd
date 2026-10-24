@@ -1,5 +1,6 @@
 extends RefCounted
 ## Motion-captured gait cycles (generated; see README "Soldier model").
+## Source: Rokoko's free walk / run cycle pack (walk, running, running injured).
 ## Walk, jog and injured jog, each one loop from a left-foot plant, 32
 ## samples, averaged over steady strides of the original takes. Positions are
 ## in leg lengths (hip joint to ankle). Per sample:

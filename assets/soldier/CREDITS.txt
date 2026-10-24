@@ -7,3 +7,7 @@ triangles), textures resized to 512 px, grey (friendly) and subdued olive
 
 Motion capture: "Premade Mocap Pack" by Haley Tuffles (free for personal and
 commercial use).
+Walk / run gait: Rokoko, free "16 walk and run cycle animations" pack
+(https://www.rokoko.com/resources/rokoko-mocap-16-free-walk-and-run-cycle-animations),
+free for any project including commercial; only averaged foot / hip paths
+derived from three clips are stored (scripts/gait_mocap.gd).

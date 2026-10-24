@@ -74,7 +74,10 @@ Font: Share Tech Mono (SIL Open Font License, see `fonts/OFL.txt`).
 Soldier model: "Soldier Full Tactical Gear" by DanlyVostok
 (https://sketchfab.com/3d-models/soldier-full-tactical-gear-850593a8c7114c188395ba1849a66eb9), licensed CC BY 4.0;
 decimated, retextured (grey / olive variants, insignia removed) and re-rigged to the game's animation; see
-`assets/soldier/CREDITS.txt`. Motion capture: Haley Tuffles (Premade Mocap Pack, free for any use).
+`assets/soldier/CREDITS.txt`. Motion capture: Haley Tuffles (Premade Mocap Pack, free for any use); walk / run gait
+from Rokoko's free "16 walk and run cycle animations" pack
+(https://www.rokoko.com/resources/rokoko-mocap-16-free-walk-and-run-cycle-animations; free for any project,
+commercial included).
 
 ## Units
 - **Starting squad:** 5 riflemen + 1 grenadier (rifle with under-barrel grenade launcher).
@@ -200,7 +203,7 @@ Variants: friendlies in dark grey with charcoal / black / wolf-grey kit mixed pe
 team with coyote pack, pouches and tube; enemies in olive-brown camo, black kit, red lenses and a red armband.
 Grenade launcher and magnified optic for the grenadier, recoilless rifle slung on the rocketman's back, amber
 chevrons and a whip antenna for the sergeant.
-Gait from motion capture (`gait_mocap.gd`, extracted with a Blender script from a walk / run mocap pack): one
+Gait from motion capture (`gait_mocap.gd`, extracted with a Blender script from Rokoko's free walk / run mocap pack): one
 averaged, looping cycle each of a walk, a jog and an injured jog, 32 samples from a left-foot plant, as foot paths
 relative to the hips (forward, lateral, height, foot pitch) plus hip bob, in leg lengths. Standing gaits play these:
 walk blended into jog by speed, feet stretched forward to the rig's stride so the planted foot doesn't slide (up to
