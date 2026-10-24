@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Squad Modeller</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%23171a1d'/%3E%3Cpath d='M8 2l5 3v6l-5 3-5-3V5z' fill='%23ffc847'/%3E%3C/svg%3E">
+<style>
+@font-face { font-family: 'Share Tech Mono'; src: url('vendor/ShareTechMono-Regular.ttf'); }
+:root {
+	--bg: #101214; --panel: #171a1d; --panel2: #1e2226; --line: #2c3238; --text: #d6d9d4; --dim: #8b9298;
+	--accent: #ffc847; --accent2: #6ce0d0; --danger: #e0583c; --ok: #7ad66b;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 13px/1.35 'Share Tech Mono', ui-monospace, monospace; overflow: hidden; }
+button, select, input { font: inherit; color: inherit; }
+#app { display: grid; grid-template-rows: 44px 1fr 26px; grid-template-columns: 252px 1fr 300px; height: 100vh; }
+header { grid-column: 1 / 4; display: flex; align-items: center; gap: 6px; padding: 0 8px; background: var(--panel); border-bottom: 1px solid var(--line); overflow-x: auto; }
+header .logo { color: var(--accent); letter-spacing: 1px; margin-right: 6px; white-space: nowrap; }
+.sep { width: 1px; height: 24px; background: var(--line); margin: 0 4px; flex: none; }
+.btn { background: var(--panel2); border: 1px solid var(--line); padding: 4px 9px; cursor: pointer; white-space: nowrap; border-radius: 2px; }
+.btn:hover { border-color: var(--dim); }
+.btn.on { background: #3a3220; border-color: var(--accent); color: var(--accent); }
+.btn.primary { background: var(--accent); color: #111; border-color: var(--accent); }
+.btn:disabled { opacity: 0.35; cursor: default; }
+.tabs { display: flex; }
+.tabs .btn { border-radius: 0; margin-left: -1px; }
+select.btn { padding: 3px 4px; }
+
+#palette { grid-row: 2; background: var(--panel); border-right: 1px solid var(--line); overflow-y: auto; }
+.cat { border-bottom: 1px solid var(--line); }
+.cat h3 { margin: 0; padding: 7px 10px; font-size: 12px; font-weight: normal; color: var(--dim); text-transform: uppercase; letter-spacing: 1px; cursor: pointer; display: flex; justify-content: space-between; }
+.cat h3:hover { color: var(--text); }
+.cat.closed .grid { display: none; }
+.grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 0 8px 8px; }
+.thumb { background: var(--panel2); border: 1px solid var(--line); aspect-ratio: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: grab; user-select: none; position: relative; touch-action: none; }
+.thumb:hover { border-color: var(--accent); }
+.thumb img { width: 64px; height: 64px; image-rendering: pixelated; pointer-events: none; }
+.thumb span { position: absolute; bottom: 1px; left: 2px; right: 2px; font-size: 10px; color: var(--dim); text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
+
+#view { grid-row: 2; position: relative; overflow: hidden; background: #22282c; }
+#view canvas { display: block; width: 100%; height: 100%; }
+#view.psx canvas { image-rendering: pixelated; }
+#overlay { position: absolute; left: 10px; top: 8px; right: 240px; pointer-events: none; color: var(--dim); font-size: 12px; text-shadow: 0 1px 0 #000; }
+#budget { position: absolute; right: 10px; top: 8px; width: 210px; pointer-events: none; font-size: 11px; color: var(--dim); text-align: right; }
+#budget .bar { height: 4px; background: #000a; margin-top: 3px; }
+#budget .fill { height: 100%; background: var(--ok); width: 0; }
+#gizmoBar { position: absolute; left: 10px; bottom: 10px; display: flex; gap: 4px; }
+#dropHint { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; pointer-events: none; color: var(--accent); font-size: 15px; }
+
+#props { grid-row: 2; background: var(--panel); border-left: 1px solid var(--line); overflow-y: auto; padding: 10px 12px 30px; }
+#props h2 { margin: 0 0 2px; font-size: 16px; font-weight: normal; color: var(--accent); }
+#props .sub { color: var(--dim); font-size: 12px; margin-bottom: 8px; }
+#props h4 { margin: 14px 0 6px; font-size: 11px; font-weight: normal; letter-spacing: 1px; text-transform: uppercase; color: var(--dim); border-bottom: 1px solid var(--line); padding-bottom: 3px; }
+.row { display: flex; align-items: center; gap: 6px; margin: 4px 0; }
+.row label { width: 74px; color: var(--dim); flex: none; }
+.row input[type=range] { flex: 1; accent-color: var(--accent); min-width: 0; }
+.row .val { width: 40px; text-align: right; color: var(--dim); font-size: 11px; flex: none; }
+.btns { display: flex; flex-wrap: wrap; gap: 4px; }
+.colrow { display: flex; align-items: center; gap: 6px; margin: 3px 0; padding: 2px 4px; border: 1px solid transparent; cursor: pointer; }
+.colrow.active { border-color: var(--accent); background: #2a2618; }
+.colrow input[type=color] { width: 34px; height: 22px; border: 1px solid var(--line); padding: 0; background: none; cursor: pointer; }
+.colrow span { color: var(--dim); flex: 1; }
+.swatches { display: grid; grid-template-columns: repeat(10, 1fr); gap: 2px; margin-top: 6px; }
+.swatches div { aspect-ratio: 1; cursor: pointer; border: 1px solid #0006; }
+.swatches div:hover { outline: 1px solid var(--accent); }
+.patterns { display: grid; grid-template-columns: repeat(6, 1fr); gap: 3px; }
+.patterns div { aspect-ratio: 1; border: 1px solid var(--line); cursor: pointer; background-size: cover; image-rendering: pixelated; }
+.patterns div.on { border-color: var(--accent); outline: 1px solid var(--accent); }
+.chk { display: flex; align-items: center; gap: 6px; margin: 6px 0; color: var(--dim); cursor: pointer; }
+.chk input { accent-color: var(--accent); }
+.usedcols { display: flex; flex-wrap: wrap; gap: 3px; }
+.usedcols label { width: 22px; height: 22px; border: 1px solid #0008; cursor: pointer; position: relative; }
+.usedcols input { opacity: 0; width: 100%; height: 100%; cursor: pointer; }
+table.stats { width: 100%; border-collapse: collapse; font-size: 12px; }
+table.stats td { padding: 1px 0; color: var(--dim); }
+table.stats td:last-child { text-align: right; color: var(--text); }
+.tip { color: var(--dim); font-size: 12px; margin: 4px 0; }
+.tip b { color: var(--text); font-weight: normal; }
+kbd { background: var(--panel2); border: 1px solid var(--line); padding: 0 4px; font: inherit; font-size: 11px; color: var(--text); }
+input[type=text] { background: var(--panel2); border: 1px solid var(--line); padding: 4px 6px; width: 100%; }
+
+footer { grid-column: 1 / 4; display: flex; align-items: center; gap: 12px; padding: 0 10px; background: var(--panel); border-top: 1px solid var(--line); color: var(--dim); font-size: 12px; white-space: nowrap; overflow: hidden; }
+footer #status { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+
+#help { position: fixed; inset: 0; background: #000b; display: none; align-items: center; justify-content: center; z-index: 20; }
+#help .box { background: var(--panel); border: 1px solid var(--line); max-width: 640px; max-height: 86vh; overflow-y: auto; padding: 16px 20px; }
+#help h2 { margin: 0 0 8px; color: var(--accent); font-weight: normal; }
+#help h3 { margin: 14px 0 4px; font-weight: normal; color: var(--accent2); font-size: 14px; }
+#help p, #help li { color: var(--text); margin: 4px 0; }
+#help ul { padding-left: 18px; margin: 4px 0; }
+#toast { position: fixed; left: 50%; bottom: 40px; transform: translateX(-50%); background: var(--panel2); border: 1px solid var(--accent); padding: 6px 14px; display: none; z-index: 30; }
+</style>
+<script type="importmap">
+{ "imports": { "three": "./vendor/three.module.min.js", "three/addons/": "./vendor/jsm/" } }
+</script>
+</head>
+<body>
+<div id="app">
+	<header>
+		<span class="logo">▲ SQM</span>
+		<div class="tabs" id="modeTabs">
+			<button class="btn" data-mode="humanoid">Character</button>
+			<button class="btn" data-mode="weapon">Weapon</button>
+			<button class="btn" data-mode="building">Building</button>
+		</div>
+		<div class="sep"></div>
+		<select class="btn" id="templateSel" title="Start from a template"></select>
+		<button class="btn" id="btnNew" title="Replace the model with the chosen template">New</button>
+		<div class="sep"></div>
+		<button class="btn" id="btnUndo" title="Undo (Ctrl+Z)">↶</button>
+		<button class="btn" id="btnRedo" title="Redo (Ctrl+Y)">↷</button>
+		<div class="sep"></div>
+		<button class="btn" id="btnSym" title="Symmetry: parts get a mirrored twin (M)">Symmetry</button>
+		<button class="btn" id="btnSnap" title="Snap positions to a grid (G)">Snap</button>
+		<button class="btn" id="btnPsx" title="PSX preview: low resolution and vertex wobble (P)">PSX</button>
+		<select class="btn" id="poseSel" title="Preview pose (the game's animations)">
+			<option value="rest">Build pose</option>
+			<option value="ready">Rifle ready</option>
+			<option value="walk">Walk</option>
+		</select>
+		<button class="btn" id="btnBones" title="Show the skeleton">Bones</button>
+		<div class="sep"></div>
+		<button class="btn" id="btnOpen" title="Open a saved design (.json or .glb)">Open</button>
+		<button class="btn" id="btnImport" title="Add any .glb model as a part (or drop a .glb onto the page)">Import</button>
+		<button class="btn" id="btnSave" title="Download the design to edit later (Ctrl+S)">Save</button>
+		<button class="btn primary" id="btnExport" title="Download a .glb for the game">Export</button>
+		<button class="btn" id="btnHelp">?</button>
+		<input type="file" id="fileIn" accept=".json,.glb" hidden>
+		<input type="file" id="importIn" accept=".glb" multiple hidden>
+	</header>
+
+	<aside id="palette"></aside>
+
+	<main id="view">
+		<div id="overlay"></div>
+		<div id="budget"><span id="budgetTxt"></span><div class="bar"><div class="fill" id="budgetFill"></div></div></div>
+		<div id="gizmoBar">
+			<button class="btn" data-g="translate" title="Move (W)">Move</button>
+			<button class="btn" data-g="rotate" title="Rotate (E)">Rotate</button>
+			<button class="btn" data-g="scale" title="Scale (R)">Scale</button>
+		</div>
+		<div id="dropHint">Drop onto the model</div>
+	</main>
+
+	<aside id="props"></aside>
+
+	<footer><span id="status">Drag parts from the left onto the model.</span><span id="tris"></span></footer>
+</div>
+
+<div id="help"><div class="box">
+	<h2>Squad Modeller</h2>
+	<p>Build PSX-style characters, weapons and buildings from parts, then export a <b>.glb</b> for Squad Test.</p>
+	<h3>Building</h3>
+	<ul>
+		<li><b>Drag</b> a part from the left onto the model. Body parts, clothes and armour snap to their place on the skeleton (drop a boot anywhere on a leg); pouches, spikes and bits stick where you drop them. Click a part in the list to add it without dragging.</li>
+		<li><b>Symmetry</b> gives every part a mirrored twin on the other side. Edit either one and the twin follows. <i>Unlink</i> splits them.</li>
+		<li><b>Click</b> a part to select it, then <b>drag it</b> to slide it across the surface. Use Move / Rotate / Scale for exact tweaks.</li>
+		<li><b>Import .glb</b> (or drop a .glb on the page) adds any model as a part in its own colours. <i>Simplify</i> cuts its triangles. It is saved inside your design.</li>
+		<li><b>Edit points</b> (<kbd>V</kbd>): drag a part's individual corners for custom shapes.</li>
+		<li>Every part has colours (main, pattern ink, trim, detail), a pattern, size and shape sliders (taper, bulge, bend, lean, twist, sides).</li>
+		<li>With nothing selected, the right panel's <i>Colours used</i> recolours every part using a colour at once.</li>
+	</ul>
+	<h3>Keys</h3>
+	<p><kbd>W</kbd> <kbd>E</kbd> <kbd>R</kbd> move / rotate / scale · <kbd>Del</kbd> delete · <kbd>Ctrl</kbd>+<kbd>D</kbd> duplicate · <kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Y</kbd> undo / redo · <kbd>M</kbd> symmetry · <kbd>G</kbd> snap · <kbd>P</kbd> PSX · <kbd>Q</kbd> turn 90° · <kbd>F</kbd> frame · <kbd>V</kbd> edit points · <kbd>Esc</kbd> deselect · <kbd>Ctrl</kbd>+<kbd>S</kbd> save</p>
+	<p>Mouse: left drag orbits, right drag pans, wheel zooms.</p>
+	<h3>Into the game</h3>
+	<ul>
+		<li>Characters are built on Squad Test's own soldier skeleton, so every part already follows the game's walk, crouch and aim animations. <b>Rifle ready</b> and <b>Walk</b> preview them.</li>
+		<li><b>Export .glb</b> writes one mesh per bone (hips, torso, head, upper_arm_L ... foot_R), weapons as <i>rifle</i> plus a <i>muzzle</i> point, buildings as one mesh. The design is stored inside the .glb too, so you can open it here again.</li>
+		<li>Your work autosaves in this browser for each mode. Use <b>Save</b> to keep a file.</li>
+	</ul>
+	<p style="text-align:right"><button class="btn" id="helpClose">Close</button></p>
+</div></div>
+<div id="toast"></div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
