@@ -105,6 +105,9 @@ func _run() -> void:
 		["diag_back", Vector3(2.5, 0, 2.5), false],
 		["backpedal", Vector3(0, 0, 3.0), false],
 		["crouch_strafe", Vector3(-2.2, 0, 0), true],
+		["wounded_walk", Vector3(0, 0, -1.6), false],
+		["wounded_run", Vector3(0, 0, -4.8), false],
+		["wounded_strafe", Vector3(3.0, 0, 0), false],
 	]
 	for role in ["rifleman", "grenadier", "anti_armor"]:
 		for side in ["friendly", "enemy"]:
@@ -113,6 +116,7 @@ func _run() -> void:
 				root.add_child(m)
 				m.build(role, side, 1)
 				m.set_crouch(g[2])
+				m.wounded = String(g[0]).begins_with("wounded")   # mocap limp
 				for i in 90:
 					m.animate_local(g[1], 1.0 / 60.0)
 				for k in 12:

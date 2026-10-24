@@ -200,6 +200,13 @@ Variants: friendlies in dark grey with charcoal / black / wolf-grey kit mixed pe
 team with coyote pack, pouches and tube; enemies in olive-brown camo, black kit, red lenses and a red armband.
 Grenade launcher and magnified optic for the grenadier, recoilless rifle slung on the rocketman's back, amber
 chevrons and a whip antenna for the sergeant.
+Gait from motion capture (`gait_mocap.gd`, extracted with a Blender script from a walk / run mocap pack): one
+averaged, looping cycle each of a walk, a jog and an injured jog, 32 samples from a left-foot plant, as foot paths
+relative to the hips (forward, lateral, height, foot pitch) plus hip bob, in leg lengths. Standing gaits play these:
+walk blended into jog by speed, feet stretched forward to the rig's stride so the planted foot doesn't slide (up to
+~1.45x the captured stride; quicker steps beyond that), hips bob as captured. Men under half health limp (the injured
+jog, blended in). Crouch-walking stays procedural (no crouch capture). The upper body keeps the rifle.
+
 Movement: a procedural gait driven by each body's real velocity (`animate()`, called every physics frame):
 feet alternate planted / swinging steps along the direction of travel, stride and cadence scale with speed,
 running adds a forward lean, lower hips and a heel kick, crouching gives short low steps, and when strafing or

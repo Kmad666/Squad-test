@@ -3,7 +3,7 @@ extends SceneTree
 ## six points of its cycle. Usage as render_models.gd:
 ##   xvfb-run -s "-screen 0 1280x1024x24" godot --path . --rendering-driver opengl3 \
 ##     --resolution 480x480 -s tests/tools/render_gait.gd -- <out_dir> [cam: side|front|34]
-## Writes <gait>_<k>.png.
+## Writes <gait>_<k>.png. MOCAP=0: the procedural gait; WOUNDED=1: limping.
 
 const SoldierModel = preload("res://scripts/soldier_model.gd")
 
@@ -63,10 +63,12 @@ func _run(out: String, cam_mode: String) -> void:
 	cam.position = Vector3(0, 0.95, 0) + dir.normalized() * 3.2
 	cam.look_at(Vector3(0, 0.85, 0))
 
+	SoldierModel.mocap_gait = OS.get_environment("MOCAP") != "0"
 	for g in GAITS:
 		var m: Node3D = SoldierModel.new()
 		world.add_child(m)
 		m.build(g[1], "friendly", 0)
+		m.wounded = OS.get_environment("WOUNDED") == "1"
 		if g[3]:
 			m.set_crouch(true)
 		for i in 120:                     # warm up: ease into the gait

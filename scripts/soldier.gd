@@ -321,6 +321,7 @@ func take_damage(dmg: float, _from: Vector3) -> bool:
 	if dead or not recruited:
 		return false
 	hp -= dmg
+	_model.wounded = hp < MAX_HP * 0.5     # limps
 	add_suppression(0.35)
 	_hurt_t = 0.12
 	_model.set_tint("hurt")

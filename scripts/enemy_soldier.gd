@@ -138,6 +138,7 @@ func take_damage(soft_dmg: float, _armor_dmg: float) -> bool:
 	if not alive or soft_dmg <= 0.0:
 		return false
 	hp -= soft_dmg
+	_model.wounded = hp < MAX_HP * 0.5     # limps
 	_gun.add_suppression(0.2)
 	_model.set_tint("hurt")
 	_hurt_t = 0.1

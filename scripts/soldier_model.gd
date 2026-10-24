@@ -11,6 +11,7 @@ extends Node3D
 
 const Atmosphere = preload("res://scripts/atmosphere.gd")
 const Parts = preload("res://scripts/soldier_parts.gd")
+const GaitMocap = preload("res://scripts/gait_mocap.gd")
 const RetroParts = preload("res://scripts/soldier_parts_retro.gd")
 const SHADER = preload("res://shaders/soldier.gdshader")
 const RETRO_SHADER = preload("res://shaders/soldier_retro.gdshader")
@@ -41,10 +42,12 @@ const PRONE_HEAD := 1.05      # chin up to look ahead
 static var _mats := {}
 static var low_quality := false
 static var retro := false     # RETRO graphics: chunky low-poly soldiers (V)
+static var mocap_gait := true  # legs and hips walk / run from motion capture (gait_mocap.gd)
 static var detailed := true  # wear the detailed soldier (soldier_skin.gd) over the rig, unless RETRO
 static var thermal := false   # thermal sight (I): bodies glow hot inside the reticle
 static var thermal_rect := Vector4.ZERO   # the reticle in screen UV (x0, y0, x1, y1)
 const LOD_DIST := 14.0
+const LEG := 0.87             # hip joint to ankle, straight (THIGH + SHIN): the mocap's length unit
 const BODY_LAYER := 2         # render layer of soldier bodies (weapon lights don't take shadows from them)        # beyond this (metres from the camera) the far mesh shows
 
 var upper: Node3D            # chest, head, arms, rifle (moves down when crouched)
@@ -79,6 +82,8 @@ var _move_dir := Vector3.FORWARD   # travel direction, model space
 var _driven := false         # animate() is being called each frame
 var _leg_yaw := 0.0          # hips and legs turned toward travel (strafing)
 var _laid := false           # dead: no stance styling
+var wounded := false         # under half health: the mocap gait limps
+var _mo: Array = []          # this frame's blended mocap gait sample (see _mocap_sample)
 var _prone_amt := 0.0        # 0 up .. 1 lying flat (eased)
 var _pr := 0.0               # smoothed prone weight used by the last pose
 var _root_posed := false     # the prone pose has moved the model node itself
@@ -427,6 +432,11 @@ func _apply_pose() -> void:
 	var stance := lerpf(lerpf(0.62, 0.34, run_t), 0.62, c)
 	var fwd := clampf(-_move_dir.z, 0.0, 1.0)
 	var bob := w * lerpf(0.022, -0.04, run_t) * cos(TAU * 2.0 * (_phase - stance * 0.5))
+	# Motion-captured gait (not crouched: crouch-walking stays procedural).
+	var mw := (1.0 - c) if mocap_gait else 0.0
+	if mw > 0.0 and w > 0.0:
+		_mo = _mocap_sample(run_t)
+		bob = lerpf(bob, w * _mo[8] * LEG * lerpf(1.0, 1.4, run_t), mw)
 	var st := (1.0 if retro and not _laid else 0.0) * (1.0 - c) * (1.0 - pr)   # retro guard stance weight
 	var hip_drop := lerpf(0.02, 0.33, c) + 0.06 * run_t * w + 0.045 * st
 	var hip_back := 0.08 * c
@@ -535,6 +545,19 @@ func _apply_pose() -> void:
 			var local := Vector3(HIP_X * sx * (1.1 + 0.6 * lat), 0, 0) + dir * off
 			local.x = maxf(local.x, 0.085) if s == "R" else minf(local.x, -0.085)   # never cross the feet
 			var gait := Vector3(_hips.position.x, ANKLE_Y + h, _hips.position.z * 0.5) + ly * local
+			if mw > 0.0:
+				# Mocap foot path: forward stretched to this stride so the
+				# planted foot doesn't slide, lift and pitch as captured.
+				var o := 0 if s == "L" else 4
+				var stride: float = _mo[13]
+				var fwd_m: float = _mo[o] * cycle / stride
+				var lat_m: float = _mo[o + 1] * LEG
+				lat_m = maxf(lat_m, 0.085) if s == "R" else minf(lat_m, -0.085)
+				var h_m: float = _mo[o + 2] * LEG * lerpf(1.0, 1.35, run_t)
+				var lm := Vector3(lat_m * (1.0 + 0.6 * lat), 0, 0) + dir * fwd_m
+				var gait_m := Vector3(_hips.position.x, ANKLE_Y + h_m, _hips.position.z * 0.5) + ly * lm
+				gait = gait.lerp(gait_m, mw)
+				pitch = lerpf(pitch, _mo[o + 3], mw)
 			ankle = rest.lerp(gait, w)
 			pitch *= w
 			# Keep the sole on or above the ground however the foot is pitched:
@@ -590,9 +613,46 @@ static func _blend_dir(from: Vector3, to: Vector3, t: float) -> Vector3:
 	return v.normalized()
 
 
+## The mocap gait at the current phase: walk blended into jog by `run_t`,
+## toward the injured jog when wounded. [L fwd, lat, height, pitch (flat = 0),
+## R ..., hips bob, sway, surge, (roll, yaw), stride] in leg lengths.
+func _mocap_sample(run_t: float) -> Array:
+	var out := []
+	out.resize(14)
+	out.fill(0.0)
+	var mix := [["walk", 1.0 - run_t], ["run", run_t]]
+	if wounded:
+		mix = [["walk", (1.0 - run_t) * 0.3], ["run", run_t * 0.3], ["injured", 0.7]]
+	for m in mix:
+		var clip: Dictionary = GaitMocap.CLIPS[m[0]]
+		var wgt: float = m[1]
+		var rows: Array = clip["rows"]
+		var x := _phase * rows.size()
+		var i0 := int(x) % rows.size()
+		var i1 := (i0 + 1) % rows.size()
+		var f: float = x - floor(x)
+		var a: Array = rows[i0]
+		var b: Array = rows[i1]
+		for k in 13:
+			out[k] += lerpf(a[k], b[k], f) * wgt
+		out[3] -= clip["flat_pitch"][0] * wgt
+		out[7] -= clip["flat_pitch"][1] * wgt
+		out[13] += clip["stride"] * wgt
+	return out
+
+
 ## Metres travelled per full gait cycle (two steps): longer strides when fast.
 func _cycle_length() -> float:
-	return lerpf(lerpf(0.9 + 0.38 * _speed, 0.7 + 0.35 * _speed, _crouch_amt), 0.6, smoothstep(0.0, 1.0, _prone_amt))
+	var l := lerpf(0.9 + 0.38 * _speed, 0.7 + 0.35 * _speed, _crouch_amt)
+	if mocap_gait:
+		# Mocap strides only stretch so far (about 1.45x as captured); past
+		# that, quicker steps instead. The captured limp is short and quick.
+		var run_t := clampf((_speed - 2.6) / 2.4, 0.0, 1.0)
+		var cap: float = lerpf(GaitMocap.CLIPS["walk"]["stride"], GaitMocap.CLIPS["run"]["stride"], run_t)
+		if wounded:
+			cap = lerpf(cap, GaitMocap.CLIPS["injured"]["stride"], 0.7)
+		l = lerpf(l, minf(l, cap * LEG * 1.45), 1.0 - _crouch_amt)
+	return lerpf(l, 0.6, smoothstep(0.0, 1.0, _prone_amt))
 
 
 ## Call every physics frame with the body's actual world velocity. Advances
