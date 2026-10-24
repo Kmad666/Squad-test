@@ -41,6 +41,7 @@ const PRONE_EYE := 0.3         # eye / rifle height lying prone
 static var _mats := {}
 static var lights_on := false  # weapon lights (L); on by default at night
 static var lights_low := false # LOW graphics: only every third man's light (each light costs a draw pass)
+static var lights_shadow := false   # desktop HIGH: weapon lights cast shadows
 
 var squad: Node3D
 var main: Node3D
@@ -178,7 +179,8 @@ func _build_model() -> void:
 	_flash.visible = false
 	_model.muzzle.add_child(_flash)
 	# Weapon light: a white spot along the barrel, from the front of the
-	# handguard. No shadows (cheap); range and cone kept tight.
+	# handguard. Shadows only on the desktop renderer at HIGH; range and
+	# cone kept tight.
 	_torch = SpotLight3D.new()
 	_torch.position = Vector3(0.035, 0.0, -0.42)
 	_torch.light_color = Color(0.9, 0.95, 1.0)
@@ -188,6 +190,7 @@ func _build_model() -> void:
 	_torch.spot_angle = 21.0
 	_torch.spot_attenuation = 1.0
 	_torch.shadow_enabled = false
+	_torch.shadow_caster_mask = 0xFFFFF & ~SoldierModel.BODY_LAYER   # his own rifle and arms don't block it
 	_model._rifle.add_child(_torch)
 	var lm := SphereMesh.new()
 	lm.radius = 0.018
@@ -210,12 +213,18 @@ func update_light() -> void:
 		return
 	var on := lights_on and not dead and (not lights_low or index % 3 == 0)
 	_torch.visible = on
+	_torch.shadow_enabled = on and lights_shadow
 	_lens.visible = on
 
 
 static func set_lights(on: bool, low: bool, tree: SceneTree) -> void:
 	lights_on = on
-	lights_low = low
+	# The browser renderer draws each light in its own pass, so LOW lights
+	# only every third man. The desktop renderer shades many lights at once:
+	# everyone keeps his light, and on HIGH they cast shadows.
+	var desktop := RenderingServer.get_current_rendering_method() in ["forward_plus", "mobile"]
+	lights_low = low and not desktop
+	lights_shadow = desktop and not low
 	for s in tree.get_nodes_in_group("friendly_soldiers"):
 		s.update_light()
 

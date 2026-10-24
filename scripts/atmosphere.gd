@@ -9,11 +9,16 @@ extends Node3D
 
 ## Set by main from the map before the scene is built.
 static var night := false
+## Desktop (Forward+ / Vulkan / D3D12) instead of the browser's WebGL
+## compatibility renderer: real volumetric fog (light beams you can see),
+## ambient occlusion, cheap many-light shading.
+static var rich := RenderingServer.get_current_rendering_method() in ["forward_plus", "mobile"]
 
 var cam_rig: Node3D
 var _glares: Array = []   # [{node, dir, base}] for view-dependent glare
 var environment: Environment
 var shadow_lights: Array = []   # lights whose shadows the LOW graphics setting turns off
+var _beams: Array = []          # fake light cones (browser); real volumetric beams replace them on desktop HIGH
 
 
 func _ready() -> void:
@@ -29,6 +34,15 @@ func set_low_quality(low: bool) -> void:
 		l.shadow_enabled = not low
 	if environment:
 		environment.glow_enabled = not low
+		if rich:
+			# The desktop renderer adds sky / ambient reflections the browser
+			# one doesn't; keep the look the same (dark kit stays dark).
+			environment.reflected_light_source = Environment.REFLECTION_SOURCE_DISABLED
+			# Night: lamps and weapon lights cut real beams through the mist.
+			environment.volumetric_fog_enabled = night and not low
+			environment.ssao_enabled = not low
+	for b in _beams:
+		b.visible = not (rich and night and not low)
 
 
 # ---------------------------------------------------------------- day
@@ -56,6 +70,8 @@ func _build_day() -> void:
 	env.fog_light_color = Color(0.68, 0.75, 0.84)
 	env.fog_density = 0.004
 	env.fog_sky_affect = 0.3
+	env.ssao_radius = 1.5        # desktop only (see set_low_quality)
+	env.ssao_intensity = 1.4
 	environment = env
 	var we := WorldEnvironment.new()
 	we.environment = env
@@ -97,6 +113,15 @@ func _build_environment() -> void:
 	env.fog_light_color = Color(0.07, 0.09, 0.12)
 	env.fog_density = 0.022
 	env.fog_sky_affect = 1.0
+	# Desktop only: a thin wet mist the lights shine through (see set_low_quality).
+	env.volumetric_fog_density = 0.014
+	env.volumetric_fog_albedo = Color(0.7, 0.74, 0.8)
+	env.volumetric_fog_length = 48.0
+	env.volumetric_fog_detail_spread = 1.5
+	env.volumetric_fog_gi_inject = 0.0
+	env.volumetric_fog_ambient_inject = 0.0
+	env.ssao_radius = 1.2
+	env.ssao_intensity = 1.6
 
 	environment = env
 	var we := WorldEnvironment.new()
@@ -109,6 +134,7 @@ func _build_environment() -> void:
 	moon.light_color = Color(0.55, 0.65, 0.9)
 	moon.light_energy = 0.28
 	moon.shadow_enabled = false
+	moon.light_volumetric_fog_energy = 0.0   # desktop mist only shows where lamps and torches cut through it
 	add_child(moon)
 
 
@@ -184,6 +210,7 @@ func add_light_pole(base: Vector3, height: float, aim: Vector3, color: Color,
 	spot.spot_range = light_range
 	spot.spot_attenuation = 0.8
 	spot.light_specular = 1.6       # strong highlights on the wet surfaces
+	spot.light_volumetric_fog_energy = 0.3   # desktop mist: a soft halo, not a wall of light
 	spot.shadow_enabled = shadows
 	if shadows:
 		shadow_lights.append(spot)
@@ -244,6 +271,7 @@ void fragment() {
 	var z := x.cross(y).normalized()
 	mi.global_transform = Transform3D(Basis(x, y, z), origin + dir * length * 0.5)
 	add_child(mi)
+	_beams.append(mi)
 
 
 func _glare_texture() -> GradientTexture2D:

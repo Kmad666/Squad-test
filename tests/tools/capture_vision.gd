@@ -1,7 +1,8 @@
 extends SceneTree
 ## Vision modes for visual review (not part of the suite): weapon lights,
 ## night vision, thermal inside the reticle, both together. The squad is
-## placed facing the ROADBLOCK (MAP=0, night, default) or ALPHA (MAP=1, day).
+## placed facing the ROADBLOCK (MAP=0, night, default), ALPHA (MAP=1, day) or the
+## bridge (MAP=3, day). GFX=high|low forces the graphics setting.
 ##   xvfb-run -a -s "-screen 0 1280x1024x24" godot --path . --rendering-driver opengl3 \
 ##     --resolution 960x540 -s tests/tools/capture_vision.gd -- <out_dir>
 ## Writes vision_<mode>.png.
@@ -35,9 +36,11 @@ func _process(_d) -> bool:
 			"place":
 				if main.retro != (OS.get_environment("RETRO") == "1"):
 					main.toggle_retro()
-				var night: bool = main.map_index == 0
-				var at := Vector3(0, 0, 26) if night else Vector3(-24, 0, 12)
-				var look := Vector3(0, 0, 2) if night else Vector3(-24, 0, -18)
+				var gfx := OS.get_environment("GFX")
+				if gfx != "" and main.low_quality != (gfx == "low"):
+					main.toggle_quality()
+				var at: Vector3 = {0: Vector3(0, 0, 26), 1: Vector3(-24, 0, 12), 3: Vector3(0, 0, 30)}.get(main.map_index, Vector3(0, 0, 26))
+				var look: Vector3 = {0: Vector3(0, 0, 2), 1: Vector3(-24, 0, -18), 3: Vector3(0, 0, -20)}.get(main.map_index, Vector3.ZERO)
 				main.squad.anchor = at
 				for s in main.squad.soldiers:
 					s.global_position = at + s.slot_offset

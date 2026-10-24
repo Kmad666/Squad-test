@@ -271,6 +271,17 @@ float noise(vec2 p) {
 	return mix(mix(hash(i), hash(i + vec2(1, 0)), u.x), mix(hash(i + vec2(0, 1)), hash(i + vec2(1, 1)), u.x), u.y);
 }
 
+// Colours here are picked as screen (sRGB) colours, which is how the
+// browser's compatibility renderer uses them; the desktop renderer lights in
+// linear space, so convert there to keep the same look.
+vec3 to_lin(vec3 c) {
+#if CURRENT_RENDERER == RENDERER_COMPATIBILITY
+	return c;
+#else
+	return mix(c / 12.92, pow((max(c, vec3(0.0)) + 0.055) / 1.055, vec3(2.4)), step(vec3(0.04045), c));
+#endif
+}
+
 void vertex() { wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz; }
 
 void fragment() {
@@ -326,7 +337,7 @@ void fragment() {
 	float puddle = smoothstep(0.52, 0.62, patch) * wet;
 	c = mix(c, c * 0.4, puddle);
 	bool outside = abs(wpos.x) > 50.0 || abs(wpos.z) > 50.0;
-	ALBEDO = outside ? c * 0.7 : c;
+	ALBEDO = to_lin(outside ? c * 0.7 : c);
 	ROUGHNESS = mix(rough, mix(0.3, 0.03, puddle), wet);
 	SPECULAR = mix(0.2, 0.7, wet);
 }
@@ -335,13 +346,24 @@ void fragment() {
 const BUILDING_SHADER := """
 shader_type spatial;
 // Facade with a window grid. At night some windows are lit (warm or TV-blue).
-uniform vec3 wall_col : source_color = vec3(0.2, 0.19, 0.18);
+uniform vec3 wall_col = vec3(0.2, 0.19, 0.18);     // raw, see to_lin
 uniform float seed = 0.0;
 uniform float night = 1.0;
 varying vec3 wpos;
 varying vec3 wn;
 
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+
+// Colours here are picked as screen (sRGB) colours, which is how the
+// browser's compatibility renderer uses them; the desktop renderer lights in
+// linear space, so convert there to keep the same look.
+vec3 to_lin(vec3 c) {
+#if CURRENT_RENDERER == RENDERER_COMPATIBILITY
+	return c;
+#else
+	return mix(c / 12.92, pow((max(c, vec3(0.0)) + 0.055) / 1.055, vec3(2.4)), step(vec3(0.04045), c));
+#endif
+}
 
 void vertex() {
 	wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
@@ -365,9 +387,9 @@ void fragment() {
 		}
 	}
 	if (wpos.y < 1.0) c *= 0.65;      // grimy ground floor
-	ALBEDO = c;
+	ALBEDO = to_lin(c);
 	ROUGHNESS = rough;
-	EMISSION = emit;
+	EMISSION = to_lin(emit);
 }
 """
 
@@ -1510,7 +1532,7 @@ func _process(delta: float) -> void:
 			+ "FIRE    %s%s\n" % [squad.fire_mode_text(), "   (auto fire ON)" if squad.auto_fire else ""] \
 			+ "FIRE ON US  %s\n" % _supp_bar(squad.avg_suppression()) \
 			+ "ENEMY   %s\n" % areas_text() \
-			+ "HITS    %d     KILLS  %d     GFX %s" % [hits, kills, ("LOW" if low_quality else "HIGH") + (" RETRO" if retro else "") + (" NVG" if night_vision else "") + (" IR" if thermal else "") + (" LIGHTS" if SquadScript.SoldierScript.lights_on else "")] \
+			+ "HITS    %d     KILLS  %d     GFX %s" % [hits, kills, ("LOW" if low_quality else "HIGH") + (" DESKTOP" if AtmosphereScript.rich else "") + (" RETRO" if retro else "") + (" NVG" if night_vision else "") + (" IR" if thermal else "") + (" LIGHTS" if SquadScript.SoldierScript.lights_on else "")] \
 			+ ("\n\n>> %s" % _notice if _notice_t > 0.0 else "")
 
 

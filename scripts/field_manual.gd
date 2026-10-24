@@ -400,6 +400,9 @@ LOW: no shadows or bloom, 3D drawn at 70% resolution, lighter screen effects. Fo
 {h}RETRO  ({k}V{/k}){/h}
 A late-90s console look, on top of HIGH or LOW: chunky low-poly soldiers with flat colours and slightly wobbly vertices, chunky screen pixels and 15-bit dithered colour. The HD soldiers come back when you switch it off. Remembered in your browser.
 
+{h}DESKTOP BUILD{/h}
+The downloadable Windows / Linux version (see the README) runs the full renderer: mist that lamps and weapon lights throw real beams through at night, weapon lights that cast shadows, ambient occlusion, and every man's light on even on LOW. The HUD shows {h}DESKTOP{/h}. On a weak graphics chip use the {h}SquadTest-LowEnd{/h} launcher: the browser's lighter renderer.
+
 {h}WEAPON LIGHTS  ({k}L{/k}){/h}
 A white light under every man's barrel, pointing wherever his rifle points: the ground ahead at low ready, the target when he shoulders it. On by default on night maps. On LOW graphics only every third man's light is on (each light costs the graphics card a pass).
 

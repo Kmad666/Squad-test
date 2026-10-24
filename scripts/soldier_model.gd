@@ -43,7 +43,8 @@ static var low_quality := false
 static var retro := false     # RETRO graphics: chunky low-poly soldiers (V)
 static var thermal := false   # thermal sight (I): bodies glow hot inside the reticle
 static var thermal_rect := Vector4.ZERO   # the reticle in screen UV (x0, y0, x1, y1)
-const LOD_DIST := 14.0        # beyond this (metres from the camera) the far mesh shows
+const LOD_DIST := 14.0
+const BODY_LAYER := 2         # render layer of soldier bodies (weapon lights don't take shadows from them)        # beyond this (metres from the camera) the far mesh shows
 
 var upper: Node3D            # chest, head, arms, rifle (moves down when crouched)
 var head: Node3D
@@ -161,6 +162,7 @@ func _attach(node: Node3D, part: String, extra := "") -> void:
 	var rm := MeshInstance3D.new()
 	rm.mesh = RetroParts.get_mesh(part, _palette, extra)
 	rm.material_override = _retro_material("normal")
+	rm.layers = BODY_LAYER
 	rm.visible = retro
 	node.add_child(rm)
 	_retro_meshes.append(rm)
@@ -168,6 +170,7 @@ func _attach(node: Node3D, part: String, extra := "") -> void:
 		var mi := MeshInstance3D.new()
 		mi.mesh = Parts.get_mesh(part, _palette, lod, extra)
 		mi.material_override = _material("normal")
+		mi.layers = BODY_LAYER
 		var d := 4.0 if low_quality else LOD_DIST
 		if lod == 0:
 			mi.visibility_range_end = d

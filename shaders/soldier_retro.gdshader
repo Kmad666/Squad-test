@@ -6,7 +6,7 @@
 shader_type spatial;
 render_mode vertex_lighting, diffuse_lambert, specular_disabled, cull_back;
 
-uniform vec4 tint : source_color = vec4(1.0);
+uniform vec4 tint = vec4(1.0);              // raw (converted with the rest, see to_lin)
 uniform bool ir_on = false;        // thermal sight on (I): bodies glow hot inside ir_rect
 uniform vec4 ir_rect = vec4(0.0);  // the reticle on screen, x0 y0 x1 y1 in screen UV
 uniform float night = 0.0;
@@ -25,6 +25,17 @@ void vertex() {
 	}
 }
 
+// Colours here are picked as screen (sRGB) colours, which is how the
+// browser's compatibility renderer uses them; the desktop renderer lights in
+// linear space, so convert there to keep the same look.
+vec3 to_lin(vec3 c) {
+#if CURRENT_RENDERER == RENDERER_COMPATIBILITY
+	return c;
+#else
+	return mix(c / 12.92, pow((max(c, vec3(0.0)) + 0.055) / 1.055, vec3(2.4)), step(vec3(0.04045), c));
+#endif
+}
+
 void fragment() {
 	ALBEDO = COLOR.rgb * tint.rgb;
 	ROUGHNESS = 1.0;
@@ -36,6 +47,9 @@ void fragment() {
 		RIM = 0.4 * night;
 		RIM_TINT = 0.5;
 	}
+
+	ALBEDO = to_lin(ALBEDO);
+	EMISSION = to_lin(EMISSION);
 
 	// Thermal sight: inside the reticle the body shows as heat, a marker
 	// colour (yellow, no blue) the post effect turns white-hot. Face and

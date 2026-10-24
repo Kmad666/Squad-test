@@ -9,13 +9,13 @@
 shader_type spatial;
 render_mode cull_back, diffuse_burley, specular_schlick_ggx;
 
-uniform vec4 tint : source_color = vec4(1.0);
+uniform vec4 tint = vec4(1.0);              // raw (converted with the rest, see to_lin)
 uniform bool ir_on = false;        // thermal sight on (I): bodies glow hot inside ir_rect
 uniform vec4 ir_rect = vec4(0.0);  // the reticle on screen, x0 y0 x1 y1 in screen UV
 uniform float detail = 1.0;
 uniform float night = 0.0;
-uniform vec3 camo_a : source_color = vec3(0.78);   // camo blotch multipliers
-uniform vec3 camo_b : source_color = vec3(1.22);
+uniform vec3 camo_a = vec3(0.78);   // camo blotch multipliers
+uniform vec3 camo_b = vec3(1.22);
 uniform float camo_scale = 16.0;
 
 varying vec3 lpos;
@@ -53,6 +53,17 @@ vec3 bump(vec3 n, vec3 vpos, float h, float strength) {
 	float det = dot(dpdx, r1);
 	vec3 grad = sign(det) * (dhdx * r1 + dhdy * r2);
 	return normalize(abs(det) * n - grad * strength);
+}
+
+// Colours here are picked as screen (sRGB) colours, which is how the
+// browser's compatibility renderer uses them; the desktop renderer lights in
+// linear space, so convert there to keep the same look.
+vec3 to_lin(vec3 c) {
+#if CURRENT_RENDERER == RENDERER_COMPATIBILITY
+	return c;
+#else
+	return mix(c / 12.92, pow((max(c, vec3(0.0)) + 0.055) / 1.055, vec3(2.4)), step(vec3(0.04045), c));
+#endif
 }
 
 void fragment() {
@@ -132,6 +143,9 @@ void fragment() {
 		// mask lenses glow faintly in the dark (friendly green, enemy red)
 		EMISSION = COLOR.rgb * glow * night * 3.0 * tint.rgb;
 	}
+
+	ALBEDO = to_lin(ALBEDO);
+	EMISSION = to_lin(EMISSION);
 
 	// Thermal sight: inside the reticle the body shows as heat, a marker
 	// colour (yellow, no blue) the post effect turns white-hot. Face and

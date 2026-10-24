@@ -124,12 +124,12 @@ func _card(key: int, e: Array) -> Button:
 	var spacer := Control.new()
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(spacer)
-	if e[0] == _last:
-		head.add_child(_label("LAST PLAYED  ", 13, DIM))
 	head.add_child(_label("DAY" if e[2] else "NIGHT", 18 if e[4] else 14, DAY if e[2] else NIGHT))
 	var blurb := _label(e[3], 16 if e[4] else 13, Color(0.75, 0.9, 0.72))
 	blurb.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	v.add_child(blurb)
+	if e[0] == _last and e[4]:
+		v.add_child(_label("LAST PLAYED", 13, DIM))      # (small cards: the bright border says it)
 	for c in [head, blurb] + head.get_children() + v.get_children():
 		if c is Control:
 			c.mouse_filter = Control.MOUSE_FILTER_IGNORE

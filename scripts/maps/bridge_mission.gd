@@ -138,13 +138,23 @@ float noise(vec2 p) {
 	vec2 u = f * f * (3.0 - 2.0 * f);
 	return mix(mix(hash(i), hash(i + vec2(1, 0)), u.x), mix(hash(i + vec2(0, 1)), hash(i + vec2(1, 1)), u.x), u.y);
 }
+// Colours here are picked as screen (sRGB) colours, which is how the
+// browser's compatibility renderer uses them; the desktop renderer lights in
+// linear space, so convert there to keep the same look.
+vec3 to_lin(vec3 c) {
+#if CURRENT_RENDERER == RENDERER_COMPATIBILITY
+	return c;
+#else
+	return mix(c / 12.92, pow((max(c, vec3(0.0)) + 0.055) / 1.055, vec3(2.4)), step(vec3(0.04045), c));
+#endif
+}
 void vertex() { wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz; }
 void fragment() {
 	vec2 p = wpos.xz * vec2(0.35, 0.9) + vec2(TIME * 0.6, 0.0);
 	float a = noise(p) - noise(p + vec2(0.37, 0.0));
 	float b = noise(p) - noise(p + vec2(0.0, 0.37));
 	NORMAL = normalize(NORMAL + (VIEW_MATRIX * vec4(a * 0.6, 0.0, b * 0.6, 0.0)).xyz);
-	ALBEDO = mix(vec3(0.07, 0.12, 0.12), vec3(0.12, 0.17, 0.16), noise(wpos.xz * 0.1 + TIME * 0.05));
+	ALBEDO = to_lin(mix(vec3(0.07, 0.12, 0.12), vec3(0.12, 0.17, 0.16), noise(wpos.xz * 0.1 + TIME * 0.05)));
 	ROUGHNESS = 0.12;
 	SPECULAR = 0.6;
 }

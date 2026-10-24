@@ -1,7 +1,8 @@
 name: Build & deploy to GitHub Pages
 
-# Every push to main re-exports the Godot project for the web and publishes it
-# to the gh-pages branch, which GitHub Pages serves.
+# Every push to main runs the tests, re-exports the Godot project for the web
+# and publishes it to the gh-pages branch (GitHub Pages), and builds the
+# desktop versions (Windows .exe, Linux) into the "desktop-latest" release.
 
 on:
   push:
@@ -24,14 +25,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Cache Godot + web templates
+      - name: Cache Godot + export templates
         id: cache
         uses: actions/cache@v4
         with:
           path: |
             ~/godot
             ~/.local/share/godot/export_templates
-          key: godot-${{ env.GODOT_VERSION }}-web
+          key: godot-${{ env.GODOT_VERSION }}-web-desktop
 
       - name: Install Godot
         if: steps.cache.outputs.cache-hit != 'true'
@@ -43,6 +44,7 @@ jobs:
           rm Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip
           wget -q https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_export_templates.tpz
           unzip -qj Godot_v${GODOT_VERSION}-stable_export_templates.tpz 'templates/web_*' 'templates/version.txt' \
+            'templates/windows_*x86_64*' 'templates/linux_*x86_64*' \
             -d ~/.local/share/godot/export_templates/${GODOT_VERSION}.stable/
           rm Godot_v${GODOT_VERSION}-stable_export_templates.tpz
 
@@ -70,3 +72,25 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: build/web
           force_orphan: true
+
+      - name: Export desktop builds (Windows, Linux)
+        run: |
+          GODOT=~/godot/Godot_v${GODOT_VERSION}-stable_linux.x86_64
+          mkdir -p build/windows build/linux dist
+          $GODOT --headless --export-release "Windows" build/windows/SquadTest.exe
+          $GODOT --headless --export-release "Linux" build/linux/SquadTest.x86_64
+          cp desktop/SquadTest-LowEnd.bat desktop/README.txt build/windows/
+          cp desktop/SquadTest-LowEnd.sh desktop/README.txt build/linux/
+          (cd build/windows && zip -qr ../../dist/SquadTest-Windows.zip .)
+          (cd build/linux && zip -qr ../../dist/SquadTest-Linux.zip .)
+          ls -la dist
+
+      - name: Publish desktop builds (release "desktop-latest")
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release delete desktop-latest -y --cleanup-tag -R "$GITHUB_REPOSITORY" || true
+          gh release create desktop-latest dist/SquadTest-Windows.zip dist/SquadTest-Linux.zip \
+            -R "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
+            --title "Desktop build (latest)" \
+            --notes "Built from ${GITHUB_SHA::7}. Windows: unzip, run SquadTest.exe (unsigned: More info -> Run anyway). Weak GPU: SquadTest-LowEnd.bat. Linux: SquadTest.x86_64 / SquadTest-LowEnd.sh."

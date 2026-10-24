@@ -3,7 +3,24 @@
 Godot 4 third-person squad shooter prototype, playable in the browser (PC).
 You command a squad of six soldiers as one unit. Each soldier picks its own target and fires on its own.
 
-**Play:** https://kmad666.github.io/Squad-test/
+**Play:** https://kmad666.github.io/Squad-test/ (browser)
+
+**Desktop:** https://github.com/Kmad666/Squad-test/releases/tag/desktop-latest (Windows .exe / Linux, rebuilt on
+every push). Unzip and run `SquadTest.exe` (it's unsigned: Windows SmartScreen > More info > Run anyway). On a weak
+or integrated GPU use `SquadTest-LowEnd.bat` / `.sh`, which runs the browser's lighter renderer.
+
+### Browser vs desktop
+The browser build is WebGL 2 (Godot's Compatibility renderer, single-threaded). The desktop build uses Forward+
+(Vulkan, or Direct3D 12 on Windows), set per platform in `project.godot`. What the desktop adds, all switched on in
+code when the renderer allows it (`Atmosphere.rich`):
+- volumetric mist at night: street lamps and weapon lights throw visible beams (replacing the fake light cones)
+- shadow-casting weapon lights on HIGH (soldier bodies are on render layer 2 so a man's own rifle doesn't block
+  his light), ambient occlusion
+- clustered lighting: every man's weapon light stays on even on LOW (the browser draws each light in its own pass)
+The look is kept the same: hand-picked colours in the custom shaders are display (sRGB) colours, which the
+Compatibility renderer uses as-is; on Forward+ they're converted to linear (`to_lin()` in each spatial shader), and
+sky reflections are off. CI builds both desktop versions after the tests and the web deploy, into the
+`desktop-latest` release.
 **Modeller:** https://kmad666.github.io/Squad-test/modeller/ (build characters, weapons and buildings for the game)
 
 ## Controls
