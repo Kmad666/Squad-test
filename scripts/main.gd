@@ -69,6 +69,9 @@ var _enemy_tracer_mat: StandardMaterial3D
 var kills := 0
 var low_quality := false     # G: LOW graphics for weaker machines (remembered)
 var retro := false           # V: RETRO graphics, late-90s console look (remembered)
+var night_vision := false    # N: night vision goggles
+var thermal := false         # I: thermal sight, inside the reticle only
+var _ir_rect := Vector4.ZERO
 const SETTINGS_PATH := "user://settings.cfg"
 var debug_reticle_all := false   # headless tests: treat everything as inside the reticle
 
@@ -125,6 +128,9 @@ func _ready() -> void:
 
 	postfx = PostFxScript.new()
 	add_child(postfx)
+	# Weapon lights come on by default at night.
+	SquadScript.SoldierScript.set_lights(AtmosphereScript.night, low_quality, get_tree())
+	load("res://scripts/soldier_model.gd").set_thermal(false, Vector4.ZERO)
 
 	map.build_extras(self)
 	_build_hud()
@@ -142,6 +148,7 @@ func _apply_quality() -> void:
 	vp.scaling_3d_scale = 0.7 if low_quality else 1.0
 	postfx.set_cheap(low_quality)
 	postfx.set_retro(retro)
+	SquadScript.SoldierScript.set_lights(SquadScript.SoldierScript.lights_on, low_quality, get_tree())
 
 
 func _save_settings() -> void:
@@ -174,6 +181,38 @@ func toggle_retro() -> void:
 	postfx.set_retro(retro)
 	_save_settings()
 	notify("RETRO GRAPHICS: %s" % ("ON" if retro else "OFF"))
+
+
+## L: weapon lights on / off for the whole squad.
+func toggle_lights() -> void:
+	var on: bool = not SquadScript.SoldierScript.lights_on
+	SquadScript.SoldierScript.set_lights(on, low_quality, get_tree())
+	notify("WEAPON LIGHTS: %s" % ("ON" if on else "OFF"))
+
+
+## N: night vision goggles (whole screen).
+func toggle_night_vision() -> void:
+	night_vision = not night_vision
+	_update_vision()
+	notify("NIGHT VISION: %s" % ("ON" if night_vision else "OFF"))
+
+
+## I: thermal sight, shown inside the reticle only.
+func toggle_thermal() -> void:
+	thermal = not thermal
+	_update_vision()
+	notify("THERMAL SIGHT: %s" % ("ON" if thermal else "OFF"))
+
+
+## Push the vision modes (and where the reticle is) to the screen effect and
+## the soldiers' shaders. Called on toggles and every frame while thermal is
+## on, since the reticle can be resized.
+func _update_vision() -> void:
+	var r := reticle_rect()
+	var vs := get_viewport().get_visible_rect().size
+	_ir_rect = Vector4(r.position.x / vs.x, r.position.y / vs.y, r.end.x / vs.x, r.end.y / vs.y)
+	postfx.set_vision(night_vision, thermal, _ir_rect)
+	load("res://scripts/soldier_model.gd").set_thermal(thermal, _ir_rect)
 
 
 # ---------------------------------------------------------------- input
@@ -1180,7 +1219,8 @@ func _build_hud() -> void:
 	help_label.text = "WASD move   MOUSE aim   WHEEL zoom   E move to reticle   C / SPACE cover on / off\n" \
 		+ "LMB focus fire   RMB throw / fire special   1-4 pick special   X next special\n" \
 		+ "F auto fire   T split / join teams   Q switch team   B bound   H hold + scout\n" \
-		+ "ESC manual   TAB reticle   G graphics   V retro   M map   R restart   F1 help"
+		+ "L lights   N night vision   I thermal (in reticle)   G graphics   V retro\n" \
+		+ "ESC manual   TAB reticle   M map   R restart   F1 help"
 	help_panel.add_child(help_label)
 
 	# Squad health: one line per man (bottom right).
@@ -1295,6 +1335,12 @@ func _unhandled_key_input(event: InputEvent) -> void:
 			toggle_retro()
 		elif event.physical_keycode == KEY_M:
 			next_map()
+		elif event.physical_keycode == KEY_L:
+			toggle_lights()
+		elif event.physical_keycode == KEY_N:
+			toggle_night_vision()
+		elif event.physical_keycode == KEY_I:
+			toggle_thermal()
 
 
 func _input(event: InputEvent) -> void:
@@ -1306,6 +1352,11 @@ func _input(event: InputEvent) -> void:
 
 
 func _process(delta: float) -> void:
+	if thermal:
+		var r := reticle_rect()
+		var vs := get_viewport().get_visible_rect().size
+		if Vector4(r.position.x / vs.x, r.position.y / vs.y, r.end.x / vs.x, r.end.y / vs.y) != _ir_rect:
+			_update_vision()
 	for i in _tracers.size():
 		if _tracer_life[i] > 0.0:
 			_tracer_life[i] -= delta
@@ -1350,7 +1401,7 @@ func _process(delta: float) -> void:
 			+ "FIRE    %s%s\n" % [squad.fire_mode_text(), "   (auto fire ON)" if squad.auto_fire else ""] \
 			+ "FIRE ON US  %s\n" % _supp_bar(squad.avg_suppression()) \
 			+ "ENEMY   %s\n" % areas_text() \
-			+ "HITS    %d     KILLS  %d     GFX %s" % [hits, kills, ("LOW" if low_quality else "HIGH") + (" RETRO" if retro else "")] \
+			+ "HITS    %d     KILLS  %d     GFX %s" % [hits, kills, ("LOW" if low_quality else "HIGH") + (" RETRO" if retro else "") + (" NVG" if night_vision else "") + (" IR" if thermal else "") + (" LIGHTS" if SquadScript.SoldierScript.lights_on else "")] \
 			+ ("\n\n>> %s" % _notice if _notice_t > 0.0 else "")
 
 

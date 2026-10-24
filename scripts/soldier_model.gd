@@ -41,6 +41,8 @@ const PRONE_HEAD := 1.05      # chin up to look ahead
 static var _mats := {}
 static var low_quality := false
 static var retro := false     # RETRO graphics: chunky low-poly soldiers (V)
+static var thermal := false   # thermal sight (I): bodies glow hot inside the reticle
+static var thermal_rect := Vector4.ZERO   # the reticle in screen UV (x0, y0, x1, y1)
 const LOD_DIST := 14.0        # beyond this (metres from the camera) the far mesh shows
 
 var upper: Node3D            # chest, head, arms, rifle (moves down when crouched)
@@ -183,6 +185,8 @@ static func _material(tint: String) -> ShaderMaterial:
 	if not _mats.has(key):
 		var m := ShaderMaterial.new()
 		m.shader = SHADER
+		m.set_shader_parameter("ir_on", thermal)
+		m.set_shader_parameter("ir_rect", thermal_rect)
 		m.set_shader_parameter("night", 1.0 if Atmosphere.night else 0.0)
 		m.set_shader_parameter("detail", 0.0 if low_quality else 1.0)
 		match tint:
@@ -201,6 +205,8 @@ static func _retro_material(tint: String) -> ShaderMaterial:
 	if not _mats.has(key):
 		var m := ShaderMaterial.new()
 		m.shader = RETRO_SHADER
+		m.set_shader_parameter("ir_on", thermal)
+		m.set_shader_parameter("ir_rect", thermal_rect)
 		m.set_shader_parameter("night", 1.0 if Atmosphere.night else 0.0)
 		match tint:
 			"hurt":
@@ -259,6 +265,15 @@ static func _rest_points(mesh: Mesh) -> PackedVector3Array:
 				out.append(v[i])
 		_rest_cache[mesh] = out
 	return _rest_cache[mesh]
+
+
+## Thermal sight on / off, and where the reticle is on screen (UV).
+static func set_thermal(on: bool, rect_uv: Vector4) -> void:
+	thermal = on
+	thermal_rect = rect_uv
+	for m in _mats.values():
+		m.set_shader_parameter("ir_on", on)
+		m.set_shader_parameter("ir_rect", rect_uv)
 
 
 static func set_low_quality(on: bool) -> void:

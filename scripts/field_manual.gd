@@ -210,6 +210,11 @@ const PAGES := [
   {k}Q{/k}              Switch which team you command
   {k}B{/k}              Bounding advance to the spot under the reticle
 
+{h}SEEING{/h}
+  {k}L{/k}              Weapon lights on/off (on by default at night)
+  {k}N{/k}              Night vision on/off
+  {k}I{/k}              Thermal sight on/off (inside the reticle)
+
 {h}GAME{/h}
   {k}ESC{/k}            This manual (pauses)
   {k}F1{/k}             Controls panel on/off
@@ -381,6 +386,15 @@ LOW: no shadows or bloom, 3D drawn at 70% resolution, lighter screen effects. Fo
 
 {h}RETRO  ({k}V{/k}){/h}
 A late-90s console look, on top of HIGH or LOW: chunky low-poly soldiers with flat colours and slightly wobbly vertices, chunky screen pixels and 15-bit dithered colour. The HD soldiers come back when you switch it off. Remembered in your browser.
+
+{h}WEAPON LIGHTS  ({k}L{/k}){/h}
+A white light under every man's barrel, pointing wherever his rifle points: the ground ahead at low ready, the target when he shoulders it. On by default on night maps. On LOW graphics only every third man's light is on (each light costs the graphics card a pass).
+
+{h}NIGHT VISION  ({k}N{/k}){/h}
+Classic green goggles over the whole screen: the dark lifted, lights blooming, heavy grain, flicker, scan lines and the round edge of the eyepiece. Washes out in daylight, like the real thing.
+
+{h}THERMAL SIGHT  ({k}I{/k}){/h}
+Inside the reticle only: white-hot. Bodies glow (faces and hands hottest, rifles cooler, the dead cooling), the rest of the scene goes cold grey; lamps, muzzle flashes and fires show hot too. Works with night vision on, by day and night, HD or RETRO. Resize the reticle ({k}TAB{/k}) to see more.
 
 {h}RETICLE  ({k}TAB{/k}){/h}
 Sliders for width, height, corner length, line thickness, vertical offset, glow, opacity and flicker; a switch to show the measurements; reset to defaults. Saved in your browser.

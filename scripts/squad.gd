@@ -269,6 +269,7 @@ func _make_offsets() -> void:
 			slot_offsets[members[i].index] = off
 	for s in soldiers:
 		s.set_team_patch(s.team if split else -1)
+		s.update_light()          # LOW graphics lights every third man, by index
 
 
 # ---------------------------------------------------------------- fire control

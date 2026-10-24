@@ -39,6 +39,8 @@ const CRAWL_SPEED := 1.0       # m/s, prone
 const PRONE_EYE := 0.3         # eye / rifle height lying prone
 
 static var _mats := {}
+static var lights_on := false  # weapon lights (L); on by default at night
+static var lights_low := false # LOW graphics: only every third man's light (each light costs a draw pass)
 
 var squad: Node3D
 var main: Node3D
@@ -93,6 +95,8 @@ var _hurt_t := 0.0
 var _cap: CapsuleShape3D
 var _col: CollisionShape3D
 var _model: Node3D
+var _torch: SpotLight3D        # weapon light under the barrel
+var _lens: MeshInstance3D      # its lens, lit while it's on
 var is_sergeant := false
 var _pending: Array = []       # [[seconds_left, Callable]] delayed reactions to orders
 var _hold_point: Variant = null   # set while he holds his ground (not yet reacted / halted)
@@ -173,6 +177,47 @@ func _build_model() -> void:
 	_flash.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_flash.visible = false
 	_model.muzzle.add_child(_flash)
+	# Weapon light: a white spot along the barrel, from the front of the
+	# handguard. No shadows (cheap); range and cone kept tight.
+	_torch = SpotLight3D.new()
+	_torch.position = Vector3(0.035, 0.0, -0.42)
+	_torch.light_color = Color(0.9, 0.95, 1.0)
+	_torch.light_energy = 9.0
+	_torch.light_specular = 0.3
+	_torch.spot_range = 26.0
+	_torch.spot_angle = 21.0
+	_torch.spot_attenuation = 1.0
+	_torch.shadow_enabled = false
+	_model._rifle.add_child(_torch)
+	var lm := SphereMesh.new()
+	lm.radius = 0.018
+	lm.height = 0.036
+	lm.radial_segments = 6
+	lm.rings = 3
+	_lens = MeshInstance3D.new()
+	_lens.mesh = lm
+	_lens.material_override = _mat("lens", Color(1.0, 1.0, 0.92), true)
+	_lens.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_lens.position = _torch.position
+	_model._rifle.add_child(_lens)
+	add_to_group("friendly_soldiers")
+	update_light()
+
+
+## Weapon light on or off, per the squad-wide switch (L) and graphics level.
+func update_light() -> void:
+	if _torch == null:
+		return
+	var on := lights_on and not dead and (not lights_low or index % 3 == 0)
+	_torch.visible = on
+	_lens.visible = on
+
+
+static func set_lights(on: bool, low: bool, tree: SceneTree) -> void:
+	lights_on = on
+	lights_low = low
+	for s in tree.get_nodes_in_group("friendly_soldiers"):
+		s.update_light()
 
 ## -1 hides the patch (squad joined); 0 = team A green, 1 = team B amber.
 func set_team_patch(t: int) -> void:
@@ -336,6 +381,7 @@ func _die() -> void:
 	_prone = false
 	collision_layer = 0
 	_flash.visible = false
+	update_light()
 	_model.lay_down(false)
 	_model.set_tint("dead")
 	_model.set_team_patch(-1, false)

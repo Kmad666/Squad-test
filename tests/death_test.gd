@@ -34,6 +34,10 @@ func _physics_process(_d) -> bool:
 	frame += 1
 	var sq = main.squad
 	match frame:
+		29:
+			# night map: weapon lights on by default; day map: off
+			for s in sq.soldiers:
+				_check(s._torch.visible == main.map.NIGHT, "weapon light %s on a %s map" % ["off" if main.map.NIGHT else "on", "night" if main.map.NIGHT else "day"])
 		30:
 			sq.move_to(sq.soldiers[0].global_position + Vector3(0, 0, -30))
 		75:
@@ -91,6 +95,9 @@ func _physics_process(_d) -> bool:
 				if "alive" in e and not e.alive and e.has_method("_set_crouch"):
 					_on_ground(e._model, "enemy %s" % e.name)
 		print("friendly corpses checked: ", dead_f)
+		for child in main.squad.get_children():
+			if child.has_method("signal_hand") and child.dead:
+				_check(not child._torch.visible, "dead man's weapon light still on")
 		_check(dead_f >= 4, "expected at least 4 dead friendlies, found %d" % dead_f)
 		print("death test failures: ", fails)
 		quit(1 if fails > 0 else 0)

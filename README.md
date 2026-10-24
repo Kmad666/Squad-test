@@ -28,6 +28,9 @@ You command a squad of six soldiers as one unit. Each soldier picks its own targ
 | Tab | Reticle settings (sizes are saved in your browser) |
 | G | Graphics LOW / HIGH (LOW: no shadows or bloom, 70% 3D resolution, lighter screen effects; remembered) |
 | V | RETRO graphics on / off (chunky low-poly soldiers, vertex wobble, pixelated dithered screen; remembered) |
+| L | Weapon lights on / off (on by default at night; on LOW graphics only every third man's) |
+| N | Night vision: green phosphor, amplified darks, grain, flicker, scan lines, round eyepiece edge |
+| I | Thermal sight, inside the reticle only: bodies white-hot, everything else cold grey |
 | R | Restart |
 | Wheel | Zoom |
 
@@ -165,6 +168,13 @@ each knee in turn is drawn up and out along the ground while the shoulders roll 
 left-hand signals, and dead (your men sprawl face down; enemies fall back onto their side; the rifle drops beside
 the body and the body is fitted to the ground so nothing sinks or floats).
 
+Vision: weapon lights are shadowless SpotLight3Ds on each friendly rifle (`soldier.gd`). Night vision is a post
+effect (`postfx.gd`). Thermal: inside the reticle (its screen rect is passed to both soldier shaders and the post
+effect) the soldier shaders drop their lighting and emit a yellow, no-blue "heat" colour kept under the bloom
+threshold; the post effect turns that (and other hot, warm-saturated light such as lamps and flashes) white and
+everything else cold grey, so only the reticle shows thermal.
+
+`tests/tools/capture_vision.gd` screenshots lights / night vision / thermal / both (MAP=0 night, MAP=1 day, RETRO=1).
 `tests/tools/render_gait.gd` renders each gait at six points of its stride; `tests/tools/render_prone.gd` the drop
 to prone, the prone pose from five sides and the crawl cycle; `tests/tools/capture_game.gd`
 screenshots the real game mid-move. `tests/tools/render_models.gd` renders close-ups of every pose from several angles for visual review (needs a real
