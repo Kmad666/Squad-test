@@ -41,6 +41,7 @@ const PRONE_HEAD := 1.05      # chin up to look ahead
 static var _mats := {}
 static var low_quality := false
 static var retro := false     # RETRO graphics: chunky low-poly soldiers (V)
+static var detailed := true  # wear the detailed soldier (soldier_skin.gd) over the rig, unless RETRO
 static var thermal := false   # thermal sight (I): bodies glow hot inside the reticle
 static var thermal_rect := Vector4.ZERO   # the reticle in screen UV (x0, y0, x1, y1)
 const LOD_DIST := 14.0
@@ -82,6 +83,9 @@ var _prone_amt := 0.0        # 0 up .. 1 lying flat (eased)
 var _pr := 0.0               # smoothed prone weight used by the last pose
 var _root_posed := false     # the prone pose has moved the model node itself
 var _foot_box: Array = []    # corners of the foot's bounding box (foot space), for ground clearance
+var _skin: Node3D = null     # the detailed soldier (soldier_skin.gd), when worn
+var _body_meshes: Array = [] # the rig's own body meshes (hidden under the detailed soldier)
+const BODY_PARTS := ["hips", "torso", "head", "upper_arm", "forearm", "thigh", "shin", "foot", "sling"]
 var _demo_vel := Vector3.ZERO
 # aiming (see set_aim_point / recoil)
 var _aiming := false
@@ -154,7 +158,39 @@ func build(role: String, side := "friendly", variant := 0) -> void:
 				_foot_box.append(box.get_endpoint(c))
 	_solve_legs()
 	_left_target = _guard
+	if detailed:
+		var skin_script: GDScript = load("res://scripts/soldier_skin.gd")
+		if skin_script:
+			_skin = skin_script.new()
+			_skin.name = "Skin"
+			add_child(_skin)
+			_skin.setup(self, side)
+			_skin.visible = not retro
+			for mi in _body_meshes:
+				mi.visible = false
+			_wear_kit_on_skin()
 	_solve_arms()
+
+
+## The detailed soldier has no pack and a lower head: the team patch rides on
+## his helmet and the sergeant's antenna on his back, following his bones.
+func _wear_kit_on_skin() -> void:
+	var sk: Skeleton3D = _skin.skeleton
+	var head_att := BoneAttachment3D.new()
+	sk.add_child(head_att)
+	head_att.bone_idx = _skin.bone("Head_038")
+	var head_rest := sk.get_bone_global_rest(head_att.bone_idx)
+	var p := _patch
+	p.get_parent().remove_child(p)
+	head_att.add_child(p)
+	p.transform = head_rest.affine_inverse() * Transform3D(Basis(Vector3.RIGHT, -0.95), Vector3(0, 1.745, 0.105))
+	var back_att := BoneAttachment3D.new()
+	sk.add_child(back_att)
+	back_att.bone_idx = _skin.bone("Spine02_035")
+	_back_att = back_att
+
+
+var _back_att: BoneAttachment3D = null
 
 
 ## Hangs the close-up, far and retro meshes of one part on a bone node.
@@ -171,6 +207,8 @@ func _attach(node: Node3D, part: String, extra := "") -> void:
 		mi.mesh = Parts.get_mesh(part, _palette, lod, extra)
 		mi.material_override = _material("normal")
 		mi.layers = BODY_LAYER
+		if part in BODY_PARTS:
+			_body_meshes.append(mi)
 		var d := 4.0 if low_quality else LOD_DIST
 		if lod == 0:
 			mi.visibility_range_end = d
@@ -231,9 +269,12 @@ static func set_retro(on: bool, tree: SceneTree) -> void:
 
 func _show_retro(on: bool) -> void:
 	for mi in _meshes:
-		mi.visible = not on
+		mi.visible = not on and not (_skin and mi in _body_meshes)
 	for mi in _retro_meshes:
 		mi.visible = on
+	if _skin:
+		_skin.visible = not on
+		_skin.drive()
 
 
 ## World height of the lowest vertex of the drawn body (rifle excluded).
@@ -274,6 +315,8 @@ static func _rest_points(mesh: Mesh) -> PackedVector3Array:
 static func set_thermal(on: bool, rect_uv: Vector4) -> void:
 	thermal = on
 	thermal_rect = rect_uv
+	var skin_script: GDScript = load("res://scripts/soldier_skin.gd")
+	skin_script.set_thermal(on, rect_uv)
 	for m in _mats.values():
 		m.set_shader_parameter("ir_on", on)
 		m.set_shader_parameter("ir_rect", rect_uv)
@@ -293,6 +336,8 @@ func set_tint(tint: String) -> void:
 	var rm := _retro_material(tint)
 	for mi in _retro_meshes:
 		mi.material_override = rm
+	if _skin:
+		_skin.set_tint(tint)
 
 
 ## Rifle at low ready across the body: M4-pattern carbine for your men (the
@@ -442,6 +487,8 @@ func _apply_pose() -> void:
 		var aim_xf := Transform3D(Basis.looking_at(d, up), pocket + d * 0.31)
 		xf = Transform3D(low.basis.slerp(aim_xf.basis, a), low.origin.lerp(aim_xf.origin, a))
 	_rifle.transform = xf
+	if _skin:
+		_skin.rifle_reset()
 	_grip = xf.origin
 	var gl := _guard_local
 	gl.z = lerpf(_guard_local.z, -0.22, a)                # hand slides back a little when shouldered
@@ -598,6 +645,8 @@ func _solve_arms() -> void:
 		var elbow := _solve(sh, hand, UPPER_ARM, FOREARM, pole)
 		_aim_bone(_arms[s]["upper"], sh, elbow, Vector3(sx, 0, 0))
 		_aim_bone(_arms[s]["fore"], elbow, hand, Vector3(sx, 0, 0))
+	if _skin:
+		_skin.drive()
 
 
 # ---------------------------------------------------------------- pose API
@@ -742,7 +791,7 @@ func set_sergeant(on: bool) -> void:
 	var amber := StandardMaterial3D.new()
 	amber.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	amber.albedo_color = Color(1.0, 0.72, 0.15)
-	for s in ["L", "R"]:
+	for s in ([] if _skin else ["L", "R"]):        # (the detailed soldier has no sleeve chevrons)
 		var ua: Node3D = _arms[s]["upper"]
 		for i in 2:
 			var ch := MeshInstance3D.new()
@@ -767,6 +816,12 @@ func set_sergeant(on: bool) -> void:
 	ant.position = Vector3(-0.185, 1.82, 0.2)       # whip antenna from the radio pouch
 	ant.rotation.x = 0.15
 	upper.add_child(ant)
+	if _skin:
+		# on the detailed soldier: from his upper back, riding on his spine
+		var spine_rest: Transform3D = _skin.skeleton.get_bone_global_rest(_back_att.bone_idx)
+		upper.remove_child(ant)
+		_back_att.add_child(ant)
+		ant.transform = spine_rest.affine_inverse() * Transform3D(Basis(Vector3.RIGHT, 0.15), Vector3(-0.12, 1.76, 0.21))
 	_sgt_parts.append(ant)
 	var tip := MeshInstance3D.new()
 	var sm := SphereMesh.new()
@@ -776,6 +831,11 @@ func set_sergeant(on: bool) -> void:
 	tip.material_override = amber
 	tip.position = Vector3(-0.185, 2.215, 0.26)
 	upper.add_child(tip)
+	if _skin:
+		var spine_rest2: Transform3D = _skin.skeleton.get_bone_global_rest(_back_att.bone_idx)
+		upper.remove_child(tip)
+		_back_att.add_child(tip)
+		tip.transform = spine_rest2.affine_inverse() * Transform3D(Basis.IDENTITY, Vector3(-0.12, 2.155, 0.27))
 	_sgt_parts.append(tip)
 
 
@@ -881,3 +941,5 @@ func lay_down(face_up: bool) -> void:
 	var b := Basis.looking_at(-along.rotated(Vector3.UP, 0.35), Vector3.UP)
 	b = b * Basis(Vector3.BACK, PI / 2.0)       # lying on its side
 	_rifle.global_transform = Transform3D(b, Vector3(at.x, ground + 0.03, at.z))
+	if _skin:
+		_skin.drive()

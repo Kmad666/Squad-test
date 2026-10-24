@@ -85,6 +85,7 @@ void fragment() {
 		(big if e[4] else small).add_child(_card(i + 1, e))
 	col.add_child(HSeparator.new())
 	col.add_child(_label("1-4 OR CLICK TO DEPLOY      IN GAME: BACKSPACE = THIS MENU   ESC = FIELD MANUAL", 15, DIM))
+	col.add_child(_label("Soldier model: \"Soldier Full Tactical Gear\" by DanlyVostok (CC BY 4.0)    Motion capture: Haley Tuffles", 12, Color(0.45, 1.0, 0.3, 0.4)))
 
 
 func _card(key: int, e: Array) -> Button:

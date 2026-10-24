@@ -15,6 +15,7 @@ const SoldierModel = preload("res://scripts/soldier_model.gd")
 
 var fails := 0
 var checks := 0
+var worst := {"grip": 0.0, "guard": 0.0, "ankle": INF}
 
 
 func _initialize() -> void:
@@ -34,7 +35,35 @@ func _hand(m: Node3D, s: String) -> Vector3:
 	return fa.transform * Vector3(0, -SoldierModel.FOREARM, 0)     # upper space
 
 
+## The detailed soldier (soldier_skin.gd) worn over the rig: his hands on
+## the rifle (grip and handguard), his ankles above the ground.
+func _skin_checks(m: Node3D, label: String, hands := true) -> void:
+	var skin = m._skin
+	if skin == null or not skin.is_visible_in_tree():
+		return
+	var sk: Skeleton3D = skin.skeleton
+	var gt := sk.global_transform
+	if hands:
+		for s in ["R", "L"]:
+			var hand_i: int = skin.bone(s + ("_Hand_081" if s == "R" else "_Hand_055"))
+			var fore_i: int = skin.bone(s + ("_Forearm_077" if s == "R" else "_Forearm_051"))
+			var wrist: Vector3 = gt * sk.get_bone_global_pose(hand_i).origin
+			var elbow: Vector3 = gt * sk.get_bone_global_pose(fore_i).origin
+			var palm: Vector3 = wrist + (wrist - elbow).normalized() * skin.PALM
+			var want: Vector3 = m._rifle.global_position if s == "R" else m.upper.global_transform * (m._guard + skin._rifle_shift)
+			var d := palm.distance_to(want)
+			var key := "grip" if s == "R" else "guard"
+			worst[key] = maxf(worst[key], d)
+			_check(d < 0.07, "%s: detailed soldier's %s hand off the rifle (%.3f)" % [label, s, d])
+	for s in ["L", "R"]:
+		var foot_i: int = skin.bone(s + ("_Foot_05" if s == "L" else "_Foot_022"))
+		var ay: float = (gt * sk.get_bone_global_pose(foot_i).origin).y
+		worst["ankle"] = minf(worst["ankle"], ay)
+		_check(ay > 0.04, "%s: detailed soldier's %s ankle in the ground (%.3f)" % [label, s, ay])
+
+
 func _pose_checks(m: Node3D, label: String, hands := true) -> void:
+	_skin_checks(m, label, hands)
 	var waist: Vector3 = m.upper.global_transform * Vector3(0, SoldierModel.WAIST_Y, 0)
 	var hips: Vector3 = m._hips.global_position
 	_check(waist.distance_to(hips) < 0.13, "%s: torso detached from hips (%.3f m)" % [label, waist.distance_to(hips)])
@@ -169,6 +198,7 @@ func _run() -> void:
 	# Triangle budget (weak integrated GPUs, in a browser): per soldier,
 	# close-up and far meshes.
 	_budget()
+	print("detailed soldier: worst grip %.3f, guard %.3f, lowest ankle %.3f" % [worst["grip"], worst["guard"], worst["ankle"]])
 	print("model checks: %d, failures: %d" % [checks, fails])
 	quit(1 if fails > 0 else 0)
 

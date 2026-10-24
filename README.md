@@ -71,6 +71,11 @@ Every push to `main` builds the web version and publishes it to GitHub Pages (gh
 
 Font: Share Tech Mono (SIL Open Font License, see `fonts/OFL.txt`).
 
+Soldier model: "Soldier Full Tactical Gear" by DanlyVostok
+(https://sketchfab.com/3d-models/soldier-full-tactical-gear-850593a8c7114c188395ba1849a66eb9), licensed CC BY 4.0;
+decimated, retextured (grey / olive variants, insignia removed) and re-rigged to the game's animation; see
+`assets/soldier/CREDITS.txt`. Motion capture: Haley Tuffles (Premade Mocap Pack, free for any use).
+
 ## Units
 - **Starting squad:** 5 riflemen + 1 grenadier (rifle with under-barrel grenade launcher).
 - **Anti-armor team (coyote packs and kit):** 3 men with burst rifles and shoulder rocket launchers, waiting west of the start.
@@ -163,6 +168,19 @@ and two training grounds. 1-4 or a click deploys; Backspace in game comes back; 
   then the gaits, firing poses, and prone (lying still, crawling, firing prone).
 
 ## Soldier model
+**Detailed soldier** (default; `soldier_skin.gd`, `assets/soldier/soldier.glb`): a skinned Character Creator rig
+(16k triangles, 9 materials at 512 px, Godot's automatic mesh LODs) worn over the procedural rig described below.
+The rig still animates everything; each frame its pose is mapped onto the skeleton: hips, a spine blended from hips
+to chest, neck and head copy its rotations; arms and legs are re-solved with this model's own limb lengths so the
+feet land where the rig's feet are and the hands on the rifle (the rifle is shifted with the right hand to suit his
+shorter reach). Every bone's axis offset is measured once from the rest pose. Your men wear grey variants of the
+fatigues and kit with green lenses, the enemy olive with red lenses; tints (hurt / dead) are material variants and
+the thermal sight is a second material pass that draws heat only inside the reticle. The team patch and the
+sergeant's antenna ride on his bones. RETRO (V) swaps back to the chunky soldiers. `model_test.gd` checks his hands
+on the rifle and his feet above ground in every pose. Asset pipeline (Blender): stray parts removed, meshes joined
+and decimated, the file's idle pose baked in as the rest pose, facing -Z, textures to 512 px, colour variants.
+
+The procedural rig and its own HD look:
 One universal soldier (`soldier_model.gd`) is built for everyone, friend and foe: a jointed body (hips, torso, head,
 two-bone IK arms and legs). The look (`soldier_parts.gd`): urban-camo fatigues, full gas mask (lenses, rims, side
 filter, exhale valve, harness straps) over a balaclava, headset, high-cut helmet with cover, NVG mount, side rails and

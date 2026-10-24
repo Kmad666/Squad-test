@@ -2,3 +2,4 @@
 build/
 *.import
 export_credentials.cfg
+assets/soldier/soldier_Image_*
