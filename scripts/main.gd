@@ -17,7 +17,8 @@ const UI_FONT = preload("res://fonts/ShareTechMono-Regular.ttf")
 const StreetMission = preload("res://scripts/maps/street_mission.gd")
 const TestField = preload("res://scripts/maps/test_field.gd")
 const ModelViewer = preload("res://scripts/maps/model_viewer.gd")
-const MAPS := [StreetMission, TestField, ModelViewer]     # M cycles through these
+const BridgeMission = preload("res://scripts/maps/bridge_mission.gd")
+const MAPS := [StreetMission, TestField, ModelViewer, BridgeMission]     # M cycles through these
 const NEON := Color(0.45, 1.0, 0.30)
 
 const NAV_HALF := 50.0          # playable half-size of the field (metres)
@@ -27,10 +28,12 @@ const TALL_COVER := 1.6         # boxes taller than this need a lean-out to shoo
 
 var map: GDScript              # the map being played (scripts/maps/*)
 static var forced_map := -1    # tests: pick a map regardless of saved settings
+static var picked_map := -1    # chosen in the level select menu (menu.gd)
 var map_index := 0
 var cover_defs: Array = []      # [{xform, size}] used by CoverUtil
 var solid_defs: Array = []      # buildings and compound walls: the squad's anchor can't pass these
 var cover_points: Array = []    # [{pos, normal, height}]
+var water_defs: Array = []      # the river: invisible, solid, no cover
 var targets: Array = []         # everything the squad can shoot: enemy soldiers + vehicles
 var areas: Array = []           # [{name, center, radius, members, alerted, claimed, label}]
 var vehicles: Array = []
@@ -87,6 +90,8 @@ func _ready() -> void:
 		low_quality = bool(cfg.get_value("graphics", "low", false))
 		retro = bool(cfg.get_value("graphics", "retro", false))
 		map_index = clampi(int(cfg.get_value("game", "map", 0)), 0, MAPS.size() - 1)
+	if picked_map >= 0:
+		map_index = picked_map      # from the level select (remembered below)
 	if forced_map >= 0:
 		map_index = forced_map
 	load("res://scripts/soldier_model.gd").low_quality = low_quality    # before soldiers are built
@@ -103,6 +108,7 @@ func _ready() -> void:
 	_build_boxes()
 	_bake_nav()
 	_build_cover_points()
+	_drop_wet_cover_points()
 	_build_areas()
 	_build_tracers()
 	_build_impacts()
@@ -135,6 +141,8 @@ func _ready() -> void:
 	map.build_extras(self)
 	_build_hud()
 	_apply_quality()
+	if picked_map >= 0 and forced_map < 0:
+		_save_settings()            # the menu marks it as last played
 	notify(map.OBJECTIVE, 7.0)
 
 
@@ -162,6 +170,7 @@ func _save_settings() -> void:
 ## M: next map (remembered), then restart.
 func next_map() -> void:
 	map_index = (map_index + 1) % MAPS.size()
+	picked_map = map_index
 	_save_settings()
 	get_tree().reload_current_scene()
 
@@ -251,6 +260,8 @@ const GROUND_SHADER := """
 shader_type spatial;
 uniform float wet = 0.0;      // 1 at night: dark, glossy, puddles
 uniform float street = 0.0;   // 1: street map surfaces, 0: grass field
+uniform float river_z = 0.0;  // > 0: a river crosses at |z| < river_z, bridged where |x| < deck_x
+uniform float deck_x = 0.0;
 varying vec3 wpos;
 
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -263,6 +274,8 @@ float noise(vec2 p) {
 void vertex() { wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz; }
 
 void fragment() {
+	if (river_z > 0.0 && abs(wpos.z) < river_z && abs(wpos.x) > deck_x)
+		discard;        // the river: a gap down to the water
 	float patch = noise(wpos.xz * 0.22) * 0.7 + noise(wpos.xz * 0.9) * 0.3;
 	vec3 c;
 	float rough;
@@ -291,6 +304,24 @@ void fragment() {
 		c = mix(c, c * 0.85, l * 0.5);
 		if (wet > 0.5) c = mix(vec3(0.10, 0.17, 0.08), vec3(0.07, 0.12, 0.06), l * 0.6);
 		rough = 0.95;
+		if (river_z > 0.0) {
+			float ax = abs(wpos.x);
+			float az = abs(wpos.z);
+			c = mix(vec3(0.24, 0.30, 0.13), vec3(0.33, 0.33, 0.18), smoothstep(0.35, 0.75, patch));   // rough grass
+			if (az < river_z + 2.5) c = mix(c, vec3(0.34, 0.30, 0.22), 0.7);                     // dirt at the bank
+			if (wpos.z < -river_z - 2.0 && ax < 24.0) c = vec3(0.33, 0.32, 0.29) * (0.85 + 0.3 * noise(wpos.xz * 0.9));   // north-bank apron
+			if (az < river_z && ax >= 5.0) {                                                      // deck walkways
+				c = vec3(0.42, 0.41, 0.38) * (0.9 + 0.2 * noise(wpos.xz * 3.0));
+				if (abs(fract(wpos.z / 2.0) - 0.5) > 0.47) c *= 0.8;                             // expansion joints
+			}
+			if (ax < 5.0) {                                                                       // the road
+				c = vec3(0.13, 0.13, 0.135) * (0.85 + 0.3 * noise(wpos.xz * 1.7));
+				if (ax < 0.08 && fract(wpos.z / 6.0) < 0.5) c = vec3(0.62, 0.52, 0.2);
+				if (abs(ax - 4.75) < 0.06) c = vec3(0.6);
+				if (noise(wpos.xz * 0.4) > 0.72) c *= 0.75;                                       // scorch marks / oil
+			}
+			rough = 0.85;
+		}
 	}
 	float puddle = smoothstep(0.52, 0.62, patch) * wet;
 	c = mix(c, c * 0.4, puddle);
@@ -354,6 +385,9 @@ func _build_ground() -> void:
 	mat.shader = shader
 	mat.set_shader_parameter("wet", 1.0 if AtmosphereScript.night else 0.0)
 	mat.set_shader_parameter("street", 1.0 if map.GROUND == "street" else 0.0)
+	if map.GROUND == "bridge":
+		mat.set_shader_parameter("river_z", map.RIVER_Z)
+		mat.set_shader_parameter("deck_x", map.DECK_X)
 	var tile := PlaneMesh.new()
 	tile.size = Vector2(10, 10)
 	for ix in range(-6, 6):
@@ -414,8 +448,10 @@ func _build_boxes() -> void:
 		var xform := Transform3D(Basis(Vector3.UP, yaw), pos)
 		var def := {"xform": xform, "size": size, "type": type}
 		cover_defs.append(def)
-		if type in ["building", "cwall"]:
+		if type in ["building", "cwall", "water"]:
 			solid_defs.append(def)
+		if type == "water":
+			water_defs.append(def)
 
 		var body := StaticBody3D.new()
 		body.collision_layer = 1
@@ -426,6 +462,10 @@ func _build_boxes() -> void:
 		match type:
 			"car":
 				_build_car(body, size, rng)
+			"bus", "truck":
+				_build_big_vehicle(body, size, type, rng)
+			"water":
+				pass                        # invisible: the river bank / water edge
 			"building":
 				var mi := MeshInstance3D.new()
 				var bm := BoxMesh.new()
@@ -470,6 +510,53 @@ func _build_boxes() -> void:
 			ob.avoidance_enabled = false
 			ob.position = pos
 			nav_region.add_child(ob)
+
+
+## Abandoned bus or box truck: tall cover you lean around. Length along x;
+## the front faces +x.
+func _build_big_vehicle(body: Node3D, size: Vector3, kind: String, rng: RandomNumberGenerator) -> void:
+	var bottom := -size.y * 0.5
+	var paint := StandardMaterial3D.new()
+	paint.albedo_color = [Color(0.78, 0.74, 0.62), Color(0.62, 0.18, 0.12), Color(0.3, 0.38, 0.45)][rng.randi() % 3] if kind == "bus" \
+			else [Color(0.72, 0.72, 0.7), Color(0.2, 0.3, 0.22), Color(0.48, 0.36, 0.2)][rng.randi() % 3]
+	paint.roughness = 0.55
+	var glass := StandardMaterial3D.new()
+	glass.albedo_color = Color(0.03, 0.035, 0.04)
+	glass.roughness = 0.08
+	var tyre := StandardMaterial3D.new()
+	tyre.albedo_color = Color(0.03, 0.03, 0.03)
+	var parts: Array = []      # [centre, size, material]
+	if kind == "bus":
+		parts.append([Vector3(0, bottom + 0.4 + (size.y - 0.4) * 0.5, 0), Vector3(size.x, size.y - 0.4, size.z), paint])
+		parts.append([Vector3(0, bottom + 1.95, 0), Vector3(size.x - 0.6, 0.85, size.z + 0.02), glass])       # window band
+		parts.append([Vector3(size.x * 0.5 - 0.05, bottom + 1.6, 0), Vector3(0.12, 1.5, size.z - 0.3), glass])  # windscreen
+	else:
+		var cab := 2.0
+		var box_len := size.x - cab - 0.2
+		parts.append([Vector3(-size.x * 0.5 + box_len * 0.5, bottom + 0.55 + (size.y - 0.55) * 0.5, 0), Vector3(box_len, size.y - 0.55, size.z), paint])
+		parts.append([Vector3(size.x * 0.5 - cab * 0.5, bottom + 0.5 + 1.0, 0), Vector3(cab, 2.0, size.z - 0.1), _surface(Color(0.25, 0.26, 0.27), false)])
+		parts.append([Vector3(size.x * 0.5 - 0.02, bottom + 2.0, 0), Vector3(0.06, 0.7, size.z - 0.4), glass])
+	for p in parts:
+		var mi := MeshInstance3D.new()
+		var bm := BoxMesh.new()
+		bm.size = p[1]
+		mi.mesh = bm
+		mi.material_override = p[2]
+		mi.position = p[0]
+		body.add_child(mi)
+	for x in [-0.36, 0.36]:
+		for z in [-1.0, 1.0]:
+			var w := MeshInstance3D.new()
+			var wm := CylinderMesh.new()
+			wm.top_radius = 0.48
+			wm.bottom_radius = 0.48
+			wm.height = 0.3
+			wm.radial_segments = 10
+			w.mesh = wm
+			w.material_override = tyre
+			w.position = Vector3(x * size.x, bottom + 0.48, z * (size.z * 0.5 - 0.1))
+			w.rotation.x = PI / 2.0
+			body.add_child(w)
 
 
 ## Low-poly car: body, cabin with dark glass, wheels; some still have their
@@ -556,6 +643,8 @@ func _bake_nav() -> void:
 ## edges, where you can lean out around them.
 func _build_cover_points() -> void:
 	for def in cover_defs:
+		if def.get("type", "") == "water":
+			continue
 		var xf: Transform3D = def["xform"]
 		var size: Vector3 = def["size"]
 		var corners_only: bool = def.get("type", "") in ["building", "cwall"]
@@ -595,6 +684,23 @@ func _build_cover_points() -> void:
 					"height": size.y,
 					"peeks": peeks,
 				})
+
+## (after _build_cover_points) No cover spot or lean-out spot in the river.
+func _drop_wet_cover_points() -> void:
+	if water_defs.is_empty():
+		return
+	var keep: Array = []
+	for cp in cover_points:
+		if CoverUtil.inside_any(water_defs, cp["pos"], 0.2):
+			continue
+		var peeks: Array = []
+		for lp in cp["peeks"]:
+			if not CoverUtil.inside_any(water_defs, lp, 0.2):
+				peeks.append(lp)
+		cp["peeks"] = peeks
+		keep.append(cp)
+	cover_points = keep
+
 
 ## Spawn each defended area: its riflemen, the APC for CHARLIE, and a
 ## floating label with how many hostiles are left.
@@ -1220,7 +1326,7 @@ func _build_hud() -> void:
 		+ "LMB focus fire   RMB throw / fire special   1-4 pick special   X next special\n" \
 		+ "F auto fire   T split / join teams   Q switch team   B bound   H hold + scout\n" \
 		+ "L lights   N night vision   I thermal (in reticle)   G graphics   V retro\n" \
-		+ "ESC manual   TAB reticle   M map   R restart   F1 help"
+		+ "ESC manual   TAB reticle   M next map   BACKSPACE level select   R restart   F1 help"
 	help_panel.add_child(help_label)
 
 	# Squad health: one line per man (bottom right).
@@ -1335,6 +1441,9 @@ func _unhandled_key_input(event: InputEvent) -> void:
 			toggle_retro()
 		elif event.physical_keycode == KEY_M:
 			next_map()
+		elif event.physical_keycode == KEY_BACKSPACE:
+			get_tree().paused = false
+			get_tree().change_scene_to_file("res://menu.tscn")
 		elif event.physical_keycode == KEY_L:
 			toggle_lights()
 		elif event.physical_keycode == KEY_N:

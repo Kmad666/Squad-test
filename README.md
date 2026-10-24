@@ -25,6 +25,7 @@ You command a squad of six soldiers as one unit. Each soldier picks its own targ
 | B | Bounding advance to the point under the reticle: teams leapfrog, one moves while one covers |
 | H | Hold position: nobody moves, WASD scouts ahead with the camera (H again to release) |
 | M | Next map (remembered) |
+| Backspace | Back to the level select |
 | Tab | Reticle settings (sizes are saved in your browser) |
 | G | Graphics LOW / HIGH (LOW: no shadows or bloom, 70% 3D resolution, lighter screen effects; remembered) |
 | V | RETRO graphics on / off (chunky low-poly soldiers, vertex wobble, pixelated dithered screen; remembered) |
@@ -113,6 +114,9 @@ GODOT=/path/to/godot tests/run_all.sh          # MINUTES=10 for longer soak runs
 - `lean_spot_test.gd`: checks no two soldiers share a lean-out spot at tall crates.
 - `manual_test.gd`: Esc opens / pages / closes the field manual and pauses / unpauses.
 - `mission_test.gd`: scripted run of the street mission using split, bound and flank orders.
+- `bridge_test.gd`: scripted run of OPERATION BIFROST (link up, bound up the bridge, take the north bank); fails if
+  anyone ends up in the river, a cover spot lies in the water, or the squad never gets across.
+- `menu_test.gd`: the level select builds every card and keys 1-4 deploy onto the right maps.
 - `model_test.gd`: geometry checks on the soldier model in every pose and gait: torso attached to hips,
   feet never below ground, legs never over-stretched, feet never crossing, both hands on the rifle, corpses resting
   on the ground with the rifle beside them, and prone / crawling bodies (HD and RETRO) lying on the ground without
@@ -124,7 +128,14 @@ GODOT=/path/to/godot tests/run_all.sh          # MINUTES=10 for longer soak runs
 - `soak_test.gd`: random orders (including split / switch / bound / hold), WASD bursts in and out of cover, cover toggles, fire modes, specials, graphics toggles and restarts; fails on any script error.
 
 ## Maps
-- **OPERATION LAMPLIGHTER** (default, night): a street between two rows of buildings, a back alley joined to the road
+The game opens on a level select (`menu.tscn` / `scripts/menu.gd`): two operations, one by day and one by night,
+and two training grounds. 1-4 or a click deploys; Backspace in game comes back; the last map played is marked.
+- **OPERATION BIFROST** (day): a river crosses the map; one 56 m road bridge, choked with abandoned cars, a bus
+  and two box trucks (tall cover), leads to the enemy-held north bank: a sandbag BRIDGEHEAD (3) at the far end of
+  the bridge, a CHECKPOINT (3) at its foot, and a DEPOT (4 + APC) behind. The anti-armor team waits on the south
+  bank. The water is a gap in the ground (river ground discarded in the shader, water 4 m below, embankments,
+  deck slab and piers as scenery); invisible "water" boxes and the parapets keep everyone on the bridge.
+- **OPERATION LAMPLIGHTER** (night): a street between two rows of buildings, a back alley joined to the road
   by two side passages, and a walled compound at the end of the road (gate on the road, breach at the alley mouth).
   Cars, crates, dumpsters and barriers for cover; sodium street lamps, lit windows and a floodlight over the gate.
   Enemies: a ROADBLOCK mid-street (2), an ALLEY ambush (2), the COMPOUND (4 + APC). The anti-armor team waits in the

@@ -222,6 +222,7 @@ const PAGES := [
   {k}G{/k}              Graphics HIGH / LOW
   {k}V{/k}              Retro graphics on / off
   {k}M{/k}              Next map
+  {k}BACKSPACE{/k}      Level select
   {k}R{/k}              Restart
 """],
 ["MOVEMENT & COVER", """{h}THE SERGEANT & HAND SIGNALS{/h}
@@ -363,7 +364,19 @@ Heavy armor, 360 HP. Patrols a short route; stops the moment it sees you or take
 {h}WAITING TEAMS{/h}
 The {h}anti-armor team{/h} (coyote-brown packs and kit, green label) waits to link up. Walk the squad within about 7 m and they join, bringing 3 burst rifles and 6 rockets.
 """],
-["MISSIONS", """{h}OPERATION LAMPLIGHTER{/h}  {d}(night){/d}
+["MISSIONS", """{h}LEVEL SELECT{/h}
+The game opens on the level select: {k}1{/k}-{k}4{/k} or click a card. {k}BACKSPACE{/k} in game goes back to it.
+
+{h}OPERATION BIFROST{/h}  {d}(day){/d}
+{h}Objective:{/h} force the bridge and take the north bank.
+You start on the south bank of a river. One road bridge (56 m, no other way across) is choked with abandoned cars, a bus and two box trucks: the bus and trucks are tall cover you lean around, the cars low cover. The parapets only shield you from the sides.
+  - {h}Bridgehead:{/h} a sandbag line across the far end of the bridge (3 riflemen).
+  - {h}Checkpoint:{/h} barriers and a guard booth at the bridge foot (3 riflemen).
+  - {h}Depot:{/h} warehouses and containers behind it, 4 riflemen and the APC on patrol.
+  - The {h}anti-armor team{/h} waits on the south bank, west of the start.
+{d}Tips: in cover, move vehicle to vehicle (WASD); in the open stretches your men go prone and crawl. Bound team by team. Save rockets for the APC.{/d}
+
+{h}OPERATION LAMPLIGHTER{/h}  {d}(night){/d}
 {h}Objective:{/h} secure the compound at the end of the road.
 You start at the south end of a street between two rows of buildings.
   - {h}Main road:{/h} parked and crashed cars, a {h}roadblock{/h} mid-street (2 riflemen).
@@ -378,7 +391,7 @@ Open ground with crates and walls. Three small positions: {h}ALPHA{/h} (2 riflem
 Every variant of the universal soldier on a turntable: rifleman, sergeant, grenadier, rocketman, enemy, crouched, and a sergeant looping his hand signals. Further along: the gaits, animated in place: walk, run, crouch-walk, strafe and backpedal, then firing (standing, crouched, on the move), then prone: lying still, crawling, and firing prone. Your squad holds back; {k}WASD{/k} pans along the line-up, wheel zooms.
 
 {h}SWITCHING{/h}
-{k}M{/k} loads the next map (remembered). {k}R{/k} restarts the current one.
+{k}M{/k} loads the next map (remembered). {k}R{/k} restarts the current one. {k}BACKSPACE{/k}: back to the level select.
 """],
 ["SETTINGS", """{h}GRAPHICS  ({k}G{/k}){/h}
 HIGH: shadows, bloom, anti-aliasing, full-resolution 3D, full screen effects.
