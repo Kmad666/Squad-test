@@ -11,7 +11,7 @@ fi
 # A test whose script fails to compile never quits: cap each run so CI fails instead of hanging.
 if command -v timeout >/dev/null 2>&1; then GODOT_RUN="timeout ${TEST_TIMEOUT:-900} $GODOT"; else GODOT_RUN="$GODOT"; fi
 fail=0
-for t in model_test menu_test battle_test lean_spot_test cover_move_test mission_test bridge_test manual_test; do
+for t in model_test menu_test battle_test lean_spot_test cover_move_test hud_test mission_test bridge_test manual_test; do
   echo "== $t"
   out=$($GODOT_RUN --headless --fixed-fps 60 -s "tests/$t.gd" 2>&1); code=$?
   echo "$out" | grep -v "^Godot" | grep -v "^$" | tail -15

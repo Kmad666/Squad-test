@@ -3,6 +3,8 @@ extends Node3D
 ## down-range, so the screen centre (and the reticle) is where the squad will
 ## be shooting, not the squad itself. The squad sits in the lower third.
 ## Click to grab the mouse, Esc to release, wheel to zoom.
+## Tab switches between aiming (mouse grabbed) and a free mouse; with a free
+## mouse, hold the right button and drag to pan the camera.
 ## Shake and FOV kick come from main.fire_heat (how hard the squad is firing).
 
 const Atmosphere = preload("res://scripts/atmosphere.gd")
@@ -19,6 +21,9 @@ var cam: Camera3D
 var _arm: SpringArm3D
 var _snapped := false
 var _shake_t := 0.0
+var free_mouse := false       # Tab: cursor free, clicks don't grab, RMB drag pans
+var _panning := false
+var _pan_from := Vector2.ZERO
 
 
 func _ready() -> void:
@@ -51,12 +56,50 @@ func _ready() -> void:
 	add_child(fill)
 
 
+## Tab: aim <-> free mouse.
+func toggle_aim() -> void:
+	_end_pan()
+	if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+		free_mouse = true
+		if main and main.manual:
+			main.manual.allow_release()    # not a pause
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	else:
+		# If the browser refuses the grab from a key press, free_mouse is
+		# already off, so the next click grabs instead.
+		free_mouse = false
+		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+
+
+func _end_pan() -> void:
+	if not _panning:
+		return
+	_panning = false
+	if Input.mouse_mode == Input.MOUSE_MODE_CONFINED_HIDDEN:
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+		get_viewport().warp_mouse(_pan_from)   # the cursor comes back where the drag started
+
+
 func _unhandled_input(event: InputEvent) -> void:
 	var captured := Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
+	if free_mouse and not captured:
+		if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_RIGHT:
+			if event.pressed:
+				_panning = true
+				_pan_from = event.position
+				if not OS.has_feature("web"):
+					Input.mouse_mode = Input.MOUSE_MODE_CONFINED_HIDDEN
+			else:
+				_end_pan()
+			get_viewport().set_input_as_handled()
+			return
+		if event is InputEventMouseMotion and _panning:
+			_turn(event.relative)
+			return
 	if event is InputEventMouseButton and event.pressed:
 		match event.button_index:
 			MOUSE_BUTTON_LEFT, MOUSE_BUTTON_RIGHT:
-				if not captured:
+				if not captured and not free_mouse:
 					Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 					get_viewport().set_input_as_handled()   # the grabbing click doesn't fire
 			MOUSE_BUTTON_WHEEL_UP:
@@ -64,10 +107,16 @@ func _unhandled_input(event: InputEvent) -> void:
 			MOUSE_BUTTON_WHEEL_DOWN:
 				dist = clampf(dist + 1.0, 4.0, 20.0)
 	elif event is InputEventMouseMotion and captured:
-		yaw -= event.relative.x * 0.0035
-		pitch = clampf(pitch - event.relative.y * 0.0035, -0.95, 0.3)
+		_turn(event.relative)
 	elif event is InputEventKey and event.pressed and event.physical_keycode == KEY_ESCAPE:
+		_end_pan()
+		free_mouse = false
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+
+
+func _turn(rel: Vector2) -> void:
+	yaw -= rel.x * 0.0035
+	pitch = clampf(pitch - rel.y * 0.0035, -0.95, 0.3)
 
 
 func _process(delta: float) -> void:

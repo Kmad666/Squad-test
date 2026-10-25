@@ -1,5 +1,5 @@
 extends PanelContainer
-## Tuning panel for the reticle (Tab to open/close). One slider per
+## Tuning panel for the reticle (O to open/close). One slider per
 ## dimension with its live value, a "show dimensions" switch and a reset.
 
 var reticle: Control
@@ -29,7 +29,7 @@ func _ready() -> void:
 	add_child(box)
 
 	var title := Label.new()
-	title.text = "RETICLE SETTINGS  (Tab to close)"
+	title.text = "RETICLE SETTINGS  (O to close)"
 	title.add_theme_color_override("font_color", Color(0.45, 1.0, 0.30))
 	box.add_child(title)
 

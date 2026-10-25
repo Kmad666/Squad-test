@@ -218,7 +218,8 @@ const PAGES := [
 {h}GAME{/h}
   {k}ESC{/k}            This manual (pauses)
   {k}F1{/k}             Controls panel on/off
-  {k}TAB{/k}            Reticle settings
+  {k}TAB{/k}            Aim / free mouse (free: hold {k}RIGHT MOUSE{/k} and drag to pan)
+  {k}O{/k}              Reticle settings
   {k}G{/k}              Graphics HIGH / LOW
   {k}V{/k}              Retro graphics on / off
   {k}M{/k}              Next map
@@ -410,9 +411,15 @@ A white light under every man's barrel, pointing wherever his rifle points: the 
 Classic green goggles over the whole screen: the dark lifted, lights blooming, heavy grain, flicker, scan lines and the round edge of the eyepiece. Washes out in daylight, like the real thing.
 
 {h}THERMAL SIGHT  ({k}I{/k}){/h}
-Inside the reticle only: white-hot. Bodies glow (faces and hands hottest, rifles cooler, the dead cooling), the rest of the scene goes cold grey; lamps, muzzle flashes and fires show hot too. Works with night vision on, by day and night, HD or RETRO. Resize the reticle ({k}TAB{/k}) to see more.
+Inside the reticle only: white-hot. Bodies glow (faces and hands hottest, rifles cooler, the dead cooling), the rest of the scene goes cold grey; lamps, muzzle flashes and fires show hot too. Works with night vision on, by day and night, HD or RETRO. Resize the reticle ({k}O{/k}) to see more.
 
-{h}RETICLE  ({k}TAB{/k}){/h}
+{h}AIM / FREE MOUSE  ({k}TAB{/k}){/h}
+Tab lets go of the mouse without pausing: the cursor moves freely and clicks don't fire. Hold the right button and drag to pan the camera. Tab again grabs the mouse and you're aiming. (In the browser, if Tab can't grab the mouse, click.)
+
+{h}UNIT STATUS  (bottom right){/h}
+The dial turns with the camera: the notch at the top is where you're looking, the letters show north, and the amber arrow is the way the unit you command is moving (longer = faster; a dot when halted). Next to it: the compass heading and speed, whether the unit is in cover (with how many men are in position and how many are prone), and the last three fire orders with how long ago they were given.
+
+{h}RETICLE  ({k}O{/k}){/h}
 Sliders for width, height, corner length, line thickness, vertical offset, glow, opacity and flicker; a switch to show the measurements; reset to defaults. Saved in your browser.
 
 {h}CONTROLS PANEL  ({k}F1{/k}){/h}

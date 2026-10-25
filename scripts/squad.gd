@@ -68,6 +68,10 @@ var bound: Dictionary = {}         # {target, mover, phase, timer} while boundin
 
 var _was_moving := [false, false]   # per team, for move / halt signals
 var _last_fire_mode := HOLD
+var fire_log: Array = []           # last fire orders, newest first: {text, t, n}
+var move_vel := Vector3.ZERO       # how the unit you command is moving (smoothed, m/s)
+var _prev_anchor := Vector3.ZERO
+var _prev_active := -1
 var _ping: MeshInstance3D
 var _ping_t := 0.0
 
@@ -394,6 +398,7 @@ func use_special() -> void:
 		tgt = null
 	best.order_special(tgt, point)
 	main.on_special_used(kind, best)
+	log_fire("%s  %dm" % [{"frag": "FRAG OUT", "flash": "FLASHBANG", "gl": "40MM AWAY", "rocket": "ROCKET AWAY"}.get(kind, kind), roundi(best.global_position.distance_to(point))])
 
 
 func threat_dir_for(t: int) -> Vector3:
@@ -688,6 +693,7 @@ func _physics_process(delta: float) -> void:
 			_signal(active, "fire", "OPEN FIRE" if fm == FOCUS else "FIRE AT WILL", main.camera_forward())
 		elif fm == HOLD:
 			main.sgt_callout(("SGT: " if leader_of(active) and leader_of(active).is_sergeant else "") + "CEASE FIRE")
+		log_fire(["HOLD FIRE", "FIRE AT WILL", "FOCUS FIRE"][fm])
 		_last_fire_mode = fm
 
 	for t in (2 if split else 1):
@@ -732,6 +738,33 @@ func _physics_process(delta: float) -> void:
 			use_special()
 
 	_check_joins()
+	_track_motion(delta)
+
+
+## Smoothed velocity of the unit you command, for the HUD's direction arrow.
+func _track_motion(delta: float) -> void:
+	var a: Vector3 = anchor
+	if _prev_active != active or delta <= 0.0:
+		_prev_active = active
+		_prev_anchor = a
+		return
+	var v := (a - _prev_anchor) / delta
+	v.y = 0
+	_prev_anchor = a
+	move_vel = move_vel.lerp(v, 1.0 - exp(-6.0 * delta))
+
+
+## Fire orders for the HUD log. A repeat of the newest order within a couple
+## of seconds counts up instead of filling the log.
+func log_fire(text: String) -> void:
+	var now := Time.get_ticks_msec() / 1000.0
+	if not fire_log.is_empty() and fire_log[0]["text"] == text and now - fire_log[0]["t"] < 2.5:
+		fire_log[0]["n"] += 1
+		fire_log[0]["t"] = now
+		return
+	fire_log.push_front({"text": text, "t": now, "n": 1})
+	if fire_log.size() > 3:
+		fire_log.resize(3)
 
 
 # ---------------------------------------------------------------- cover

@@ -10,6 +10,7 @@ const CameraRigScript = preload("res://scripts/camera_rig.gd")
 const Weapons = preload("res://scripts/weapons.gd")
 const ReticleScript = preload("res://scripts/reticle.gd")
 const ReticlePanelScript = preload("res://scripts/reticle_panel.gd")
+const StatusPanelScript = preload("res://scripts/status_panel.gd")
 const AtmosphereScript = preload("res://scripts/atmosphere.gd")
 const PostFxScript = preload("res://scripts/postfx.gd")
 const FieldManualScript = preload("res://scripts/field_manual.gd")
@@ -52,6 +53,7 @@ var manual: CanvasLayer          # Esc: field manual + pause
 var _help_t := 25.0            # controls panel auto-hides after this; F1 toggles it
 var reticle: Control
 var reticle_panel: PanelContainer
+var status_panel: PanelContainer
 var hits := 0
 var fire_heat := 0.0          # 0..1, how hard the squad is firing right now
 var flash := 0.0              # 0..1, muzzle-flash wash on screen
@@ -1348,19 +1350,31 @@ func _build_hud() -> void:
 		+ "LMB focus fire   RMB throw / fire special   1-4 pick special   X next special\n" \
 		+ "F auto fire   T split / join teams   Q switch team   B bound   H hold + scout\n" \
 		+ "L lights   N night vision   I thermal (in reticle)   G graphics   V retro\n" \
-		+ "ESC manual   TAB reticle   M next map   BACKSPACE level select   R restart   F1 help"
+		+ "TAB aim / free mouse (free: hold RMB to pan)   ESC manual   O reticle\n" \
+		+ "M next map   BACKSPACE level select   R restart   F1 help"
 	help_panel.add_child(help_label)
 
-	# Squad health: one line per man (bottom right).
+	# Bottom right: unit status (direction, cover, last fire orders) over the
+	# squad health list (one line per man).
+	var corner := VBoxContainer.new()
+	corner.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
+	corner.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	corner.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	corner.offset_right = -12
+	corner.offset_bottom = -12
+	corner.alignment = BoxContainer.ALIGNMENT_END
+	corner.add_theme_constant_override("separation", 6)
+	corner.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	ui_root.add_child(corner)
+	status_panel = StatusPanelScript.new()
+	status_panel.squad = squad
+	status_panel.cam_rig = cam_rig
+	status_panel.add_theme_stylebox_override("panel", sb)
+	corner.add_child(status_panel)
 	var unit_panel := PanelContainer.new()
 	unit_panel.add_theme_stylebox_override("panel", sb)
-	unit_panel.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
-	unit_panel.grow_horizontal = Control.GROW_DIRECTION_BEGIN
-	unit_panel.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	unit_panel.offset_right = -12
-	unit_panel.offset_bottom = -12
 	unit_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	ui_root.add_child(unit_panel)
+	corner.add_child(unit_panel)
 	unit_label = _rich(13)
 	unit_label.custom_minimum_size = Vector2(300, 0)
 	unit_panel.add_child(unit_label)
@@ -1475,7 +1489,16 @@ func _unhandled_key_input(event: InputEvent) -> void:
 
 
 func _input(event: InputEvent) -> void:
-	if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_TAB:
+	if not (event is InputEventKey and event.pressed and not event.echo):
+		return
+	if event.physical_keycode == KEY_TAB:
+		if manual.is_open:
+			return
+		if reticle_panel.visible:
+			reticle_panel.visible = false
+		cam_rig.toggle_aim()
+		get_viewport().set_input_as_handled()
+	elif event.physical_keycode == KEY_O:
 		if not reticle_panel.visible and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 			manual.allow_release()     # opening the reticle panel frees the mouse on purpose
 		reticle_panel.toggle()
@@ -1526,7 +1549,7 @@ func _process(delta: float) -> void:
 	if hud_label:
 		var captured := Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
 		_notice_t = maxf(0.0, _notice_t - delta)
-		hud_label.text = "%s%s\n" % [map.NAME, "" if captured else "   (CLICK TO GRAB MOUSE)"] \
+		hud_label.text = "%s%s\n" % [map.NAME, "" if captured else ("   (FREE MOUSE: TAB TO AIM, HOLD RMB TO PAN)" if cam_rig.free_mouse else "   (CLICK OR TAB TO AIM)")] \
 			+ "SQUAD   %s\n" % squad.status_text() \
 			+ "UNIT    %s\n" % squad.roster_text() \
 			+ "FIRE    %s%s\n" % [squad.fire_mode_text(), "   (auto fire ON)" if squad.auto_fire else ""] \

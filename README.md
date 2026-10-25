@@ -27,7 +27,7 @@ sky reflections are off. CI builds both desktop versions after the tests and the
 | Key | Action |
 |---|---|
 | WASD / arrows | Move the squad (loose cluster) |
-| Mouse | Aim the raised camera (click to grab the mouse, Esc to release) |
+| Mouse | Aim the raised camera (click or Tab to grab the mouse, Esc to release) |
 | Hold left mouse | **Focus fire**: only targets inside the reticle; with none there, the squad saturates the area under it |
 | Right click | **Special**: one click = the nearest man carrying the selected special throws / fires one at the reticle |
 | 1 / 2 / 3 / 4 | Select special: frag, flashbang, grenade launcher, rocket |
@@ -43,7 +43,8 @@ sky reflections are off. CI builds both desktop versions after the tests and the
 | H | Hold position: nobody moves, WASD scouts ahead with the camera (H again to release) |
 | M | Next map (remembered) |
 | Backspace | Back to the level select |
-| Tab | Reticle settings (sizes are saved in your browser) |
+| Tab | Aim / free mouse. Free mouse: cursor moves freely, hold right mouse and drag to pan the camera |
+| O | Reticle settings (sizes are saved in your browser) |
 | G | Graphics LOW / HIGH (LOW: no shadows or bloom, 70% 3D resolution, lighter screen effects; remembered) |
 | V | RETRO graphics on / off (chunky low-poly soldiers, vertex wobble, pixelated dithered screen; remembered) |
 | L | Weapon lights on / off (on by default at night; on LOW graphics only every third man's) |
@@ -51,6 +52,12 @@ sky reflections are off. CI builds both desktop versions after the tests and the
 | I | Thermal sight, inside the reticle only: bodies white-hot, everything else cold grey |
 | R | Restart |
 | Wheel | Zoom |
+
+## Unit status (bottom right)
+Above the health list: a compass dial that turns with the camera (notch = where you look, letters = north,
+amber arrow = which way the unit you command is moving, a dot when halted), the heading and speed, the cover
+state (NO COVER / TAKING COVER / IN COVER / COVER MOVE, men in position, men prone) and the last three fire
+orders (focus fire, fire at will, hold fire, frags / 40mm / rockets with range) with how long ago.
 
 ## How cover works
 On the cover order, each soldier runs to the closest free spot behind a box, on the far side from where
