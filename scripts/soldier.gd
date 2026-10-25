@@ -99,6 +99,7 @@ var _model: Node3D
 var _torch: SpotLight3D        # weapon light under the barrel
 var _lens: MeshInstance3D      # its lens, lit while it's on
 var is_sergeant := false
+var stacked := false           # in the stack behind the LAV (squad.gd moves his spot with it)
 var _pending: Array = []       # [[seconds_left, Callable]] delayed reactions to orders
 var _hold_point: Variant = null   # set while he holds his ground (not yet reacted / halted)
 var _low_t := 0.0              # leaving cover: crouched, slow, covering fire
@@ -404,6 +405,7 @@ func _die() -> void:
 ## Run to a cover spot. `hop`: the team is already in cover and moving up,
 ## so he goes low and quick from one spot to the next rather than sprinting.
 func go_to_cover(pos: Vector3, real: bool, lean_spots: Array = [], hop := false) -> void:
+	stacked = false
 	cover_pos = pos
 	peeks = lean_spots
 	if not peeks.is_empty():
@@ -420,6 +422,7 @@ func go_to_cover(pos: Vector3, real: bool, lean_spots: Array = [], hop := false)
 ## No cover where he's going: get down and crawl to `pos` (or just get down
 ## where he is). Prone counts as his cover until told otherwise.
 func go_prone(pos: Vector3) -> void:
+	stacked = false
 	cover_pos = pos
 	peeks = []
 	has_real_cover = false
@@ -432,7 +435,21 @@ func go_prone(pos: Vector3) -> void:
 	_set_prone(true)
 
 
+## Stacked behind the LAV: his spot (and his lean-out spot past the hull)
+## move with the vehicle, so they're refreshed every frame. The hull is
+## tall cover: he leans out past it to fire, like round a tall crate.
+func stack_on(pos: Vector3, lean_spots: Array) -> void:
+	if not stacked or state == State.FOLLOW or _prone:
+		go_to_cover(pos, true, lean_spots)
+		stacked = true
+	cover_pos = pos
+	peeks = lean_spots
+	peek_pos = lean_spots[0]
+	has_real_cover = true
+
+
 func leave_cover() -> void:
+	stacked = false
 	state = State.FOLLOW
 	peeks = []
 	_peeking = false

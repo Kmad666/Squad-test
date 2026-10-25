@@ -19,6 +19,7 @@ var reaction_min := 0.6     # seconds to bring the gun onto a new target
 var reaction_max := 1.4
 var spot_range := 45.0      # an unalerted sentry only notices you this close
 var blind_t := 0.0          # flashbanged: can't see or shoot
+var armor_only := false     # anti-tank: only ever shoots at our LAV
 
 var _rng := RandomNumberGenerator.new()
 var _retarget := 0.0
@@ -127,7 +128,7 @@ func _pick_target() -> Node3D:
 	var reach: float = weapon["max"]
 	if "area" in host and not host.area.is_empty() and not host.area.get("alerted", false):
 		reach = minf(reach, spot_range)
-	for s in main.squad.soldiers:
+	for s in ([] if armor_only else main.squad.soldiers):
 		var d := global_position.distance_to(s.global_position)
 		if d > reach or not _can_see(s):
 			continue
@@ -135,6 +136,15 @@ func _pick_target() -> Node3D:
 		if score < best_score:
 			best_score = score
 			best = s
+	# Our LAV: guns shoot at it when they've nothing better (it shrugs off
+	# bullets); cannon go for it first.
+	var lav: Node3D = main.squad.lav
+	if lav and lav.alive:
+		var d := global_position.distance_to(lav.global_position)
+		if d <= reach and _can_see(lav):
+			var score := d + _rng.randf_range(0.0, 10.0) + (-30.0 if weapon["kind"] != "bullet" else 25.0)
+			if score < best_score:
+				best = lav
 	return best
 
 

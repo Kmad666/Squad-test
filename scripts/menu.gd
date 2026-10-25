@@ -1,6 +1,6 @@
 extends Control
-## Level select: the first screen. Two operations (day and night) and two
-## training grounds. 1-4 or a click deploys; BACKSPACE in game comes back
+## Level select: the first screen. Three operations and two training
+## grounds. 1-5 or a click deploys; BACKSPACE in game comes back
 ## here. The last map played is marked.
 
 const UI_FONT = preload("res://fonts/ShareTechMono-Regular.ttf")
@@ -16,6 +16,7 @@ const NIGHT := Color(0.5, 0.72, 1.0)
 const ENTRIES := [
 	[3, "OPERATION BIFROST", true, "Force a river bridge choked with abandoned cars, a bus and trucks. The enemy holds the far bank: a sandbag line on the bridge, a checkpoint at its foot, a depot with an APC behind.", true],
 	[0, "OPERATION LAMPLIGHTER", false, "A rain-soaked street at night. Get past the roadblock and the alley ambush, link up with the rocket team and take the walled compound.", true],
+	[4, "OPERATION SLEIPNIR", true, "Combined arms on open farmland, the biggest map. Advance stacked behind your LAV-25 on a checkpoint, a hedgerow treeline, a farm and a crossroads village with an APC.", true],
 	[1, "TEST FIELD", true, "Open ground and three small enemy positions, for trying out orders.", false],
 	[2, "MODEL VIEWER", true, "Every soldier, pose, gait and firing position on a turntable.", false],
 ]
@@ -84,7 +85,7 @@ void fragment() {
 		var e: Array = ENTRIES[i]
 		(big if e[4] else small).add_child(_card(i + 1, e))
 	col.add_child(HSeparator.new())
-	col.add_child(_label("1-4 OR CLICK TO DEPLOY      IN GAME: BACKSPACE = THIS MENU   ESC = FIELD MANUAL", 15, DIM))
+	col.add_child(_label("1-5 OR CLICK TO DEPLOY      IN GAME: BACKSPACE = THIS MENU   ESC = FIELD MANUAL", 15, DIM))
 	col.add_child(_label("Soldier model: \"Soldier Full Tactical Gear\" by DanlyVostok (CC BY 4.0)    Motion capture: Haley Tuffles, Rokoko", 12, Color(0.45, 1.0, 0.3, 0.4)))
 
 

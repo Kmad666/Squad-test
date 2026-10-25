@@ -7,6 +7,8 @@ extends SceneTree
 ##        the firefight (shouldered rifles, recoil).
 ## cover: TEST FIELD, the squad takes cover, then W is held: frames of the
 ##        cover-to-cover move (men hopping low, others prone and crawling).
+## lav:   SLEIPNIR (MAP=4), the stack behind the LAV at the start, driving
+##        north, side views, then the fight at the outpost.
 var main
 var frame := 0
 var out := "user://capture"
@@ -60,10 +62,61 @@ func _cover(pf: int) -> bool:
 	return false
 
 
+var _lav_shots := {240: "start", 700: "drive", 770: "drive_side", 1050: "halt_top", 1700: "contact1", 2000: "contact2", 2300: "contact3"}
+
+
+func _lav(pf: int) -> bool:
+	var rig = main.cam_rig
+	if _once(pf, 20):
+		rig.dist = 9.0
+		rig.pitch = -0.3
+	if pf >= 300 and pf < 900 and not Input.is_action_pressed("move_forward"):
+		Input.action_press("move_forward")
+	if _once(pf, 900):
+		Input.action_release("move_forward")
+	if _once(pf, 740):
+		rig.yaw = PI * 0.5
+		rig.dist = 11.0
+	if _once(pf, 780):
+		rig.yaw = 0.0
+		rig.dist = 9.0
+	if _once(pf, 980):
+		rig.pitch = -0.85
+		rig.dist = 12.0
+	if _once(pf, 1100):
+		rig.pitch = -0.2
+		rig.dist = 8.0
+		main.squad.auto_fire = true
+		Input.action_press("move_forward")
+	if pf > 1100 and main.squad.lav.global_position.z < 44.0 and Input.is_action_pressed("move_forward"):
+		Input.action_release("move_forward")
+	for k in _lav_shots:
+		if pf >= k and not _done.has(k):
+			_done[k] = true
+			root.get_viewport().get_texture().get_image().save_png(out.path_join("lav_%s.png" % _lav_shots[k]))
+			print(pf, " ", _lav_shots[k], "  ", main.squad.status_text(), "  lav z ", snappedf(main.squad.lav.global_position.z, 0.1))
+	if pf > 2350:
+		quit()
+	return false
+
+
+var _done := {}
+var _fired := {}
+
+
+func _once(pf: int, at: int) -> bool:
+	if pf >= at and not _fired.has(at):
+		_fired[at] = true
+		return true
+	return false
+
+
 func _process(_d) -> bool:
 	frame += 1
 	if mode == "cover":
 		return _cover(Engine.get_physics_frames())
+	if mode == "lav":
+		return _lav(Engine.get_physics_frames())
 	if frame == 5 and OS.get_environment("RETRO") == "1" and not main.retro and mode != "cover":
 		main.toggle_retro()
 	if frame == 20:

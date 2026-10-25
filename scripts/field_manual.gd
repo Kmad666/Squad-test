@@ -210,6 +210,9 @@ const PAGES := [
   {k}Q{/k}              Switch which team you command
   {k}B{/k}              Bounding advance to the spot under the reticle
 
+{h}COMBINED ARMS{/h}  {d}(OPERATION SLEIPNIR){/d}
+  {k}Z{/k}              LAV with us (it leads, the men stack behind it) / LAV on overwatch
+
 {h}SEEING{/h}
   {k}L{/k}              Weapon lights on/off (on by default at night)
   {k}N{/k}              Night vision on/off
@@ -315,6 +318,21 @@ Point the reticle at where you want to go and press {k}B{/k}. It splits the squa
   - Either team can pick up a waiting team (it joins the team that reached it).
   - If one team is wiped out, the survivors regroup into one squad.
 """],
+["COMBINED ARMS", """{h}THE LAV-25{/h}  {d}(OPERATION SLEIPNIR){/d}
+An eight-wheeled armored vehicle in woodland camo with an orange air-recognition panel on the back deck. Its turret carries a {h}25mm chain gun{/h} firing HE: bursts of 3-5, out to 120 m, a small burst on impact that catches men next to the strike, and enough punch to chew through the enemy APC. It follows your fire orders like the men do: hold, fire at will, focus on the reticle. It shows in the unit panel with its armor.
+Bullets bounce off it. Only {h}cannon shells{/h} (the enemy APC) hurt it. Destroyed, it burns and the men carry on on foot.
+
+{h}LAV WITH US  ({k}Z{/k}){/h}
+The LAV {h}leads{/h}: it drives to the unit's point (the front) and the infantry {h}stack up behind it{/h} in two tight files, close against the hull. You steer as usual (WASD, E, B, H); the vehicle drives there at a walking pace and the men walk in its shadow. It waits for anyone falling behind, backs up rather than turning round for short moves, and drives round buildings on its own.
+  - {h}Which side:{/h} the men keep the hull between them and the nearest enemy of any position that has spotted you; otherwise between them and where the unit is heading. Normally that's behind it; with the enemy off to one flank they shift along the far side. Never in front of it while it's moving. They don't shuffle at every nudge: a side has to be clearly better.
+  - {h}Shooting:{/h} the hull is tall cover. A man with a shot {h}leans out past the side of the hull{/h} (or round its nearer end), fires a burst, and ducks back. Pinned, he stays in.
+  - {k}C{/k} does nothing while you're stacked: you're already in cover.
+  {d}Enemy riflemen will shoot at the LAV when it's all they can see, which draws fire off your men.{/d}
+
+{h}OVERWATCH  ({k}Z{/k} again){/h}
+The LAV stops where it is and covers: once a fight is on it fires at will at anything it can see. The men get up and act as normal infantry (cover, cover to cover, prone). {k}Z{/k} calls it back: they stack on it where it is and it leads again.
+With fire teams split, the LAV works with team A.
+"""],
 ["HEALTH & SUPPRESSION", """{h}HEALTH{/h}
 Each man has 100 HP. Below 50 he's {h}wounded{/h}: slower and less accurate. At 0 he's {h}down{/h}. He stays where he fell and the squad closes ranks. The panel at bottom right shows every man's health and special; the screen edge flashes red when someone is hit.
 
@@ -366,7 +384,7 @@ Heavy armor, 360 HP. Patrols a short route; stops the moment it sees you or take
 The {h}anti-armor team{/h} (coyote-brown packs and kit, green label) waits to link up. Walk the squad within about 7 m and they join, bringing 3 burst rifles and 6 rockets.
 """],
 ["MISSIONS", """{h}LEVEL SELECT{/h}
-The game opens on the level select: {k}1{/k}-{k}4{/k} or click a card. {k}BACKSPACE{/k} in game goes back to it.
+The game opens on the level select: {k}1{/k}-{k}5{/k} or click a card. {k}BACKSPACE{/k} in game goes back to it.
 
 {h}OPERATION BIFROST{/h}  {d}(day){/d}
 {h}Objective:{/h} force the bridge and take the north bank.
@@ -384,6 +402,15 @@ You start at the south end of a street between two rows of buildings.
   - {h}Back alley:{/h} parallel on the west side, joined to the road by two side passages. The {h}anti-armor team{/h} waits in the first passage. An {h}ambush{/h} (2 riflemen) covers the far end.
   - {h}Compound:{/h} walled, gate on the road, breach at the alley mouth. 4 riflemen and the APC; a floodlight on the HQ glares at the gate.
 {d}Tips: link up with the rocket team first. Send a team down the alley to flank the roadblock. Save rockets for the APC.{/d}
+
+{h}OPERATION SLEIPNIR{/h}  {d}(day){/d}
+{h}Objective:{/h} clear all four positions. The biggest map (220 m across): open farmland, an asphalt road winding north, dirt tracks, hedgerows with gaps wide enough for a vehicle. You have a {h}LAV-25{/h} (see COMBINED ARMS).
+  - {h}Outpost:{/h} a sandbag checkpoint across the road (3 riflemen).
+  - {h}Treeline:{/h} a hedgerow along the west track with trees behind (3 riflemen).
+  - {h}Farm:{/h} farmhouse, barn, a walled yard and a truck to the east (4 riflemen).
+  - {h}Crossroads:{/h} a village where the road meets the east-west road. 5 riflemen behind sandbags, cars and a container, and the APC patrolling the crossroad.
+  - The {h}anti-armor team{/h} waits at the ruined barn east of the start.
+{d}Tips: let the LAV's 25mm do the heavy work at range while the men stay stacked behind it. Its cannon wins against riflemen, but the APC's cannon can kill it: bring the rockets.{/d}
 
 {h}TEST FIELD{/h}  {d}(day){/d}
 Open ground with crates and walls. Three small positions: {h}ALPHA{/h} (2 riflemen), {h}BRAVO{/h} (3), {h}CHARLIE{/h} (2 + APC on patrol). Good for trying mechanics.

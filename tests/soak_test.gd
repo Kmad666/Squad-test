@@ -24,8 +24,9 @@ func _physics_process(_d):
 		Input.action_release(held)
 		held = ""
 	if f % 90 == 0:
-		match rng.randi_range(0, 12):
-			0, 1: sq.move_to(Vector3(rng.randf_range(-45, 45), 0, rng.randf_range(-45, 45)))
+		var k: float = main.nav_half / 50.0      # random spots across the whole map, big or small
+		match rng.randi_range(0, 14):
+			0, 1: sq.move_to(Vector3(rng.randf_range(-45, 45), 0, rng.randf_range(-45, 45)) * k)
 			2: sq.take_cover() if not sq.in_cover else sq.leave_cover()
 			3: sq.forced_mode = rng.randi_range(0, 2)
 			4: sq.forced_specials = not sq.forced_specials
@@ -37,16 +38,20 @@ func _physics_process(_d):
 					2: main.toggle_lights()
 					3: main.toggle_night_vision()
 					4: main.toggle_thermal()
-			7: sq.anchor = Vector3(rng.randf_range(-45, 45), 0, rng.randf_range(-45, 45))
+			7: sq.anchor = Vector3(rng.randf_range(-45, 45), 0, rng.randf_range(-45, 45)) * k
 			8: sq.join_teams() if sq.split else sq.split_teams()
 			9: sq.switch_team()
-			10: sq.start_bound(Vector3(rng.randf_range(-40, 40), 0, rng.randf_range(-45, 45)))
+			10: sq.start_bound(Vector3(rng.randf_range(-40, 40), 0, rng.randf_range(-45, 45)) * k)
 			11: sq.set_holding(not sq.holding)
 			12:
 				if held == "":
 					held = ["move_forward", "move_back", "move_left", "move_right"][rng.randi_range(0, 3)]
 					Input.action_press(held)
 					release_f = f + rng.randi_range(30, 300)
+			13: sq.toggle_lav()                  # LAV with us / overwatch (no-op without one)
+			14:
+				if sq.lav and rng.randf() < 0.3:
+					sq.lav.armor_hit(60.0)           # chip at it; now and then it's lost mid-move
 	if f % 1800 == 0:
 		var alive = 0
 		for t in main.targets: alive += int(t.alive)

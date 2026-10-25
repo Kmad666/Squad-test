@@ -19,10 +19,11 @@ const StreetMission = preload("res://scripts/maps/street_mission.gd")
 const TestField = preload("res://scripts/maps/test_field.gd")
 const ModelViewer = preload("res://scripts/maps/model_viewer.gd")
 const BridgeMission = preload("res://scripts/maps/bridge_mission.gd")
-const MAPS := [StreetMission, TestField, ModelViewer, BridgeMission]     # M cycles through these
+const ArmorMission = preload("res://scripts/maps/armor_mission.gd")
+const MAPS := [StreetMission, TestField, ModelViewer, BridgeMission, ArmorMission]     # M cycles through these
 const NEON := Color(0.45, 1.0, 0.30)
 
-const NAV_HALF := 50.0          # playable half-size of the field (metres)
+const NAV_HALF := 50.0          # default playable half-size of the field (metres); maps may set HALF
 const TRACER_COUNT := 48
 const TRACER_LIFE := 0.06
 const TALL_COVER := 1.6         # boxes taller than this need a lean-out to shoot
@@ -31,6 +32,8 @@ var map: GDScript              # the map being played (scripts/maps/*)
 static var forced_map := -1    # tests: pick a map regardless of saved settings
 static var picked_map := -1    # chosen in the level select menu (menu.gd)
 var map_index := 0
+var nav_half := NAV_HALF        # this map's playable half-size
+var vehicle_nav_map := RID()    # navigation for the LAV (sized for a vehicle)
 var cover_defs: Array = []      # [{xform, size}] used by CoverUtil
 var solid_defs: Array = []      # buildings and compound walls: the squad's anchor can't pass these
 var cover_points: Array = []    # [{pos, normal, height}]
@@ -99,6 +102,7 @@ func _ready() -> void:
 	load("res://scripts/soldier_model.gd").low_quality = low_quality    # before soldiers are built
 	load("res://scripts/soldier_model.gd").retro = retro
 	map = MAPS[map_index]
+	nav_half = map_const("HALF", NAV_HALF)
 	AtmosphereScript.night = map.NIGHT
 	atmosphere = AtmosphereScript.new()
 	atmosphere.name = "Atmosphere"
@@ -109,6 +113,8 @@ func _ready() -> void:
 	_build_ground()
 	_build_boxes()
 	_bake_nav()
+	if map_const("LAV", false):
+		_bake_vehicle_nav()
 	_build_cover_points()
 	_drop_wet_cover_points()
 	_build_areas()
@@ -126,6 +132,8 @@ func _ready() -> void:
 	add_child(squad)
 	squad.setup(self, map.START)
 	squad.spawn_waiting_team("ANTI-ARMOR TEAM", map.AT_TEAM, ["anti_armor", "anti_armor", "anti_armor"])
+	if map_const("LAV", false):
+		squad.spawn_lav(map.LAV_START, map_const("LAV_YAW", PI))
 
 	cam_rig = CameraRigScript.new()
 	cam_rig.name = "CameraRig"
@@ -133,6 +141,8 @@ func _ready() -> void:
 	cam_rig.main = self
 	add_child(cam_rig)
 	atmosphere.cam_rig = cam_rig
+	if squad.lav:
+		cam_rig.ignore(squad.lav)       # the camera arm looks past the LAV, not into it
 
 	postfx = PostFxScript.new()
 	add_child(postfx)
@@ -146,6 +156,11 @@ func _ready() -> void:
 	if picked_map >= 0 and forced_map < 0:
 		_save_settings()            # the menu marks it as last played
 	notify(map.OBJECTIVE, 7.0)
+
+
+## A constant from the map script, or `default` if the map doesn't set it.
+func map_const(key: String, default: Variant) -> Variant:
+	return map.get_script_constant_map().get(key, default)
 
 
 ## LOW: no shadows, no bloom, no MSAA, 3D drawn at 70% resolution, cheap
@@ -241,6 +256,7 @@ func _setup_input() -> void:
 	_bind("bound", [KEY_B])
 	_bind("hold_position", [KEY_H])
 	_bind("cycle_special", [KEY_X])
+	_bind("lav_toggle", [KEY_Z])
 
 
 func _bind(action: String, keys: Array) -> void:
@@ -264,6 +280,8 @@ uniform float wet = 0.0;      // 1 at night: dark, glossy, puddles
 uniform float street = 0.0;   // 1: street map surfaces, 0: grass field
 uniform float river_z = 0.0;  // > 0: a river crosses at |z| < river_z, bridged where |x| < deck_x
 uniform float deck_x = 0.0;
+uniform float rural = 0.0;    // 1: farmland (patchwork fields, an asphalt road, dirt tracks)
+uniform float half_size = 50.0;
 varying vec3 wpos;
 
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -310,6 +328,36 @@ void fragment() {
 		}
 		if (yard) c = vec3(0.16, 0.16, 0.15) * (0.85 + 0.3 * noise(wpos.xz * 0.8));
 		rough = 0.75;
+	} else if (rural > 0.5) {
+		// Patchwork fields: dry wheat, green crop, ploughed earth, each with rows.
+		vec2 q = wpos.xz + vec2(noise(wpos.xz * 0.02), noise(wpos.zx * 0.02)) * 16.0;
+		vec2 cell = floor(q / 38.0);
+		float h = hash(cell);
+		vec3 crop = h < 0.33 ? vec3(0.45, 0.4, 0.22) : (h < 0.7 ? vec3(0.27, 0.34, 0.15) : vec3(0.34, 0.27, 0.19));
+		vec2 rd = h < 0.5 ? vec2(0.98, 0.2) : vec2(0.2, 0.98);
+		float rows = abs(fract(dot(wpos.xz, rd) * 0.8) - 0.5) * 2.0;
+		c = crop * (0.85 + 0.15 * rows) * (0.85 + 0.3 * patch);
+		vec2 edge = abs(fract(q / 38.0) - 0.5);
+		c = mix(c, vec3(0.25, 0.3, 0.14), smoothstep(0.47, 0.5, max(edge.x, edge.y)) * 0.6);   // grass margins between fields
+		// Asphalt road (north-south, gently winding) and the crossroad at z = -70.
+		float rx = 10.0 * sin(wpos.z * 0.018);
+		float dx = abs(wpos.x - rx);
+		float dz = abs(wpos.z + 70.0);
+		float road = max(1.0 - smoothstep(4.2, 4.6, dx), 1.0 - smoothstep(4.2, 4.6, dz));
+		vec3 tar = vec3(0.2, 0.2, 0.19) * (0.85 + 0.3 * noise(wpos.xz * 1.7));
+		if (noise(wpos.xz * 0.35) > 0.72) tar *= 0.9;                                  // patched repairs
+		if (dx < 0.08 && fract(wpos.z / 6.0) < 0.5 && dz > 4.6) tar = vec3(0.62, 0.55, 0.3);   // centre dashes
+		if (dz < 0.08 && fract(wpos.x / 6.0) < 0.5 && dx > 4.6) tar = vec3(0.62, 0.55, 0.3);
+		float verge = max(1.0 - smoothstep(4.6, 6.5, dx), 1.0 - smoothstep(4.6, 6.5, dz)) - road;
+		c = mix(c, vec3(0.36, 0.33, 0.25) * (0.85 + 0.3 * patch), clamp(verge, 0.0, 1.0) * 0.8);   // gravel shoulders
+		c = mix(c, tar, road);
+		// Dirt tracks: east to the farm, west to the treeline.
+		float track = 0.0;
+		if (wpos.x > rx && wpos.x < 66.0) track = 1.0 - smoothstep(2.2, 2.9, abs(wpos.z + 30.0));
+		if (wpos.x < rx && wpos.x > -62.0) track = max(track, 1.0 - smoothstep(2.0, 2.7, abs(wpos.z + 8.0)));
+		vec3 dirt = vec3(0.4, 0.34, 0.25) * (0.85 + 0.3 * noise(wpos.xz * 1.3));
+		c = mix(c, dirt, track * (1.0 - road));
+		rough = 0.95;
 	} else {
 		vec2 g = abs(fract(wpos.xz / 4.0 - 0.5) - 0.5) * 4.0;
 		float l = 1.0 - smoothstep(0.0, 0.06, min(g.x, g.y));
@@ -338,7 +386,7 @@ void fragment() {
 	}
 	float puddle = smoothstep(0.52, 0.62, patch) * wet;
 	c = mix(c, c * 0.4, puddle);
-	bool outside = abs(wpos.x) > 50.0 || abs(wpos.z) > 50.0;
+	bool outside = abs(wpos.x) > half_size || abs(wpos.z) > half_size;
 	ALBEDO = to_lin(outside ? c * 0.7 : c);
 	ROUGHNESS = mix(rough, mix(0.3, 0.03, puddle), wet);
 	SPECULAR = mix(0.2, 0.7, wet);
@@ -412,19 +460,24 @@ func _build_ground() -> void:
 	if map.GROUND == "bridge":
 		mat.set_shader_parameter("river_z", map.RIVER_Z)
 		mat.set_shader_parameter("deck_x", map.DECK_X)
+	mat.set_shader_parameter("rural", 1.0 if map.GROUND == "rural" else 0.0)
+	mat.set_shader_parameter("half_size", nav_half)
+	# Tiles: 10 m on the small maps, 20 m on the big one (fewer pieces).
+	var ts := 10.0 if nav_half <= 60.0 else 20.0
+	var n := ceili((nav_half + 10.0) / ts)
 	var tile := PlaneMesh.new()
-	tile.size = Vector2(10, 10)
-	for ix in range(-6, 6):
-		for iz in range(-6, 6):
+	tile.size = Vector2(ts, ts)
+	for ix in range(-n, n):
+		for iz in range(-n, n):
 			var mi := MeshInstance3D.new()
 			mi.mesh = tile
 			mi.material_override = mat
 			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-			mi.position = Vector3(ix * 10 + 5, 0, iz * 10 + 5)
+			mi.position = Vector3(ix * ts + ts * 0.5, 0, iz * ts + ts * 0.5)
 			body.add_child(mi)
 	var outer := MeshInstance3D.new()        # far ground beyond the tiles
 	var big := PlaneMesh.new()
-	big.size = Vector2(400, 400)
+	big.size = Vector2(maxf(400.0, nav_half * 5.0), maxf(400.0, nav_half * 5.0))
 	outer.mesh = big
 	outer.material_override = mat
 	outer.position.y = -0.02
@@ -433,7 +486,7 @@ func _build_ground() -> void:
 
 	var col := CollisionShape3D.new()
 	var shape := BoxShape3D.new()
-	shape.size = Vector3(240, 1, 240)
+	shape.size = Vector3(nav_half * 2.0 + 140.0, 1, nav_half * 2.0 + 140.0)
 	col.shape = shape
 	col.position.y = -0.5
 	body.add_child(col)
@@ -442,9 +495,9 @@ func _build_ground() -> void:
 	for side in [Vector3(1, 0, 0), Vector3(-1, 0, 0), Vector3(0, 0, 1), Vector3(0, 0, -1)]:
 		var wall := CollisionShape3D.new()
 		var ws := BoxShape3D.new()
-		ws.size = Vector3(1, 6, NAV_HALF * 2 + 2) if side.x != 0 else Vector3(NAV_HALF * 2 + 2, 6, 1)
+		ws.size = Vector3(1, 6, nav_half * 2 + 2) if side.x != 0 else Vector3(nav_half * 2 + 2, 6, 1)
 		wall.shape = ws
-		wall.position = side * (NAV_HALF + 0.5) + Vector3(0, 3, 0)
+		wall.position = side * (nav_half + 0.5) + Vector3(0, 3, 0)
 		body.add_child(wall)
 
 
@@ -461,6 +514,9 @@ func _build_boxes() -> void:
 		"cwall": _surface(Color(0.24, 0.23, 0.21), night),
 		"sandbag": _surface(Color(0.40, 0.36, 0.26), false),
 		"dumpster": _surface(Color(0.10, 0.22, 0.14), night),
+		"hedge": _surface(Color(0.16, 0.24, 0.1), false),
+		"rock": _surface(Color(0.42, 0.41, 0.38), false),
+		"hay": _surface(Color(0.62, 0.52, 0.28), false),
 	}
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 99
@@ -488,6 +544,10 @@ func _build_boxes() -> void:
 				_build_car(body, size, rng)
 			"bus", "truck":
 				_build_big_vehicle(body, size, type, rng)
+			"tree":
+				_build_tree(body, size, rng)
+			"hedge":
+				_build_hedge(body, size, mats["hedge"], rng)
 			"water":
 				pass                        # invisible: the river bank / water edge
 			"building":
@@ -583,6 +643,67 @@ func _build_big_vehicle(body: Node3D, size: Vector3, kind: String, rng: RandomNu
 			body.add_child(w)
 
 
+## Tree: the trunk is the cover (and what stops bullets); the canopy is
+## just leaves. Height comes from the box.
+func _build_tree(body: Node3D, size: Vector3, rng: RandomNumberGenerator) -> void:
+	var bark := StandardMaterial3D.new()
+	bark.albedo_color = Color(0.22, 0.17, 0.12)
+	bark.roughness = 0.95
+	var leaves := StandardMaterial3D.new()
+	leaves.albedo_color = Color(0.17, 0.25, 0.1).lerp(Color(0.24, 0.29, 0.12), rng.randf())
+	leaves.roughness = 0.9
+	var bottom := -size.y * 0.5
+	var trunk := MeshInstance3D.new()
+	var tm := CylinderMesh.new()
+	tm.top_radius = size.x * 0.32
+	tm.bottom_radius = size.x * 0.5
+	tm.height = size.y
+	tm.radial_segments = 7
+	trunk.mesh = tm
+	trunk.material_override = bark
+	body.add_child(trunk)
+	var crown := size.y * 0.55 + rng.randf() * 1.0
+	for k in 3:
+		var c := MeshInstance3D.new()
+		var sm := SphereMesh.new()
+		var r := crown * (0.55 - k * 0.1)
+		sm.radius = r
+		sm.height = r * 1.6
+		sm.radial_segments = 9
+		sm.rings = 5
+		c.mesh = sm
+		c.material_override = leaves
+		c.position = Vector3(rng.randf_range(-0.6, 0.6), bottom + size.y * 0.8 + k * crown * 0.35, rng.randf_range(-0.6, 0.6))
+		body.add_child(c)
+
+
+## Hedgerow: a lumpy green bank you crouch behind and shoot over.
+func _build_hedge(body: Node3D, size: Vector3, mat: Material, rng: RandomNumberGenerator) -> void:
+	var mi := MeshInstance3D.new()
+	var bm := BoxMesh.new()
+	bm.size = size * Vector3(1.0, 0.85, 1.0)
+	mi.mesh = bm
+	mi.material_override = mat
+	mi.position.y = -size.y * 0.075
+	body.add_child(mi)
+	var dark := StandardMaterial3D.new()
+	dark.albedo_color = Color(0.12, 0.2, 0.08)
+	dark.roughness = 0.95
+	var n := maxi(2, int(size.x / 1.6))
+	for i in n:
+		var lump := MeshInstance3D.new()
+		var sm := SphereMesh.new()
+		var r := size.z * rng.randf_range(0.5, 0.7)
+		sm.radius = r
+		sm.height = r * 1.4
+		sm.radial_segments = 8
+		sm.rings = 4
+		lump.mesh = sm
+		lump.material_override = dark if i % 2 == 0 else mat
+		lump.position = Vector3((float(i) + 0.5) / float(n) * size.x - size.x * 0.5, size.y * 0.5 - r * 0.5, rng.randf_range(-0.1, 0.1))
+		body.add_child(lump)
+
+
 ## Low-poly car: body, cabin with dark glass, wheels; some still have their
 ## tail lights on. Length runs along local x.
 func _build_car(body: Node3D, size: Vector3, rng: RandomNumberGenerator) -> void:
@@ -656,9 +777,44 @@ func _bake_nav() -> void:
 	nm.agent_max_climb = 0.25
 	nm.cell_size = 0.25
 	nm.cell_height = 0.25
-	nm.filter_baking_aabb = AABB(Vector3(-NAV_HALF, -1, -NAV_HALF), Vector3(NAV_HALF * 2, 16, NAV_HALF * 2))   # tall enough to include whole buildings
+	nm.filter_baking_aabb = AABB(Vector3(-nav_half, -1, -nav_half), Vector3(nav_half * 2, 16, nav_half * 2))   # tall enough to include whole buildings
 	nav_region.navigation_mesh = nm
 	nav_region.bake_navigation_mesh(false)
+
+
+## A second navigation map for the LAV: same world, but sized for a 2.6 m
+## wide vehicle, so its paths keep clear of walls and narrow gaps.
+func _bake_vehicle_nav() -> void:
+	var nm := NavigationMesh.new()
+	nm.geometry_parsed_geometry_type = NavigationMesh.PARSED_GEOMETRY_STATIC_COLLIDERS
+	nm.geometry_collision_mask = 1
+	nm.agent_radius = 2.0
+	nm.agent_height = 3.0
+	nm.agent_max_climb = 0.25
+	nm.cell_size = 0.5
+	nm.cell_height = 0.25
+	nm.filter_baking_aabb = AABB(Vector3(-nav_half, -1, -nav_half), Vector3(nav_half * 2, 16, nav_half * 2))
+	var src := NavigationMeshSourceGeometryData3D.new()
+	NavigationServer3D.parse_source_geometry_data(nm, src, nav_region)
+	NavigationServer3D.bake_from_source_geometry_data(nm, src)
+	vehicle_nav_map = NavigationServer3D.map_create()
+	NavigationServer3D.map_set_cell_size(vehicle_nav_map, 0.5)
+	NavigationServer3D.map_set_cell_height(vehicle_nav_map, 0.25)
+	NavigationServer3D.map_set_active(vehicle_nav_map, true)
+	var region := NavigationServer3D.region_create()
+	NavigationServer3D.region_set_map(region, vehicle_nav_map)
+	NavigationServer3D.region_set_navigation_mesh(region, nm)
+	_vehicle_nav = [region, nm]
+
+
+var _vehicle_nav: Array = []
+
+
+func _exit_tree() -> void:
+	if not _vehicle_nav.is_empty():
+		NavigationServer3D.free_rid(_vehicle_nav[0])
+	if vehicle_nav_map.is_valid():
+		NavigationServer3D.free_rid(vehicle_nav_map)
 
 
 ## Spots around every box where a soldier can crouch. Each has an outward
@@ -734,11 +890,14 @@ func _build_areas() -> void:
 			"name": def["name"], "center": def["center"], "radius": def["radius"],
 			"members": [], "alerted": false, "claimed": {},
 		}
-		for p in def["men"]:
+		var rpgs: Array = def.get("rpg", [])
+		for i in def["men"].size():
+			var p: Vector3 = def["men"][i]
 			var e: CharacterBody3D = EnemySoldierScript.new()
 			e.main = self
 			e.area = area
 			e.post = p
+			e.rpg = i in rpgs
 			e.position = p
 			add_child(e)
 			area["members"].append(e)
@@ -1052,6 +1211,13 @@ func spawn_explosion(pos: Vector3, w: Dictionary, direct: Node3D, hostile := fal
 func _blast_soldiers(pos: Vector3, w: Dictionary, direct: Node3D) -> void:
 	var radius: float = w["radius"]
 	var space := get_world_3d().direct_space_state
+	# The LAV: a shell striking the hull (or bursting right against it) hurts it.
+	var lav: Node3D = squad.lav
+	if lav and lav.alive:
+		var lp: Vector3 = lav.to_local(pos)
+		var gap := Vector2(maxf(absf(lp.x) - SquadScript.LavScript.HALF_W, 0.0), maxf(absf(lp.z) - SquadScript.LavScript.HALF_L, 0.0)).length()
+		if gap < 1.0 and lp.y < 3.4:
+			lav.armor_hit(w.get("armor", 0.0) * (1.0 - gap))
 	for s in squad.soldiers.duplicate():
 		var p: Vector3 = s.exposed_point()
 		var d: float = p.distance_to(pos)
@@ -1211,6 +1377,12 @@ func on_launch(at: Vector3, w: Dictionary) -> void:
 	_muzzle_light.global_position = at
 
 
+func on_lav_destroyed(_lav: Node3D) -> void:
+	notify("LAV DESTROYED  -  INFANTRY ON FOOT", 5.0)
+	spawn_explosion(_lav.global_position + Vector3(0, 1.5, 0), {"kind": "rocket", "radius": 3.0, "soft": 0.0, "armor": 0.0}, null, false)
+	hurt = 1.0
+
+
 func on_vehicle_destroyed(v: Node3D) -> void:
 	notify("ENEMY %s DESTROYED" % v.vehicle_name)
 
@@ -1348,7 +1520,7 @@ func _build_hud() -> void:
 	help_label.add_theme_font_size_override("font_size", 12)
 	help_label.text = "WASD move   MOUSE aim   WHEEL zoom   E move to reticle   C / SPACE cover on / off\n" \
 		+ "LMB focus fire   RMB throw / fire special   1-4 pick special   X next special\n" \
-		+ "F auto fire   T split / join teams   Q switch team   B bound   H hold + scout\n" \
+		+ "F auto fire   T split / join teams   Q switch team   B bound   H hold + scout   Z LAV with us / overwatch\n" \
 		+ "L lights   N night vision   I thermal (in reticle)   G graphics   V retro\n" \
 		+ "TAB aim / free mouse (free: hold RMB to pan)   ESC manual   O reticle\n" \
 		+ "M next map   BACKSPACE level select   R restart   F1 help"
@@ -1425,6 +1597,16 @@ func _unit_text() -> String:
 	var role_short := {"rifleman": "RIF ", "grenadier": "GREN", "anti_armor": "AT  "}
 	var total: int = squad.soldiers.size() + squad.kia
 	var lines: Array = ["UNIT  %d / %d%s" % [squad.soldiers.size(), total, ("   KIA %d" % squad.kia) if squad.kia > 0 else ""]]
+	var lav: Node3D = squad.lav
+	if lav:
+		if lav.alive:
+			var frac: float = clampf(lav.hp / SquadScript.LavScript.MAX_HP, 0.0, 1.0)
+			var col := C_OK if frac > 0.6 else (C_WARN if frac > 0.3 else C_BAD)
+			var n := ceili(frac * 10.0)
+			var bar := "[color=%s]%s[/color][color=%s]%s[/color]" % [col, "#".repeat(n), C_DIM, "-".repeat(10 - n)]
+			lines.append("LAV  %s  [color=%s]%s[/color]" % [bar, C_OK if lav.together else C_WARN, "WITH US" if lav.together else "OVERWATCH"])
+		else:
+			lines.append("LAV  [color=%s]DESTROYED[/color]" % C_BAD)
 	for s in squad.soldiers:
 		var frac: float = clampf(s.hp / s.MAX_HP, 0.0, 1.0)
 		var col := C_OK if frac > 0.6 else (C_WARN if frac > 0.3 else C_BAD)

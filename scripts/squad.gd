@@ -25,6 +25,7 @@ extends Node3D
 
 const CoverUtil = preload("res://scripts/cover_util.gd")
 const SoldierScript = preload("res://scripts/soldier.gd")
+const LavScript = preload("res://scripts/lav.gd")
 const Weapons = preload("res://scripts/weapons.gd")
 const UI_FONT = preload("res://fonts/ShareTechMono-Regular.ttf")
 
@@ -42,6 +43,8 @@ const COVER_LEAD := 6.0          # cover move: the unit's point stays this close
 const SHIFT_EVERY := 0.4         # cover move: how often the men re-pick their spots
 const COVER_SPREAD := 4.5        # cover move: furthest a man keeps from the unit's point
 const TEAM_NAMES := ["A", "B"]
+const STACK_ROW := 0.95          # LAV stack: spacing between men in a file
+const STACK_FACES := ["REAR", "FRONT", "RIGHT", "LEFT"]
 
 ## Starting squad: five riflemen and a grenadier.
 const START_ROLES := ["rifleman", "rifleman", "rifleman", "grenadier", "rifleman", "rifleman"]
@@ -69,6 +72,11 @@ var bound: Dictionary = {}         # {target, mover, phase, timer} while boundin
 var _was_moving := [false, false]   # per team, for move / halt signals
 var _last_fire_mode := HOLD
 var fire_log: Array = []           # last fire orders, newest first: {text, t, n}
+var lav: Node3D = null             # the unit's LAV (maps with LAV := true)
+var _stack_face := -1              # which side of the LAV the infantry stack on (STACK_FACES)
+var _stack_slot := {}              # soldier -> slot index in the stack
+var _stack_ids: Array = []
+var _stack_threat := Vector3.FORWARD
 var move_vel := Vector3.ZERO       # how the unit you command is moving (smoothed, m/s)
 var _prev_anchor := Vector3.ZERO
 var _prev_active := -1
@@ -452,6 +460,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		set_holding(not holding)
 	elif event.is_action_pressed("cycle_special"):
 		cycle_special()
+	elif event.is_action_pressed("lav_toggle"):
+		toggle_lav()
 	elif event is InputEventKey and event.pressed and not event.echo and event.physical_keycode >= KEY_1 and event.physical_keycode <= KEY_4:
 		select_special(event.physical_keycode - KEY_1)
 
@@ -466,7 +476,7 @@ func move_to(p: Vector3, t := -1) -> void:
 		t = active
 		bound = {}
 		set_holding(false)
-	var lim: float = main.NAV_HALF - 2.0
+	var lim: float = main.nav_half - 2.0
 	teams[t]["order_target"] = CoverUtil.push_out(main.solid_defs, Vector3(clampf(p.x, -lim, lim), 0, clampf(p.z, -lim, lim)), 1.0)
 	if teams[t]["in_cover"] and not ordered:
 		leave_cover(t)
@@ -635,7 +645,10 @@ func _show_ping(p: Vector3) -> void:
 
 func get_focus() -> Vector3:
 	var a: Vector3 = teams[active]["anchor"]
-	if teams[active]["in_cover"] and not team_members(active).is_empty():
+	if lav_with(active) and not team_members(active).is_empty():
+		a = lav.global_position.lerp(centroid(active), 0.5)    # the LAV and the men behind it
+		a.y = 0
+	elif teams[active]["in_cover"] and not team_members(active).is_empty():
 		a = a.lerp(centroid(active), 0.5)    # cover move: the point runs ahead, keep the men in view
 	return a + scout_offset
 
@@ -650,7 +663,7 @@ func centroid(t := -1) -> Vector3:
 
 func _physics_process(delta: float) -> void:
 	var input := Input.get_vector("move_left", "move_right", "move_forward", "move_back")
-	var lim: float = main.NAV_HALF - 2.0
+	var lim: float = main.nav_half - 2.0
 	if input.length() > 0.05:
 		var dir: Vector3 = main.cam_rig.get_yaw_basis() * Vector3(input.x, 0, input.y)
 		dir.y = 0
@@ -663,8 +676,7 @@ func _physics_process(delta: float) -> void:
 			bound = {}
 			order_target = null
 			# Slow the anchor down if the team is lagging so the group stays tight.
-			var lag: float = anchor.distance_to(centroid(active))
-			var speed := MOVE_SPEED * clampf(1.0 - (lag - 3.0) / 4.0, 0.3, 1.0)
+			var speed := MOVE_SPEED * _lag_factor(active)
 			if in_cover:
 				speed = MOVE_SPEED   # held to the men by _lead() instead
 			# The anchor is a ghost point with no collision: it passes straight
@@ -674,6 +686,16 @@ func _physics_process(delta: float) -> void:
 			anchor = CoverUtil.push_out(main.solid_defs, Vector3(clampf(a.x, -lim, lim), 0, clampf(a.z, -lim, lim)), 1.0)
 	if not bound.is_empty():
 		_update_bound(delta)
+
+	# Men who were stacked on the LAV but aren't any more (it left, was hit,
+	# or their team split off) get up and rejoin their team.
+	for s in soldiers:
+		if s.stacked and not lav_with(s.team):
+			s.stacked = false
+			if not teams[s.team]["in_cover"]:
+				s.leave_cover()
+	if lav and lav.alive and not lav.together:
+		lav.speed_cap = 1.0
 
 	# Move-out / halt signals when a team starts or stops moving.
 	var pushing := input.length() > 0.05 and not holding
@@ -705,12 +727,13 @@ func _physics_process(delta: float) -> void:
 			if to.length() < 0.4:
 				team["order_target"] = null
 			else:
-				var lag: float = team["anchor"].distance_to(centroid(t))
-				var speed := MOVE_SPEED * clampf(1.0 - (lag - 3.0) / 4.0, 0.3, 1.0)
+				var speed := MOVE_SPEED * _lag_factor(t)
 				if team["in_cover"]:
 					speed = MOVE_SPEED
 				team["anchor"] = _lead(t, team["anchor"] + to.normalized() * minf(speed * delta, to.length()))
-		if not team["in_cover"]:
+		if lav_with(t):
+			_lav_stack(t)
+		elif not team["in_cover"]:
 			for s in team_members(t):
 				s.move_target = CoverUtil.push_out(main.cover_defs, team["anchor"] + s.slot_offset, 0.6)
 		elif _was_moving[t]:
@@ -775,6 +798,9 @@ func log_fire(text: String) -> void:
 func take_cover(t := -1, facing := Vector3.ZERO) -> void:
 	if t < 0:
 		t = active
+	if lav_with(t):
+		main.notify("ALREADY IN COVER BEHIND THE LAV  -  Z SENDS IT TO OVERWATCH")
+		return
 	var team: Dictionary = teams[t]
 	team["in_cover"] = true
 	team["order_target"] = null
@@ -1061,6 +1087,8 @@ func avg_suppression() -> float:
 
 func _team_status(t: int) -> String:
 	var members := team_members(t)
+	if lav_with(t):
+		return "BEHIND LAV %d/%d" % [stacked_count(t), members.size()]
 	if not teams[t]["in_cover"]:
 		if teams[t]["order_target"] != null:
 			return "MOVING"
@@ -1086,6 +1114,8 @@ func status_text() -> String:
 	elif not bound.is_empty():
 		tag = "  [BOUNDING]"
 	if not split:
+		if lav_with(0):
+			return "STACKED BEHIND THE LAV (%s)  (%d/%d in position)" % [STACK_FACES[maxi(_stack_face, 0)], stacked_count(0), soldiers.size()] + tag
 		if not in_cover:
 			return ("HOLDING POSITION" if holding else "MOVING (loose cluster)") + tag
 		var settled := 0
@@ -1138,3 +1168,244 @@ func roster_text() -> String:
 	if kia > 0:
 		t += "   %d KIA" % kia
 	return t
+
+
+# ---------------------------------------------------------------- the LAV (combined arms)
+# With the LAV, the vehicle leads: it drives to the unit's point and the
+# infantry stack up close behind it, on the side away from the enemy, in two
+# tight files. Each man leans out past the hull to fire and ducks back. Z
+# sends it to hold where it is (overwatch, fires at will once a fight is on)
+# and calls it back.
+
+func spawn_lav(at: Vector3, yaw: float) -> void:
+	lav = LavScript.new()
+	lav.name = "LAV"
+	lav.main = main
+	lav.squad = self
+	lav.nav_map = main.vehicle_nav_map
+	add_child(lav)
+	lav.global_position = at
+	lav.rotation.y = yaw
+	lav.goal = at
+	teams[0]["anchor"] = Vector3(at.x, 0, at.z)    # the LAV is the front of the unit
+	_stack_threat = lav.forward()
+
+
+## The fire team the LAV works with (A, unless A is gone).
+func lav_team() -> int:
+	if split and team_members(0).is_empty():
+		return 1
+	return 0
+
+
+func lav_with(t: int) -> bool:
+	return lav != null and lav.alive and lav.together and t == (lav_team() if split else 0)
+
+
+func lav_fire_mode() -> int:
+	if lav == null or not lav.alive:
+		return HOLD
+	var fight_on: bool = main.any_area_alerted() or fire_mode() != HOLD
+	if lav.together and (not split or lav_team() == active):
+		return fire_mode()
+	return AT_WILL if fight_on else HOLD
+
+
+## Where the turret watches when it has nothing to shoot.
+func lav_watch_dir() -> Vector3:
+	return _stack_threat if lav and lav.together else main.camera_forward()
+
+
+func stacked_count(t: int) -> int:
+	var n := 0
+	for s in team_members(t):
+		if s.stacked and s.is_settled():
+			n += 1
+	return n
+
+
+## Z: LAV with us / LAV holds here.
+func toggle_lav() -> void:
+	if lav == null:
+		main.notify("NO VEHICLE ON THIS OPERATION")
+		return
+	if not lav.alive:
+		main.notify("THE LAV IS DOWN")
+		return
+	lav.together = not lav.together
+	var t := lav_team() if split else 0
+	if lav.together:
+		if teams[t]["in_cover"]:
+			teams[t]["in_cover"] = false
+			teams[t]["shifted"] = false
+		teams[t]["order_target"] = null
+		teams[t]["anchor"] = Vector3(lav.global_position.x, 0, lav.global_position.z)
+		_stack_face = -1
+		main.notify("LAV WITH US  -  STACK UP BEHIND THE VEHICLE")
+		main.sgt_callout("SGT: ON THE LAV, STACK UP")
+	else:
+		lav.goal = Vector3(lav.global_position.x, 0, lav.global_position.z)
+		teams[t]["anchor"] = centroid(t)
+		teams[t]["anchor"].y = 0
+		main.notify("LAV HOLDING  -  OVERWATCH  (Z TO CALL IT BACK)")
+
+
+## How fast the unit's point may go: it waits for the men (or, with the LAV,
+## for the vehicle).
+func _lag_factor(t: int) -> float:
+	if lav_with(t):
+		var d: float = Vector2(teams[t]["anchor"].x - lav.global_position.x, teams[t]["anchor"].z - lav.global_position.z).length()
+		return clampf(1.0 - (d - 3.0) / 4.0, 0.2, 1.0)
+	var lag: float = teams[t]["anchor"].distance_to(centroid(t))
+	return clampf(1.0 - (lag - 3.0) / 4.0, 0.3, 1.0)
+
+
+## Where the threat is for the stack: the nearest live enemy of any area
+## that's been alerted; else the way the unit is moving; else unchanged.
+func _stack_threat_dir(t: int) -> Vector3:
+	var best := INF
+	var dir := Vector3.ZERO
+	var from: Vector3 = lav.global_position
+	for a in main.areas:
+		if not a["alerted"]:
+			continue
+		for m in a["members"]:
+			if not m.alive:
+				continue
+			var d := from.distance_to(m.global_position)
+			if d < best and d < 110.0:
+				best = d
+				dir = m.global_position - from
+	dir.y = 0
+	if dir.length() > 0.1:
+		return dir.normalized()
+	var v: Vector3 = move_vel if t == active else Vector3.ZERO
+	if v.length() > 0.8:
+		return v.normalized()
+	return _stack_threat
+
+
+## Stack slots on one side of the hull, in the LAV's frame:
+## [[spot, lean-out spot], ...]. Rear / front: two files behind the hull,
+## leaning out past its sides. Sides: two deep along the hull, leaning out
+## past the nearer end.
+func _stack_slots(face: int, n: int) -> Array:
+	var W: float = LavScript.HALF_W
+	var L: float = LavScript.HALF_L
+	var out: Array = []
+	for i in n:
+		if face <= 1:
+			var sz := -1.0 if face == 0 else 1.0
+			var file := -1.0 if i % 2 == 0 else 1.0
+			var row := float(i / 2)
+			var spot := Vector3(file * 0.6, 0, sz * (L + 0.75 + row * STACK_ROW))
+			var peek := Vector3(file * (W + 0.8), 0, sz * (L + 0.3 + row * STACK_ROW * 0.6))
+			out.append([spot, peek])
+		else:
+			var sx := 1.0 if face == 2 else -1.0
+			var col := float(i / 2)
+			var z := -1.8 + col * 1.6
+			var spot := Vector3(sx * (W + 0.7 + float(i % 2) * 0.8), 0, z)
+			var peek := Vector3(sx * (W + 0.4), 0, (L + 0.7) * (1.0 if z > 0.0 else -1.0))
+			out.append([spot, peek])
+	return out
+
+
+## Keep the stack behind the LAV: pick the sheltered side (sticky, so it
+## doesn't flip-flop), give each man a slot, and slow the LAV if anyone is
+## falling behind.
+func _lav_stack(t: int) -> void:
+	var members := team_members(t)
+	lav.goal = Vector3(teams[t]["anchor"].x, 0, teams[t]["anchor"].z)
+	_stack_threat = _stack_threat_dir(t)
+	teams[t]["threat_dir"] = _stack_threat
+	if members.is_empty():
+		return
+	var xf: Transform3D = lav.global_transform
+	var lt: Vector3 = xf.basis.inverse() * _stack_threat
+	lt.y = 0
+	lt = lt.normalized()
+	var rolling: bool = lav.speed > 0.3
+	var normals := [Vector3(0, 0, -1), Vector3(0, 0, 1), Vector3(1, 0, 0), Vector3(-1, 0, 0)]
+	var best := 0
+	var best_s := -INF
+	var cur_s := -INF
+	for i in 4:
+		var sc: float = (normals[i] as Vector3).dot(-lt)
+		if i == 0:
+			sc += 0.3                      # behind it is home
+		elif i == 1:
+			sc -= 5.0 if rolling else 0.4  # never in front of a moving vehicle
+		if i == _stack_face:
+			cur_s = sc
+		if sc > best_s:
+			best_s = sc
+			best = i
+	if _stack_face < 0 or best_s > cur_s + 0.35 or (rolling and _stack_face == 1):
+		_stack_face = best
+		_stack_slot = {}
+	var ids: Array = members.map(func(m): return m.get_instance_id())
+	if ids != _stack_ids:
+		_stack_ids = ids
+		_stack_slot = {}
+	var slots := _stack_slots(_stack_face, members.size())
+	if _stack_slot.is_empty():
+		# Nearest man to each slot, front slots first.
+		var free: Array = members.duplicate()
+		for i in slots.size():
+			var wp: Vector3 = xf * (slots[i][0] as Vector3)
+			var pick: Node3D = null
+			var pd := INF
+			for m in free:
+				var d: float = m.global_position.distance_to(wp)
+				if d < pd:
+					pd = d
+					pick = m
+			free.erase(pick)
+			_stack_slot[pick] = i
+	var worst := 0.0
+	for m in members:
+		var sl: Array = slots[_stack_slot.get(m, 0)]
+		var spot: Vector3 = CoverUtil.push_out(main.cover_defs, xf * (sl[0] as Vector3), 0.5)
+		var peek: Vector3 = CoverUtil.push_out(main.cover_defs, xf * (sl[1] as Vector3), 0.5)
+		spot.y = 0
+		peek.y = 0
+		m.stack_on(_around_hull(m.global_position, spot, xf), [peek])
+		if not m._peeking:
+			worst = maxf(worst, Vector2(m.global_position.x - spot.x, m.global_position.z - spot.z).length())
+	lav.speed_cap = clampf(1.0 - (worst - 2.0) / 4.0, 0.15, 1.0)
+
+
+## A man on the wrong side of the LAV walks round its nearest corner instead
+## of into it.
+func _around_hull(from: Vector3, to: Vector3, xf: Transform3D) -> Vector3:
+	var inv := xf.affine_inverse()
+	var a3: Vector3 = inv * from
+	var b3: Vector3 = inv * to
+	var a := Vector2(a3.x, a3.z)
+	var b := Vector2(b3.x, b3.z)
+	var W: float = LavScript.HALF_W
+	var L: float = LavScript.HALF_L
+	var r := Rect2(-W - 0.45, -L - 0.45, (W + 0.45) * 2.0, (L + 0.45) * 2.0)
+	if not _seg_hits(a, b, r):
+		return to
+	var best := to
+	var best_d := INF
+	for cx in [-1.0, 1.0]:
+		for cz in [-1.0, 1.0]:
+			var c := Vector2(cx * (W + 1.0), cz * (L + 1.0))
+			if _seg_hits(a, c, r):
+				continue
+			var d := a.distance_to(c) + c.distance_to(b)
+			if d < best_d:
+				best_d = d
+				best = xf * Vector3(c.x, 0, c.y)
+	best.y = 0
+	return best
+
+
+static func _seg_hits(a: Vector2, b: Vector2, r: Rect2) -> bool:
+	for k in range(1, 10):
+		if r.has_point(a.lerp(b, float(k) / 10.0)):
+			return true
+	return false

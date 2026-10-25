@@ -1,12 +1,12 @@
 extends SceneTree
-## Level select: it builds every card, and each key 1-4 deploys onto the
+## Level select: it builds every card, and each key 1-5 deploys onto the
 ## right map (checked by loading the game scene it switches to).
 
 var menu
 var f := 0
 var key := 0
 var fails := 0
-const WANT := [3, 0, 1, 2]     # keys 1-4 -> main.MAPS index
+const WANT := [3, 0, 4, 1, 2]     # keys 1-5 -> main.MAPS index
 
 
 func _initialize() -> void:
@@ -21,7 +21,7 @@ func _open() -> void:
 
 func _process(_d) -> bool:
 	f += 1
-	if f % 30 == 10 and key < 4:
+	if f % 30 == 10 and key < WANT.size():
 		if f == 10:
 			for idx in WANT:
 				if menu.find_child("Map%d" % idx, true, false) == null:
@@ -31,7 +31,7 @@ func _process(_d) -> bool:
 		ev.physical_keycode = KEY_1 + key
 		ev.pressed = true
 		Input.parse_input_event(ev)
-	if f % 30 == 25 and key < 4:
+	if f % 30 == 25 and key < WANT.size():
 		var main = current_scene
 		var ok: bool = main != null and main.has_method("toggle_retro") and main.map_index == WANT[key]
 		print("key %d -> %s" % [key + 1, main.map.NAME if ok else "WRONG"])
@@ -43,7 +43,7 @@ func _process(_d) -> bool:
 		load("res://scripts/main.gd").picked_map = -1
 		key += 1
 		_open()
-	if key >= 4:
+	if key >= WANT.size():
 		print("menu test failures: ", fails)
 		quit(1 if fails > 0 else 0)
 	return false

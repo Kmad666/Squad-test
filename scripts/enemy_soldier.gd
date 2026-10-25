@@ -31,12 +31,14 @@ var kind := "infantry"
 var size_factor := 1.0
 var radius := 0.35
 var mark_height := 1.9
+var rpg := false              # anti-tank gunner: an RPG for our LAV as well as his rifle
 var alive := true
 var hp := MAX_HP
 var gunners: Array = []
 var state := State.POST
 
 var _gun: Node3D
+var _rpg: Node3D = null
 var _agent: NavigationAgent3D
 var _model: Node3D
 var _upper: Node3D
@@ -84,6 +86,16 @@ func _ready() -> void:
 	_gun.reaction_max = 0.8
 	_model.muzzle.add_child(_gun)        # fires from the rifle's muzzle
 	gunners = [_gun]
+	if rpg:
+		_rpg = EnemyGunner.new()
+		_rpg.main = main
+		_rpg.host = self
+		_rpg.weapon = Weapons.ENEMY_RPG
+		_rpg.armor_only = true
+		_rpg.reaction_min = 1.0
+		_rpg.reaction_max = 2.0
+		(_model.launch_tip if _model.launch_tip else _model.muzzle).add_child(_rpg)
+		gunners.append(_rpg)
 	_dest = post   # post is set by main before the man is added
 	rotation.y = PI    # model front (-Z) turned to face +Z, where the squad comes from
 
@@ -96,7 +108,7 @@ func _build_model() -> void:
 	_model = SoldierModel.new()
 	_model.name = "Model"
 	add_child(_model)
-	_model.build("rifleman", "enemy", _rng.randi())
+	_model.build("anti_armor" if rpg else "rifleman", "enemy", _rng.randi())
 	_upper = _model.upper
 
 
@@ -261,6 +273,8 @@ func _physics_process(delta: float) -> void:
 	var aim_at := Vector3.INF
 	if _gun.target and is_instance_valid(_gun.target) and can_fire():
 		aim_at = _gun.target.exposed_point()
+	elif _rpg and _rpg.target and is_instance_valid(_rpg.target) and can_fire():
+		aim_at = _rpg.target.exposed_point()
 	_model.set_aim_point(aim_at)
 
 

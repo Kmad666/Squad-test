@@ -71,6 +71,11 @@ func toggle_aim() -> void:
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 
+## Bodies the camera arm shouldn't bump into (the LAV the squad walks behind).
+func ignore(body: CollisionObject3D) -> void:
+	_arm.add_excluded_object(body.get_rid())
+
+
 func _end_pan() -> void:
 	if not _panning:
 		return

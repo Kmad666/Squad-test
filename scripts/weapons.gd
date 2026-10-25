@@ -41,6 +41,16 @@ const ROCKET_LAUNCHER := {
 	"reload": 5.0, "speed": 45.0, "vs_infantry": 0.55,
 }
 
+## The LAV-25's M242 chain gun firing HE: short bursts, long reach, a small
+## burst on impact (radius) that catches men next to the strike, and enough
+## punch to chew through the enemy APC.
+const LAV_25MM := {
+	"name": "25MM CHAIN GUN", "kind": "bullet",
+	"acc": 0.5, "eff": 55.0, "max": 100.0,
+	"soft": 6.0, "armor": 15.0, "radius": 1.8, "suppress": 0.35,
+	"burst_min": 3, "burst_max": 5, "cycle": 0.22, "pause_min": 0.9, "pause_max": 1.6,
+}
+
 ## Hand-thrown: a frag (blast) or a flashbang (no damage; blinds and pins
 ## everyone in the radius for a few seconds). Lobbed, so they drop over cover.
 const FRAG := {
@@ -114,8 +124,19 @@ const APC_MG := {
 const APC_CANNON := {
 	"name": "APC CANNON", "kind": "shell",
 	"acc": 0.5, "eff": 45.0, "max": 70.0,
-	"soft": 55.0, "armor": 0.0, "radius": 3.5, "suppress": 0.5,
+	"soft": 55.0, "armor": 30.0, "radius": 3.5, "suppress": 0.5,     # armor: hurts our LAV
 	"reload": 7.0, "speed": 60.0,
+}
+
+
+## Enemy anti-tank rocket: only fired at our LAV (four hits kill it), and it
+## hurts anyone stacked right behind the hull when it bursts. Killing these
+## men before they get a shot off is the infantry's job.
+const ENEMY_RPG := {
+	"name": "ENEMY RPG", "kind": "rocket",
+	"acc": 0.55, "eff": 45.0, "max": 75.0,
+	"soft": 40.0, "armor": 75.0, "radius": 2.5, "suppress": 0.6,
+	"reload": 9.0, "speed": 38.0,
 }
 
 

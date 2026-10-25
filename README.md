@@ -41,6 +41,7 @@ sky reflections are off. CI builds both desktop versions after the tests and the
 | Q | Switch which fire team you command (the other gives covering fire at will) |
 | B | Bounding advance to the point under the reticle: teams leapfrog, one moves while one covers |
 | H | Hold position: nobody moves, WASD scouts ahead with the camera (H again to release) |
+| Z | LAV with us (it leads, the infantry stack behind it) / LAV on overwatch (OPERATION SLEIPNIR) |
 | M | Next map (remembered) |
 | Backspace | Back to the level select |
 | Tab | Aim / free mouse. Free mouse: cursor moves freely, hold right mouse and drag to pan the camera |
@@ -52,6 +53,18 @@ sky reflections are off. CI builds both desktop versions after the tests and the
 | I | Thermal sight, inside the reticle only: bodies white-hot, everything else cold grey |
 | R | Restart |
 | Wheel | Zoom |
+
+## Combined arms: the LAV-25 (OPERATION SLEIPNIR)
+The unit gets an eight-wheeled LAV-25 (woodland camo, orange air-recognition panel on the deck) with a 25mm
+chain gun firing HE: bursts of 3-5 rounds out to 120 m, a small burst on impact, enough to kill the enemy APC.
+It follows your fire orders like the men do. Bullets bounce off it; only cannon shells hurt it.
+- **With us (Z):** the LAV leads. It drives to the unit's point and the infantry stack up behind it in two
+  tight files against the hull, on the side away from the nearest spotted enemy (or away from the direction of
+  travel), never in front of it while it moves. The hull is tall cover: a man with a shot leans out past its
+  side, fires and ducks back. The LAV drives at a walking pace, waits for stragglers, reverses for short moves
+  back, and paths round buildings on its own navigation mesh (sized for a vehicle).
+- **Overwatch (Z again):** it stops and fires at will once a fight is on; the men act as normal infantry. Z
+  calls it back. Split into teams, it works with team A. Destroyed, it burns and the men carry on on foot.
 
 ## Unit status (bottom right)
 Above the health list: a compass dial that turns with the camera (notch = where you look, letters = north,
@@ -148,7 +161,11 @@ GODOT=/path/to/godot tests/run_all.sh          # MINUTES=10 for longer soak runs
 - `mission_test.gd`: scripted run of the street mission using split, bound and flank orders.
 - `bridge_test.gd`: scripted run of OPERATION BIFROST (link up, bound up the bridge, take the north bank); fails if
   anyone ends up in the river, a cover spot lies in the water, or the squad never gets across.
-- `menu_test.gd`: the level select builds every card and keys 1-4 deploy onto the right maps.
+- `menu_test.gd`: the level select builds every card and keys 1-5 deploy onto the right maps.
+- `lav_test.gd`: combined arms on OPERATION SLEIPNIR: the infantry stack behind the LAV at the start, keep behind
+  it while it drives (nobody in front of it, nobody left behind), both the 25mm and the leaning-out men fire at the
+  outpost, Z sends the LAV to overwatch and calls it back, and losing the LAV turns the men back into normal infantry.
+- `hud_test.gd`: the unit status panel (direction, cover, fire order log) and the Tab free-mouse mode.
 - `model_test.gd`: geometry checks on the soldier model in every pose and gait: torso attached to hips,
   feet never below ground, legs never over-stretched, feet never crossing, both hands on the rifle, corpses resting
   on the ground with the rifle beside them, and prone / crawling bodies (HD and RETRO) lying on the ground without
@@ -160,8 +177,8 @@ GODOT=/path/to/godot tests/run_all.sh          # MINUTES=10 for longer soak runs
 - `soak_test.gd`: random orders (including split / switch / bound / hold), WASD bursts in and out of cover, cover toggles, fire modes, specials, graphics toggles and restarts; fails on any script error.
 
 ## Maps
-The game opens on a level select (`menu.tscn` / `scripts/menu.gd`): two operations, one by day and one by night,
-and two training grounds. 1-4 or a click deploys; Backspace in game comes back; the last map played is marked.
+The game opens on a level select (`menu.tscn` / `scripts/menu.gd`): three operations (two by day, one by night)
+and two training grounds. 1-5 or a click deploys; Backspace in game comes back; the last map played is marked.
 - **OPERATION BIFROST** (day): a river crosses the map; one 56 m road bridge, choked with abandoned cars, a bus
   and two box trucks (tall cover), leads to the enemy-held north bank: a sandbag BRIDGEHEAD (3) at the far end of
   the bridge, a CHECKPOINT (3) at its foot, and a DEPOT (4 + APC) behind. The anti-armor team waits on the south
@@ -172,6 +189,11 @@ and two training grounds. 1-4 or a click deploys; Backspace in game comes back; 
   Cars, crates, dumpsters and barriers for cover; sodium street lamps, lit windows and a floodlight over the gate.
   Enemies: a ROADBLOCK mid-street (2), an ALLEY ambush (2), the COMPOUND (4 + APC). The anti-armor team waits in the
   first side passage. At night enemies only spot you within 35 m. Objective: secure the compound.
+- **OPERATION SLEIPNIR** (day, `scripts/maps/armor_mission.gd`): combined arms with the LAV-25 on open farmland,
+  220 m across (maps can set `HALF`; the others are 100 m). Patchwork fields, an asphalt road winding north to a
+  crossroads village, dirt tracks, hedgerows with gaps wide enough for the LAV, trees, hay bales and rocks.
+  Enemies: an OUTPOST checkpoint on the road (3), a hedgerow TREELINE to the west (3), a FARM to the east (4) and
+  the CROSSROADS village (5 + APC patrolling the crossroad). The anti-armor team waits at a ruined barn by the start.
 - **TEST FIELD** (day): open ground with three small enemy positions, for tuning mechanics.
 - **MODEL VIEWER** (day, no enemies): every variant of the universal soldier (`scripts/soldier_model.gd`) on a
   turntable in its idle pose: rifleman, sergeant, grenadier, rocketman, enemy, crouched, and a hand-signal loop;

@@ -33,6 +33,8 @@ func _on_ground(model: Node3D, label: String) -> void:
 func _physics_process(_d) -> bool:
 	frame += 1
 	var sq = main.squad
+	if frame == 2 and sq.lav:
+		sq.lav.together = false     # OPERATION SLEIPNIR: these cases are about men on foot
 	match frame:
 		29:
 			# night map: weapon lights on by default; day map: off
