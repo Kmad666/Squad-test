@@ -23,6 +23,8 @@ sky reflections are off. CI builds both desktop versions after the tests and the
 `desktop-latest` release.
 **Modeller:** https://kmad666.github.io/Squad-test/modeller/ (build characters, weapons and buildings for the game)
 
+**Berlin street study:** https://kmad666.github.io/Squad-test/berlin/ (Kettenkiez, a Prenzlauer Berg crossroads in three.js; source in `design/berlin/`, with a Save as .glb for bringing it into Godot)
+
 ## Controls
 | Key | Action |
 |---|---|

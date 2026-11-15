@@ -66,6 +66,10 @@ jobs:
           cp -r modeller build/web/modeller
           rm -f build/web/modeller/.gdignore
 
+      - name: Add the Berlin street study (plain web page, served at /berlin/)
+        run: |
+          cp -r design/berlin build/web/berlin
+
       - name: Publish to gh-pages
         uses: peaceiris/actions-gh-pages@v4
         with:
