@@ -10,6 +10,12 @@ extends CharacterBody3D
 ##   - stays down while pinned, peeks less while suppressed
 ##   - moves to new cover when the squad flanks his spot, and now and then
 ##     shifts position anyway; wounded men fall back to cover further away
+## On top of that his area's tactics (scripts/enemy_tactics.gd) can give him a
+## role: "flank" (go fight from cover off to the squad's side), "assault"
+## (close in), or move him to another area (falling back, reinforcing). A
+## role is just a different place to look for cover (his "scope"). Caught
+## moving in the open by heavy fire he goes to ground where he is; warned of
+## a grenade he dives away from it.
 ## His rifle is an enemy_gunner mounted on his upper body, so when he
 ## crouches behind a crate he can't see or be seen.
 
@@ -36,6 +42,8 @@ var alive := true
 var hp := MAX_HP
 var gunners: Array = []
 var state := State.POST
+var role := "hold"            # hold (his area) / flank / assault: set by the area's tactics
+var covering := false         # a mate is on the move: stay up and shoot more
 
 var _gun: Node3D
 var _rpg: Node3D = null
@@ -55,6 +63,12 @@ var _check_timer := 0.0
 var _path_timer := 0.0
 var _hurt_t := 0.0
 var _peek_spot := Vector3.ZERO
+var _scope_c := Vector3.ZERO    # where he looks for cover: centre, radius,
+var _scope_r := 0.0             # and the fighting distance he likes
+var _pref := 30.0
+var _hasty := false             # no cover to be had: crouched in the open
+var _dive_t := 0.0              # sprinting clear of a grenade
+var _in_range := true           # something of ours is close enough to shoot at
 
 
 func _ready() -> void:
@@ -97,6 +111,7 @@ func _ready() -> void:
 		(_model.launch_tip if _model.launch_tip else _model.muzzle).add_child(_rpg)
 		gunners.append(_rpg)
 	_dest = post   # post is set by main before the man is added
+	hold()
 	rotation.y = PI    # model front (-Z) turned to face +Z, where the squad comes from
 
 
@@ -183,10 +198,83 @@ func _die() -> void:
 
 # ---------------------------------------------------------------- behaviour
 
+## The squad as he sees it: the middle of whichever fire team is nearer.
 func _threat() -> Vector3:
-	if main.squad.soldiers.is_empty():
+	var sq: Node3D = main.squad
+	if sq.soldiers.is_empty():
 		return global_position + Vector3(0, 0, 30)
-	return main.squad.centroid()
+	if not sq.split:
+		return sq.centroid()
+	var best: Vector3 = sq.centroid()
+	var bd := INF
+	for t in 2:
+		if sq.team_members(t).is_empty():
+			continue
+		var c: Vector3 = sq.centroid(t)
+		var d := global_position.distance_to(c)
+		if d < bd:
+			bd = d
+			best = c
+	return best
+
+
+# ---------------------------------------------------------------- roles (set by enemy_tactics.gd)
+
+## Where he looks for cover from now on, and how far from the squad he
+## likes to fight. He moves there at his next check.
+func set_scope(center: Vector3, radius: float, pref: float) -> void:
+	_scope_c = center
+	_scope_r = radius
+	_pref = pref
+
+
+## Back to defending his own area.
+func hold() -> void:
+	role = "hold"
+	set_scope(area["center"], area["radius"], 30.0)
+
+
+## New orders: act on them now rather than at the next shift.
+func hurry() -> void:
+	_check_timer = 0.0
+	_reposition_timer = 0.0
+
+
+## Leave his area for another (falling back, or sent to reinforce).
+func join_area(a: Dictionary) -> void:
+	_release_cover()
+	area["members"].erase(self)
+	area = a
+	a["members"].append(self)
+	post = a["center"]
+	hold()
+	hurry()
+
+
+func _in_scope() -> bool:
+	var at: Vector3 = _dest if state != State.POST else global_position
+	return Vector2(at.x - _scope_c.x, at.z - _scope_c.z).length() <= _scope_r + 0.5
+
+
+## "GRENADE!": if he isn't pinned and has his wits about him he sprints
+## clear of it (out of his cover, which is the point of throwing it).
+func grenade_warning(at: Vector3, blast: float, flight: float) -> void:
+	if not alive or not area.get("alerted", false) or _gun.pinned():
+		return
+	var off := global_position - at
+	off.y = 0
+	if off.length() > blast + 1.0 or flight < 0.7 or _rng.randf() > 0.7:
+		return
+	var away := off.normalized() if off.length() > 0.2 else Vector3(_rng.randf_range(-1, 1), 0, _rng.randf_range(-1, 1)).normalized()
+	_release_cover()
+	_hasty = true
+	_dest = CoverUtil.push_out(main.cover_defs, at + away * (blast + 2.5), 0.6)
+	_dest.y = 0
+	state = State.MOVING
+	_peeking = false
+	_path_timer = 0.0
+	_dive_t = flight + 0.6
+	_check_timer = flight + 1.5        # then he looks for proper cover again
 
 
 func _release_cover() -> void:
@@ -203,7 +291,7 @@ func _pick_cover() -> void:
 	var best_score := INF
 	for cp in main.cover_points:
 		var p: Vector3 = cp["pos"]
-		if p.distance_to(area["center"]) > area["radius"]:
+		if Vector2(p.x - _scope_c.x, p.z - _scope_c.z).length() > _scope_r:
 			continue
 		if area["claimed"].has(p) and (_cover.is_empty() or _cover["pos"] != p):
 			continue
@@ -220,13 +308,18 @@ func _pick_cover() -> void:
 			continue
 		var score := global_position.distance_to(p) + _rng.randf_range(0.0, 5.0)
 		# Healthy men like a fighting distance; wounded men want distance.
-		score += -0.5 * to_threat.length() if wounded else 0.1 * absf(to_threat.length() - 30.0)
+		if wounded and role == "hold":
+			score += -0.5 * to_threat.length()
+		else:
+			score += (0.1 if role == "hold" else 0.5) * absf(to_threat.length() - _pref)
 		if score < best_score:
 			best_score = score
 			best = cp
 	if best.is_empty():
+		_take_hasty_position()
 		return
 	_release_cover()
+	_hasty = false
 	_cover = best
 	area["claimed"][best["pos"]] = true
 	_dest = best["pos"]
@@ -235,10 +328,25 @@ func _pick_cover() -> void:
 	_path_timer = 0.0
 
 
+## Nothing to hide behind where he's been told to fight: he gets down in
+## the open there (crouched, popping up to shoot) and keeps looking.
+func _take_hasty_position() -> void:
+	if _hasty and _in_scope() and state != State.POST:
+		return
+	_release_cover()
+	_hasty = true
+	var r := minf(_scope_r, 6.0)
+	_dest = CoverUtil.push_out(main.cover_defs, _scope_c + Vector3(_rng.randf_range(-r, r), 0, _rng.randf_range(-r, r)), 0.6)
+	_dest.y = 0
+	state = State.MOVING
+	_peeking = false
+	_path_timer = 0.0
+
+
 ## Is his current spot still shielding him from the squad?
 func _cover_still_good() -> bool:
 	if _cover.is_empty():
-		return false
+		return _hasty
 	var to_threat: Vector3 = _threat() - _cover["pos"]
 	to_threat.y = 0
 	return _cover["normal"].dot(to_threat.normalized()) < -0.1
@@ -262,10 +370,18 @@ func _physics_process(delta: float) -> void:
 			_reposition_timer = _rng.randf_range(9.0, 15.0)
 		elif _check_timer <= 0.0:
 			_check_timer = 1.0
-			# Flanked (or just time to shift), and not pinned: move.
-			if not _gun.pinned() and (not _cover_still_good() or _reposition_timer <= 0.0):
+			_in_range = _anything_in_range()
+			# Flanked, sent somewhere else, or just time to shift; and not pinned: move.
+			if not _gun.pinned() and (not _cover_still_good() or not _in_scope() or _reposition_timer <= 0.0):
 				_pick_cover()
 				_reposition_timer = _rng.randf_range(9.0, 15.0)
+		# Caught in the open by heavy fire on a long move: go to ground right here.
+		if state == State.MOVING and _dive_t <= 0.0 and _gun.pinned() and global_position.distance_to(_dest) > 4.0:
+			_release_cover()
+			_hasty = true
+			_dest = global_position
+			_check_timer = 1.5
+	_dive_t = maxf(0.0, _dive_t - delta)
 
 	_update_stance(delta)
 	_move(delta)
@@ -292,11 +408,30 @@ func _update_stance(delta: float) -> void:
 			_peek_timer -= delta
 			if _peek_timer <= 0.0 and not _gun.pinned():
 				_peeking = not _peeking
-				if _peeking:
-					_peek_timer = _rng.randf_range(1.6, 2.6) * (1.0 - 0.5 * supp) + (1.0 if _tall() else 0.0)
+				if not _in_range:
+					# Nothing he can reach: stay hidden, with a quick look now and then.
+					_peek_timer = (0.7 + (0.8 if _tall() else 0.0)) if _peeking else _rng.randf_range(5.0, 9.0)
+				elif _peeking:
+					_peek_timer = _rng.randf_range(1.6, 2.6) * (1.0 - 0.5 * supp) * (1.5 if covering else 1.0) + (1.0 if _tall() else 0.0)
 				else:
-					_peek_timer = _rng.randf_range(1.0, 2.2) * (1.0 + 1.5 * supp)
+					_peek_timer = _rng.randf_range(1.0, 2.2) * (1.0 + 1.5 * supp) * (0.5 if covering else 1.0)
 			_set_crouch(not _peeking)
+
+
+## Is anything of ours close enough to be worth getting up for? (His rifle's
+## reach, or his RPG's against the LAV.) If not he keeps his head down
+## instead of popping up to be shot from out of his range.
+func _anything_in_range() -> bool:
+	var reach: float = _gun.weapon["max"] + 4.0
+	for s in main.squad.soldiers:
+		if s.global_position.distance_to(global_position) <= reach:
+			return true
+	var lav: Node3D = main.squad.lav
+	if lav and lav.alive:
+		var lav_reach: float = (Weapons.ENEMY_RPG["max"] if rpg else _gun.weapon["max"]) + 4.0
+		if lav.global_position.distance_to(global_position) <= lav_reach:
+			return true
+	return false
 
 
 ## Lean-out corner for tall cover: one a mate isn't already using.
@@ -341,7 +476,7 @@ func _move(delta: float) -> void:
 		dir.y = 0
 		if dir.length() < 0.05 or _agent.is_navigation_finished():
 			dir = to_dest
-		var spd := SPEED * (1.25 if state == State.MOVING else 1.0)
+		var spd := SPEED * (1.25 if state == State.MOVING else 1.0) * (1.25 if _dive_t > 0.0 else 1.0)
 		if hp < MAX_HP * 0.5:
 			spd *= 0.75
 		vel = dir.normalized() * spd * clampf(dist, 0.35, 1.0)

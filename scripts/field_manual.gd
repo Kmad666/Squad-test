@@ -375,7 +375,15 @@ Alerted riflemen:
   - stay down when pinned, peek less when suppressed
   - move to new cover when you flank their position
   - fall back to cover further away when wounded
-  - never leave their own area
+  - {h}keep their heads down when you're out of their range{/h} (a quick look now and then): sniping a position from far off doesn't work, you have to close in
+  - {h}dive away from a frag{/h} if they see it coming and aren't pinned, which gets them out of their cover
+
+{h}THEIR TACTICS{/h}
+Each position fights as a team:
+  - {h}Flank:{/h} a few seconds into a fight, one man (two from a big group) goes to fight from cover {h}off to your side{/h} while the rest give covering fire (up more, down less). The sergeant calls "ENEMY FLANKING LEFT / RIGHT" when one of your men sees him. Heavy fire on a flanker in the open puts him to ground, so {h}pin him{/h}, or split a team to face him. Your cover (or the LAV) only shields you from the front.
+  - {h}Fall back:{/h} a position worn down to a third of its men gives it up: the survivors run to the next position further from you (the HUD shows it CLEAR and the other one grow). They can't break away while pinned.
+  - {h}Reinforce:{/h} a position that's been fighting for a while gets half the riflemen of a quiet one nearby. You're told when it happens: they're in the open on the way.
+  - {h}Assault:{/h} if they outnumber you two to one they stop defending and close in, cover to cover.
 
 {h}APC{/h}  {d}(enemy vehicle, label shows its HP){/d}
 Heavy armor, 360 HP. Patrols a short route; stops the moment it sees you or takes fire. The turret tracks you with a machine gun and fires explosive cannon shells. Bullets ricochet, so use rockets (3 hits), or grenades for a little damage. Once destroyed it burns and stays down.

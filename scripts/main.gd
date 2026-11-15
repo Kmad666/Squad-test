@@ -11,6 +11,7 @@ const Weapons = preload("res://scripts/weapons.gd")
 const ReticleScript = preload("res://scripts/reticle.gd")
 const ReticlePanelScript = preload("res://scripts/reticle_panel.gd")
 const StatusPanelScript = preload("res://scripts/status_panel.gd")
+const EnemyTacticsScript = preload("res://scripts/enemy_tactics.gd")
 const AtmosphereScript = preload("res://scripts/atmosphere.gd")
 const PostFxScript = preload("res://scripts/postfx.gd")
 const FieldManualScript = preload("res://scripts/field_manual.gd")
@@ -39,6 +40,7 @@ var solid_defs: Array = []      # buildings and compound walls: the squad's anch
 var cover_points: Array = []    # [{pos, normal, height}]
 var water_defs: Array = []      # the river: invisible, solid, no cover
 var targets: Array = []         # everything the squad can shoot: enemy soldiers + vehicles
+var tactics: Node                # enemy small-unit tactics (flank, fall back, reinforce, assault)
 var areas: Array = []           # [{name, center, radius, members, alerted, claimed, label}]
 var vehicles: Array = []
 var squad: Node3D
@@ -885,10 +887,14 @@ func _drop_wet_cover_points() -> void:
 ## Spawn each defended area: its riflemen, the APC for CHARLIE, and a
 ## floating label with how many hostiles are left.
 func _build_areas() -> void:
+	var claims := {}       # cover spots taken: one book for every area, since men cross between them
+	tactics = EnemyTacticsScript.new()
+	tactics.main = self
+	add_child(tactics)
 	for def in map.AREAS:
 		var area := {
 			"name": def["name"], "center": def["center"], "radius": def["radius"],
-			"members": [], "alerted": false, "claimed": {},
+			"members": [], "alerted": false, "claimed": claims,
 		}
 		var rpgs: Array = def.get("rpg", [])
 		for i in def["men"].size():
@@ -951,6 +957,38 @@ func _update_area_label(area: Dictionary) -> void:
 func on_area_alerted(area: Dictionary) -> void:
 	_update_area_label(area)
 	notify("CONTACT  -  AREA %s" % area["name"])
+
+
+func refresh_area(area: Dictionary) -> void:
+	_update_area_label(area)
+
+
+## The survivors of `area` have run for `dest`.
+func on_area_abandoned(area: Dictionary, dest: Dictionary) -> void:
+	_update_area_label(area)
+	_update_area_label(dest)
+	notify("ENEMY FALLING BACK FROM %s TO %s" % [area["name"], dest["name"]], 5.0)
+
+
+func on_reinforcements(from: Dictionary, to: Dictionary, _count: int) -> void:
+	_update_area_label(from)
+	_update_area_label(to)
+	notify("SGT: ENEMY REINFORCEMENTS MOVING FROM %s TO %s" % [from["name"], to["name"]], 5.0)
+
+
+## One of our men has eyes on a flanker: the sergeant calls the side
+## (as you're looking at it).
+func on_flank_spotted(_area: Dictionary, man: Node3D) -> void:
+	var off: Vector3 = man.global_position - squad.centroid()
+	var side := "RIGHT" if off.dot(cam_rig.get_yaw_basis().x) > 0.0 else "LEFT"
+	notify("SGT: ENEMY FLANKING %s!" % side, 4.0)
+
+
+## A frag is in the air: enemies near where it'll land may run for it.
+func warn_grenade(at: Vector3, blast: float, flight: float) -> void:
+	for t in targets:
+		if t.alive and t.has_method("grenade_warning"):
+			t.grenade_warning(at, blast, flight)
 
 
 func on_enemy_killed(e: Node3D) -> void:

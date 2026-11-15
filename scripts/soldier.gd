@@ -931,6 +931,8 @@ func _launch_special(t: Node3D, point: Vector3) -> void:
 		to += Vector3(_rng.randf_range(-0.8, 0.8), 0, _rng.randf_range(-0.8, 0.8))
 	var p: Node3D = ProjectileScript.new()
 	p.setup(main, w, from, to, _rng)
+	if special_kind == "frag":
+		main.warn_grenade(to, w["radius"], clampf(from.distance_to(to) / float(w["speed"]), 0.5, 2.6))
 	main.add_child(p)
 	special_ammo -= 1
 	secondary_cd = w["reload"]

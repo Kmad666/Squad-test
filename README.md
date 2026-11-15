@@ -121,6 +121,18 @@ so the blast can still catch the target.
 
 ## Enemy fire, health and suppression
 - Enemy riflemen (olive-brown camo, red armband, red mask lenses) and the APC shoot back (red tracers). The APC's turret tracks you with a machine gun and fires explosive cannon shells. Enemies need line of sight: a soldier crouched behind a low crate is hidden.
+- **Enemy tactics** (`scripts/enemy_tactics.gd`, one brain over every defended area, thinking twice a second;
+  the men still do their own cover, peeking and shooting, it decides where they fight):
+  - **Flank:** a few seconds into contact one man (two from a group of five or more) goes to fight from cover
+    off to the squad's side while the rest give covering fire. A flanker pinned in the open goes to ground until
+    the fire lifts; flankers are recalled when the squad moves on. The sergeant calls the side when one is seen.
+  - **Fall back:** a position worn down to a third of its men gives it up; the survivors run to the next
+    position further from the squad (not while pinned; if there's nowhere to go they make a last stand).
+  - **Reinforce:** a position in a fight for 12 s gets half the riflemen of a quiet position within 95 m.
+  - **Assault:** outnumbering the squad two to one (the LAV counts as four men), they close in cover to cover.
+  - Individually: men **stay down when nothing of yours is within their weapon's range** (a quick look every
+    few seconds), so positions can't be sniped from far off; and men warned of a **frag** dive clear of it
+    (70% of the time, if not pinned), which flushes them out of cover.
 - Soldiers have 100 HP. Below 50 they're **wounded** (slower, less accurate); at 0 they're **down** and leave the squad.
 - **Suppression** (both sides): rounds snapping past within ~2 m build it up; it fades ~1.5 s after the fire stops.
   Suppressed soldiers peek less and shoot worse; **pinned** soldiers stay down. Suppressed enemies fire slower and
@@ -162,6 +174,9 @@ GODOT=/path/to/godot tests/run_all.sh          # MINUTES=10 for longer soak runs
 - `bridge_test.gd`: scripted run of OPERATION BIFROST (link up, bound up the bridge, take the north bank); fails if
   anyone ends up in the river, a cover spot lies in the water, or the squad never gets across.
 - `menu_test.gd`: the level select builds every card and keys 1-5 deploy onto the right maps.
+- `tactics_test.gd`: enemy tactics on the TEST FIELD: a flanker reaches cover on the squad's side while the
+  others give covering fire, a man pinned on a long move goes to ground, a man warned of a frag gets clear, a quiet
+  area reinforces one in a fight, a worn-down area falls back away from the squad, and a strong one assaults.
 - `lav_test.gd`: combined arms on OPERATION SLEIPNIR: the infantry stack behind the LAV at the start, keep behind
   it while it drives (nobody in front of it, nobody left behind), both the 25mm and the leaning-out men fire at the
   outpost, Z sends the LAV to overwatch and calls it back, and losing the LAV turns the men back into normal infantry.
