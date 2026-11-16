@@ -83,7 +83,7 @@ var hurt := 0.0               # red screen-edge flash when a soldier is hit
 var _friendly_tracer_mat: StandardMaterial3D
 var _enemy_tracer_mat: StandardMaterial3D
 var kills := 0
-var low_quality := false     # G: LOW graphics for weaker machines (remembered)
+var low_quality := false     # F2: LOW graphics for weaker machines (remembered)
 var retro := false           # V: RETRO graphics, late-90s console look (remembered)
 var night_vision := false    # N: night vision goggles
 var thermal := false         # I: thermal sight, inside the reticle only
@@ -190,6 +190,7 @@ func _apply_quality() -> void:
 
 func _save_settings() -> void:
 	var cfg := ConfigFile.new()
+	cfg.load(SETTINGS_PATH)        # keep what's already there (which briefings you've seen)
 	cfg.set_value("graphics", "low", low_quality)
 	cfg.set_value("graphics", "retro", retro)
 	cfg.set_value("game", "map", map_index)
@@ -1770,7 +1771,7 @@ func _build_hud() -> void:
 		+ "LMB focus fire   RMB throw / fire special   1-4 pick special   X next special\n" \
 		+ "F auto fire   T split / join teams   Q switch team   B bound   H hold + scout   Z LAV with us / overwatch\n" \
 		+ "G on a door: stack up, G again: breach and clear the room\n" \
-		+ "L lights   N night vision   I thermal (in reticle)   G graphics   V retro\n" \
+		+ "L lights   N night vision   I thermal (in reticle)   F2 graphics   V retro\n" \
 		+ "TAB aim / free mouse (free: hold RMB to pan)   ESC manual   O reticle\n" \
 		+ "M next map   BACKSPACE level select   R restart   F1 help"
 	help_panel.add_child(help_label)
@@ -1821,7 +1822,26 @@ func _build_hud() -> void:
 
 	manual = FieldManualScript.new()
 	manual.ui_theme = ui_root.theme
+	manual.briefing = map_const("BRIEFING", "")
+	manual.briefing_title = map.NAME
 	add_child(manual)
+	_first_briefing.call_deferred()
+
+
+## The first time you play a map, its briefing opens by itself (the game
+## waits paused until you close it). Not in tests and tools, which pick the
+## map themselves, nor without a screen.
+func _first_briefing() -> void:
+	if forced_map >= 0 or DisplayServer.get_name() == "headless" or manual.briefing == "":
+		return
+	var cfg := ConfigFile.new()
+	cfg.load(SETTINGS_PATH)
+	var key := "map%d" % map_index
+	if cfg.get_value("briefed", key, false):
+		return
+	cfg.set_value("briefed", key, true)
+	cfg.save(SETTINGS_PATH)
+	manual.open_briefing()
 
 
 func _rich(size: int) -> RichTextLabel:
@@ -1902,7 +1922,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 			_help_t = -1.0
 		elif event.physical_keycode == KEY_R:
 			get_tree().reload_current_scene()
-		elif event.physical_keycode == KEY_G:
+		elif event.physical_keycode == KEY_F2:
 			toggle_quality()
 		elif event.physical_keycode == KEY_V:
 			toggle_retro()

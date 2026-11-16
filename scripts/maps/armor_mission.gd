@@ -21,6 +21,34 @@ const LAV_START := Vector3(10, 0, 91)
 const LAV_YAW := PI                       # facing north (-z)
 const AT_TEAM := Vector3(27, 0, 70)       # rocket team at the ruined barn
 const OBJECTIVE := "OPERATION SLEIPNIR  -  ADVANCE BEHIND THE LAV (Z: LAV WITH US / OVERWATCH)  -  CLEAR ALL FOUR POSITIONS"
+
+## Shown on the BRIEFING tab of the field manual (and the first time you
+## play the map). Markup: {h}heading{/h}, {k}key{/k}, {d}note{/d}.
+const BRIEFING := """{h}SITUATION{/h}
+Open farmland, 220 m across. An asphalt road winds north to a crossroads village, with dirt tracks east to a farm and west to a hedgerow treeline. Lots of room for a vehicle, and not much cover on foot.
+
+{h}MISSION{/h}
+Clear all four positions, fighting as combined arms with your {h}LAV-25{/h}.
+
+{h}ENEMY{/h}
+  - {h}Outpost:{/h} a sandbag checkpoint across the road (3 riflemen).
+  - {h}Treeline:{/h} a hedgerow along the west track, trees behind (3, one with an {h}RPG{/h}).
+  - {h}Farm:{/h} farmhouse, barn and walled yard to the east (4, one RPG).
+  - {h}Crossroads:{/h} the village (5, two RPGs) and an {h}APC{/h} patrolling the crossroad.
+
+{h}YOUR UNIT{/h}
+Six men and a {h}LAV-25{/h} with a 25mm chain gun. It follows your fire orders and leads the unit; your men stack behind it. The {h}anti-armor team{/h} waits at the ruined barn east of the start.
+
+{h}SUGGESTED PLAN{/h}
+  1. Pick up the anti-armor team at the barn.
+  2. Advance behind the LAV ({k}WASD{/k}, {k}E{/k}). Let the 25mm work at range while the men stay stacked behind the hull.
+  3. At each position, look for the {h}RPG men{/h}. Killing them is the infantry's job: four RPG hits kill the LAV.
+  4. If the LAV is taking fire, {k}Z{/k} leaves it on overwatch while the men go forward on foot.
+  5. Rockets for the APC.
+
+{h}WATCH OUT FOR{/h}
+  - The stack only shields you from the front. A flanker off to the side can hit men stacked behind the LAV.
+  - An RPG bursting on the hull hurts the men right behind it."""
 const COMPLETE := "FARMLAND SECURED  -  MISSION COMPLETE  -  R TO REPLAY"
 
 const BOXES := [

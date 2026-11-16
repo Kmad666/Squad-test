@@ -6,6 +6,10 @@ extends CanvasLayer
 ## itself (the key may never reach the game), so losing the mouse grab
 ## unexpectedly also opens the manual. That doubles as pause-on-alt-tab.
 ##
+## Tabs: BRIEFING (the mission you're on, from the map's BRIEFING const; it
+## opens by itself the first time you play each map), GUIDES (step-by-step
+## walkthroughs), then a reference page per mechanic.
+##
 ## Keep the text below up to date when mechanics change: it's the one place
 ## that explains how everything works.
 
@@ -20,6 +24,8 @@ var _root: Control
 var _lock_cb: JavaScriptObject   # browser "pointer lock changed" listener (web only)
 var _tabs: TabContainer
 var ui_theme: Theme             # set by main before adding (neon font + colours)
+var briefing := ""              # set by main before adding: this map's BRIEFING
+var briefing_title := ""        # ... and its name
 
 
 ## The game is about to release the mouse on purpose (e.g. the reticle
@@ -85,6 +91,20 @@ func open() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
 
+## Open on the BRIEFING tab (the first time a map is played).
+func open_briefing() -> void:
+	open()
+	_tabs.current_tab = 0
+
+
+## Open on a tab by its name (e.g. "GUIDES").
+func open_tab(title: String) -> void:
+	open()
+	for i in _tabs.get_tab_count():
+		if _tabs.get_tab_title(i) == title:
+			_tabs.current_tab = i
+
+
 func close() -> void:
 	is_open = false
 	_root.visible = false
@@ -127,11 +147,11 @@ func _build() -> void:
 	panel.add_child(box)
 
 	var title := Label.new()
-	title.text = "FIELD MANUAL  //  GAME PAUSED"
+	title.text = "FIELD MANUAL  //  GAME PAUSED" + (("  //  " + briefing_title) if briefing_title != "" else "")
 	title.add_theme_font_size_override("font_size", 20)
 	box.add_child(title)
 	var sub := Label.new()
-	sub.text = "Click a tab or use LEFT / RIGHT.   ESC or RESUME to return, then click to aim."
+	sub.text = "Click a tab or use LEFT / RIGHT.   New here? Read BRIEFING, then GUIDES.   ESC or RESUME to return, then click to aim."
 	sub.add_theme_font_size_override("font_size", 12)
 	sub.modulate = Color(1, 1, 1, 0.7)
 	box.add_child(sub)
@@ -157,7 +177,16 @@ func _build() -> void:
 	_tabs.add_theme_font_size_override("font_size", 12)
 	box.add_child(_tabs)
 
+	var pages: Array = []
+	if briefing != "":
+		pages.append(["BRIEFING", briefing + BRIEFING_FOOTER])
+	for page in PAGES:                  # the guides first, then the reference pages
+		if page[0] == "GUIDES":
+			pages.append(page)
 	for page in PAGES:
+		if page[0] != "GUIDES":
+			pages.append(page)
+	for page in pages:
 		var r := RichTextLabel.new()
 		r.name = page[0]
 		r.bbcode_enabled = true
@@ -183,7 +212,12 @@ func _style(t: String) -> String:
 
 
 func page_count() -> int:
-	return PAGES.size()
+	return _tabs.get_tab_count()
+
+
+const BRIEFING_FOOTER := """
+
+{d}This briefing opens by itself the first time you play a map. It's always here: {k}ESC{/k}, first tab. The {h}GUIDES{/h} tab has step-by-step walkthroughs; the other tabs explain each mechanic in full.{/d}"""
 
 
 # ---------------------------------------------------------------- content
@@ -226,11 +260,66 @@ const PAGES := [
   {k}F1{/k}             Controls panel on/off
   {k}TAB{/k}            Aim / free mouse (free: hold {k}RIGHT MOUSE{/k} and drag to pan)
   {k}O{/k}              Reticle settings
-  {k}G{/k}              Graphics HIGH / LOW
+  {k}F2{/k}             Graphics HIGH / LOW
   {k}V{/k}              Retro graphics on / off
   {k}M{/k}              Next map
   {k}BACKSPACE{/k}      Level select
   {k}R{/k}              Restart
+"""],
+["GUIDES", """{d}Step-by-step walkthroughs. The other tabs have the full detail on each mechanic.{/d}
+
+{h}1. YOUR FIRST FIGHT{/h}
+  1. Move with {k}WASD{/k}. The squad moves as one; you steer the group, not a man.
+  2. Your men {h}hold fire{/h} until told. Press {k}F{/k} for fire at will: everyone shoots whatever he can see. (Or hold {k}LEFT MOUSE{/k}: everyone fires at what's in the reticle.)
+  3. Contact? Press {k}C{/k}. Each man runs to the nearest cover facing the enemy.
+  4. Watch the {h}FIRE ON US{/h} bar (top left) and your men's health (bottom right). Pinned men fire less and stay down.
+  5. Right click throws a grenade at the reticle. {k}1{/k}-{k}4{/k} or {k}X{/k} pick which special.
+
+{h}2. MOVING UNDER FIRE (COVER TO COVER){/h}
+  1. Get into cover with {k}C{/k}.
+  2. Stay in cover and push {k}WASD{/k} toward where you want to go. The men stay in cover and hop from one piece to the next.
+  3. Where there's no cover, they go {h}prone and crawl{/h}: slow, but much harder to hit.
+  4. {k}C{/k} again takes the unit out of cover to move fast. Do that once you're out of the fight.
+
+{h}3. FIRE AND MOVEMENT (BOUNDING){/h}
+  1. {k}T{/k} splits the squad into two fire teams, side by side. {k}Q{/k} switches which one you command.
+  2. Put the reticle where you want to go and press {k}B{/k}. One team moves while the other covers it, then they swap, leapfrogging up.
+  3. Or do it by hand: put team A in cover firing at will ({k}C{/k}, {k}F{/k}), switch to team B ({k}Q{/k}) and move it up or round the flank.
+  4. {k}T{/k} again joins them back up.
+
+{h}4. WHEN THE ENEMY FLANKS{/h}
+  1. The sergeant shouts {h}"ENEMY FLANKING LEFT / RIGHT"{/h} when one of your men sees a flanker.
+  2. Cover only protects you from the front, so turn to face him: look his way and press {k}C{/k} twice (out of cover, then straight back in). The men pick new cover against the direction you're looking.
+  3. Or split ({k}T{/k}) and turn one team to face him, with focus fire ({k}LEFT MOUSE{/k}) on him.
+  4. A flanker caught in the open under heavy fire goes to ground. Pin him, then finish him.
+
+{h}5. CLEARING A HOUSE{/h}  {d}(OPERATION GORDIAN){/d}
+  1. Pick your door. A back door from a courtyard is usually better than a front door on a street they're covering.
+  2. Put the reticle on the door and press {k}G{/k}. The team stacks single file against the wall beside it. Wait for the status to show everyone in place (e.g. {h}6/6{/h}).
+  3. {k}G{/k} again. A flashbang goes in first if the room is occupied and someone carries one. Then four men go through to the corners, firing at will.
+  4. {h}ROOM CLEAR{/h}: you're in the room. Put the reticle on the next door and repeat.
+  5. No flashbangs left? Throw a frag through the door or window first (right click).
+
+{h}6. FIGHTING WITH THE LAV{/h}  {d}(OPERATION SLEIPNIR){/d}
+  1. The LAV leads. Steer as usual; your men stack behind its hull, away from the enemy.
+  2. It fires with your fire orders. Press {k}F{/k} and its 25mm does the heavy work at range.
+  3. Find the {h}RPG men{/h} at each position and kill them first: four RPG hits destroy the LAV.
+  4. {k}Z{/k} leaves the LAV on overwatch where it is, and the men go forward on foot. {k}Z{/k} calls it back.
+
+{h}7. AT NIGHT{/h}  {d}(OPERATION LAMPLIGHTER){/d}
+  1. {k}L{/k}: weapon lights. They light up what you aim at, but give you away.
+  2. {k}N{/k}: night vision. Brightens everything but flares near lamps and fire.
+  3. {k}I{/k}: thermal, inside the reticle only. Bodies glow white, the best way to spot men in the dark.
+
+{h}8. THE ANTI-ARMOR TEAM AND THE APC{/h}
+  1. Every operation has a 3-man anti-armor team waiting somewhere near the start (the briefing says where). Walk the squad to them and they join.
+  2. Pick rockets ({k}4{/k}), put the reticle on the APC and right click.
+  3. Three rocket hits kill it. Grenades and rifles barely scratch it, and the anti-armor team carries six rockets between them, so don't waste them on infantry.
+
+{h}9. THE MOUSE AND THE CAMERA{/h}
+  - Click to aim: the mouse turns the camera. {k}ESC{/k} lets go of the mouse and opens this manual.
+  - {k}TAB{/k} lets go of the mouse without pausing: the cursor moves freely and you can hold {k}RIGHT MOUSE{/k} and drag to look around. {k}TAB{/k} again to aim.
+  - {k}H{/k} holds the squad in place and lets {k}WASD{/k} scout ahead with the camera.
 """],
 ["MOVEMENT & COVER", """{h}THE SERGEANT & HAND SIGNALS{/h}
 One man is the {h}sergeant{/h}: amber chevrons on his sleeves, radio antenna on his pack, {h}SGT{/h} in the squad panel. Your orders go through him: he signals with his left hand, and each man reacts after a beat that grows with his distance from him (roughly 0.3-0.8 s in a tight group, over a second if spread out). He reacts first.
@@ -465,7 +554,7 @@ Every variant of the universal soldier on a turntable: rifleman, sergeant, grena
 {h}SWITCHING{/h}
 {k}M{/k} loads the next map (remembered). {k}R{/k} restarts the current one. {k}BACKSPACE{/k}: back to the level select.
 """],
-["SETTINGS", """{h}GRAPHICS  ({k}G{/k}){/h}
+["SETTINGS", """{h}GRAPHICS  ({k}F2{/k}){/h}
 HIGH: shadows, bloom, anti-aliasing, full-resolution 3D, full screen effects.
 LOW: no shadows or bloom, 3D drawn at 70% resolution, lighter screen effects. For weaker machines; remembered in your browser.
 

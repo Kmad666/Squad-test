@@ -21,5 +21,38 @@ func _process(_d):
 		Input.parse_input_event(ev)
 	if f == 40:
 		print("after 2nd ESC: open=", main.manual.is_open, " paused=", paused)
-		quit()
+		# The first two tabs: this mission's briefing, then the guides.
+		var t0: String = main.manual._tabs.get_tab_title(0)
+		var t1: String = main.manual._tabs.get_tab_title(1)
+		var brief: String = main.manual._tabs.get_child(0).get_parsed_text()
+		print("tabs 0, 1: ", t0, ", ", t1)
+		var bad := 0
+		if t0 != "BRIEFING" or t1 != "GUIDES":
+			bad += 1
+			print("FAIL first tabs should be BRIEFING and GUIDES")
+		if not brief.contains("ROADBLOCK".to_lower().capitalize()) and not brief.contains("Roadblock"):
+			bad += 1
+			print("FAIL the briefing is not this map's (LAMPLIGHTER)")
+		if brief.contains("{h}") or brief.contains("[color"):
+			bad += 1
+			print("FAIL briefing markup left unconverted")
+		main.manual.open_tab("GUIDES")
+		if main.manual._tabs.current_tab != 1 or not main.manual.is_open:
+			bad += 1
+			print("FAIL open_tab(GUIDES)")
+		main.manual.close()
+		# Every map has a briefing.
+		for m in main.MAPS:
+			if m.get_script_constant_map().get("BRIEFING", "") == "":
+				bad += 1
+				print("FAIL no BRIEFING on ", m.NAME)
+		# Nothing on G but the door stack (it used to toggle graphics too).
+		var q: bool = main.low_quality
+		var ev := InputEventKey.new(); ev.physical_keycode = KEY_G; ev.pressed = true
+		main._unhandled_key_input(ev)
+		if main.low_quality != q:
+			bad += 1
+			print("FAIL G still toggles graphics")
+		print("manual test failures: ", bad)
+		quit(1 if bad > 0 else 0)
 	return false

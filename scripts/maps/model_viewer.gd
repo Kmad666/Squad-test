@@ -14,6 +14,12 @@ const GROUND := "field"
 const START := Vector3(0, 0, 26)
 const AT_TEAM := Vector3(40, 0, 44)
 const OBJECTIVE := "MODEL VIEWER  -  UNIVERSAL SOLDIER: POSES, GAITS, FIRING, PRONE  -  WASD TO PAN  -  M FOR NEXT MAP"
+
+## Shown on the BRIEFING tab of the field manual (and the first time you
+## play the map). Markup: {h}heading{/h}, {k}key{/k}, {d}note{/d}.
+const BRIEFING := """{h}MODEL VIEWER{/h}
+No enemies. Every variant of the soldier on a turntable, then the gaits animated in place, then the firing positions and prone.
+{k}WASD{/k} pans along the line-up and the mouse wheel zooms. {k}M{/k} goes to the next map, {k}BACKSPACE{/k} back to the level select."""
 const COMPLETE := ""
 const BOXES := []
 const AREAS := []

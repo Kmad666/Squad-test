@@ -35,7 +35,7 @@ sky reflections are off. CI builds both desktop versions after the tests and the
 | 1 / 2 / 3 / 4 | Select special: frag, flashbang, grenade launcher, rocket |
 | X | Next special that still has ammo |
 | F1 | Show / hide the controls panel |
-| Esc | Field manual: pauses and explains every mechanic (tabs; Esc again to resume) |
+| Esc | Field manual: pauses; BRIEFING for the mission you're on, GUIDES (step-by-step walkthroughs), then a tab per mechanic (Esc again to resume) |
 | F | Auto fire toggle: fire at will (each soldier picks any target he can see) |
 | E | Move the squad to the spot under the reticle (WASD cancels); in cover, they go cover to cover |
 | C / Space | Take cover against the direction the camera faces / leave cover. Cover stays on while you move: WASD / E go cover to cover |
@@ -49,7 +49,7 @@ sky reflections are off. CI builds both desktop versions after the tests and the
 | Backspace | Back to the level select |
 | Tab | Aim / free mouse. Free mouse: cursor moves freely, hold right mouse and drag to pan the camera |
 | O | Reticle settings (sizes are saved in your browser) |
-| G | Graphics LOW / HIGH (LOW: no shadows or bloom, 70% 3D resolution, lighter screen effects; remembered) |
+| F2 | Graphics LOW / HIGH (LOW: no shadows or bloom, 70% 3D resolution, lighter screen effects; remembered) |
 | V | RETRO graphics on / off (chunky low-poly soldiers, vertex wobble, pixelated dithered screen; remembered) |
 | L | Weapon lights on / off (on by default at night; on LOW graphics only every third man's) |
 | N | Night vision: green phosphor, amplified darks, grain, flicker, scan lines, round eyepiece edge |
@@ -88,6 +88,18 @@ It follows your fire orders like the men do. Bullets bounce off it; only cannon 
   back, and paths round buildings on its own navigation mesh (sized for a vehicle).
 - **Overwatch (Z again):** it stops and fires at will once a fight is on; the men act as normal infantry. Z
   calls it back. Split into teams, it works with team A. Destroyed, it burns and the men carry on on foot.
+
+## In-game help
+- **Field manual** (Esc, pauses the game; `scripts/field_manual.gd`):
+  - **BRIEFING**: the mission you're on: situation, objective, the enemy positions, your unit, where the
+    anti-armor team waits, a suggested plan and what to watch out for. From each map's `BRIEFING` constant.
+    It **opens by itself the first time you play each map** (remembered in `settings.cfg`; not in tests).
+  - **GUIDES**: step-by-step walkthroughs: your first fight, moving cover to cover, bounding with fire
+    teams, dealing with flankers, clearing a house, fighting with the LAV, night, the anti-armor team, the
+    mouse and camera.
+  - Then a reference tab per mechanic: keys, movement & cover, fire control, specials, fire teams, combined
+    arms, houses & room clearing, health, weapons, enemies, missions, settings.
+- **Controls panel** (top right, F1), the **objective** line at the top, and the **unit status** panel.
 
 ## Unit status (bottom right)
 Above the health list: a compass dial that turns with the camera (notch = where you look, letters = north,

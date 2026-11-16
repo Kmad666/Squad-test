@@ -20,6 +20,32 @@ const GROUND := "street"
 const START := Vector3(0, 0, 44)
 const AT_TEAM := Vector3(-14, 0, 31.5)
 const OBJECTIVE := "OBJECTIVE: SECURE THE COMPOUND AT THE END OF THE ROAD"
+
+## Shown on the BRIEFING tab of the field manual (and the first time you
+## play the map). Markup: {h}heading{/h}, {k}key{/k}, {d}note{/d}.
+const BRIEFING := """{h}SITUATION{/h}
+Night, after rain. A long street between two rows of buildings, a back alley running parallel on the west side, and a walled compound at the far end.
+
+{h}MISSION{/h}
+Secure the compound at the end of the road: clear all three positions.
+
+{h}ENEMY{/h}
+  - {h}Roadblock:{/h} mid-street, among parked and crashed cars (2 riflemen).
+  - {h}Alley ambush:{/h} covering the far end of the back alley (2).
+  - {h}Compound:{/h} walled, gate on the road, a breach at the alley mouth (4), plus the {h}APC{/h}. A floodlight on the HQ glares at the gate.
+
+{h}YOUR UNIT{/h}
+Six men. The {h}anti-armor team{/h} waits in the first side passage between the road and the alley.
+
+{h}SUGGESTED PLAN{/h}
+  1. {k}L{/k} for weapon lights, {k}N{/k} for night vision, {k}I{/k} for thermal in the reticle: the enemy is hard to see without them.
+  2. Pick up the anti-armor team in the first passage.
+  3. Split ({k}T{/k}): one team pins the roadblock from the street while the other goes down the alley to flank it.
+  4. Take the compound through the breach at the alley mouth, not the floodlit gate. Rockets for the APC.
+
+{h}WATCH OUT FOR{/h}
+  - The alley ambush covers the whole length of the alley. Clear it before you rely on that route.
+  - Night vision flares white near lamps and muzzle flashes."""
 const COMPLETE := "COMPOUND SECURED  -  MISSION COMPLETE  -  R TO REPLAY"
 
 const BOXES := [

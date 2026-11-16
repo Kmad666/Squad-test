@@ -20,6 +20,32 @@ const DECK_X := 7.6            # bridge deck half-width
 const START := Vector3(0, 0, 44)
 const AT_TEAM := Vector3(-22, 0, 36)
 const OBJECTIVE := "OBJECTIVE: FORCE THE BRIDGE AND TAKE THE NORTH BANK"
+
+## Shown on the BRIEFING tab of the field manual (and the first time you
+## play the map). Markup: {h}heading{/h}, {k}key{/k}, {d}note{/d}.
+const BRIEFING := """{h}SITUATION{/h}
+A river with one road bridge, 56 m long. The enemy holds the north bank. Abandoned cars, a bus and two box trucks choke the bridge deck. There's no other way across.
+
+{h}MISSION{/h}
+Force the bridge and take the north bank: clear all three positions.
+
+{h}ENEMY{/h}
+  - {h}Bridgehead:{/h} a sandbag line across the far end of the bridge (3 riflemen).
+  - {h}Checkpoint:{/h} barriers and a guard booth at the foot of the bridge (3).
+  - {h}Depot:{/h} warehouses and containers behind it (4), with an {h}APC{/h} on patrol.
+
+{h}YOUR UNIT{/h}
+Six men: five riflemen (frags and flashbangs) and a grenadier (40mm). The {h}anti-armor team{/h} (3 rockets) waits on the south bank, west of the start: walk to them to link up.
+
+{h}SUGGESTED PLAN{/h}
+  1. Link up with the anti-armor team first. You'll want their rockets for the APC.
+  2. Take cover ({k}C{/k}) at the south end of the bridge, then move up vehicle to vehicle with {k}WASD{/k}. The bus and trucks are tall cover (the men lean round them), the cars low cover.
+  3. Split ({k}T{/k}) and bound ({k}B{/k}): one team fires while the other moves.
+  4. Grenades (right click) onto the sandbag line. Rockets for the APC.
+
+{h}WATCH OUT FOR{/h}
+  - The parapets only shield you from the sides. The open stretches put your men flat on the deck, crawling.
+  - The APC's cannon outranges your rifles. Don't trade shots with it in the open."""
 const COMPLETE := "NORTH BANK SECURED  -  MISSION COMPLETE  -  R TO REPLAY"
 
 const BOXES := [

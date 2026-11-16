@@ -8,6 +8,19 @@ const GROUND := "field"
 const START := Vector3(0, 0, 42)           # outside enemy rifle range
 const AT_TEAM := Vector3(-36, 0, 32)       # anti-armor team waiting to link up
 const OBJECTIVE := "TEST FIELD  -  CLEAR ALL THREE AREAS"
+
+## Shown on the BRIEFING tab of the field manual (and the first time you
+## play the map). Markup: {h}heading{/h}, {k}key{/k}, {d}note{/d}.
+const BRIEFING := """{h}TRAINING GROUND{/h}
+Open ground with crates and low walls, and three small enemy positions: {h}ALPHA{/h} (2 riflemen), {h}BRAVO{/h} (3) and {h}CHARLIE{/h} (2, plus an APC on patrol). The anti-armor team waits west of the start.
+
+Use it to try things out:
+  - Cover ({k}C{/k}), and moving cover to cover with {k}WASD{/k}.
+  - Fire orders: hold, fire at will ({k}F{/k}), focus fire (left click).
+  - Splitting into fire teams ({k}T{/k}, {k}Q{/k}) and bounding ({k}B{/k}).
+  - Grenades and rockets (right click, {k}1{/k}-{k}4{/k}, {k}X{/k}).
+
+The {h}GUIDES{/h} tab walks through each of these step by step."""
 const COMPLETE := "ALL AREAS CLEARED  -  PRESS R TO RESTART"
 
 ## Cover: [ground position, size, yaw, type]. "crate" and "wall" are low cover

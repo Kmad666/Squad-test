@@ -434,6 +434,35 @@ const AT_TEAM := Vector3(38, 0, 44)        # rocket team in the south-east court
 const OBJECTIVE := "OPERATION GORDIAN  -  TAKE THE CROSSROADS  -  GATEWAYS LEAD THROUGH THE COURTYARDS (ROCKET TEAM: EAST YARD)"
 const COMPLETE := "CROSSROADS SECURED  -  MISSION COMPLETE  -  R TO REPLAY"
 
+## Shown on the BRIEFING tab of the field manual (and the first time you
+## play the map). Markup: {h}heading{/h}, {k}key{/k}, {d}note{/d}.
+const BRIEFING := """{h}SITUATION{/h}
+A Berlin crossroads, 190 m across. {h}Gordianstrasse{/h} (asphalt, trees, parked cars) runs north from your start and crosses {h}Kettenstrasse{/h} (setts, tram rails, a tram standing east of the crossing). Five-storey houses wall in both streets. Five of them have a {h}carriage gateway{/h}: a dark tunnel through the house into the courtyard behind.
+
+{h}MISSION{/h}
+Take the crossroads: clear all eight positions, three of them inside houses.
+
+{h}ENEMY{/h}
+  - {h}Gordian South:{/h} a barricade across the street ahead of you (3 riflemen).
+  - {h}Crossing:{/h} sandbags and a kiosk at the crossroads (3).
+  - {h}Vacant lot:{/h} a gap in the houses on Kettenstrasse west, behind a hoarding (3).
+  - {h}Ketten East:{/h} behind the tram (3), with the {h}APC{/h} patrolling the tram street.
+  - {h}Gordian North:{/h} the strongpoint up the street (3).
+  - Garrisons inside the {h}East House{/h} (3), {h}Ketten House{/h} (4) and {h}North House{/h} (4), firing from the windows.
+
+{h}YOUR UNIT{/h}
+Six men, two of them with flashbangs. The {h}anti-armor team{/h} waits in the east courtyard: through the gateway on your right at the brick house.
+
+{h}SUGGESTED PLAN{/h}
+  1. Don't walk up the middle of the street. Go through the gateway on your right into the east courtyard and pick up the anti-armor team.
+  2. The East House backs onto that courtyard. Put the reticle on its back door and press {k}G{/k} to stack up, then {k}G{/k} again to go in. Clear it room by room.
+  3. The {h}West House{/h}, across the street, is empty. A team in there ({k}C{/k} at the windows) can fire on the south barricade.
+  4. From the east courtyard, a second gateway leads out onto Kettenstrasse behind the tram. Rockets for the APC.
+
+{h}WATCH OUT FOR{/h}
+  - Enemy flankers and reinforcements use the gateways too. Watch the ones behind you.
+  - Inside 10 m the enemy is deadly. Use flashbangs and frags on defended rooms."""
+
 const LAMPS := [%(lamps)s]
 
 const BOXES := [
