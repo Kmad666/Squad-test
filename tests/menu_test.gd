@@ -1,12 +1,12 @@
 extends SceneTree
-## Level select: it builds every card, and each key 1-5 deploys onto the
+## Level select: it builds every card, and each key 1-6 deploys onto the
 ## right map (checked by loading the game scene it switches to).
 
 var menu
 var f := 0
 var key := 0
 var fails := 0
-const WANT := [3, 0, 4, 1, 2]     # keys 1-5 -> main.MAPS index
+const WANT := [3, 0, 5, 4, 1, 2]     # keys 1-6 -> main.MAPS index
 
 
 func _initialize() -> void:

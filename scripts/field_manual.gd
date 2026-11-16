@@ -392,7 +392,7 @@ Heavy armor, 360 HP. Patrols a short route; stops the moment it sees you or take
 The {h}anti-armor team{/h} (coyote-brown packs and kit, green label) waits to link up. Walk the squad within about 7 m and they join, bringing 3 burst rifles and 6 rockets.
 """],
 ["MISSIONS", """{h}LEVEL SELECT{/h}
-The game opens on the level select: {k}1{/k}-{k}5{/k} or click a card. {k}BACKSPACE{/k} in game goes back to it.
+The game opens on the level select: {k}1{/k}-{k}6{/k} or click a card. {k}BACKSPACE{/k} in game goes back to it.
 
 {h}OPERATION BIFROST{/h}  {d}(day){/d}
 {h}Objective:{/h} force the bridge and take the north bank.
@@ -410,6 +410,19 @@ You start at the south end of a street between two rows of buildings.
   - {h}Back alley:{/h} parallel on the west side, joined to the road by two side passages. The {h}anti-armor team{/h} waits in the first passage. An {h}ambush{/h} (2 riflemen) covers the far end.
   - {h}Compound:{/h} walled, gate on the road, breach at the alley mouth. 4 riflemen and the APC; a floodlight on the HQ glares at the gate.
 {d}Tips: link up with the rocket team first. Send a team down the alley to flank the roadblock. Save rockets for the APC.{/d}
+
+{h}OPERATION GORDIAN{/h}  {d}(day){/d}
+{h}Objective:{/h} take the crossroads: clear all five positions. A Berlin crossroads, 190 m across: {h}Gordianstrasse{/h} (asphalt, lindens, parked cars down both kerbs) runs north from your start and crosses {h}Kettenstrasse{/h} (setts, tram rails, a 30 m tram standing east of the crossing). Five-storey houses wall in both streets.
+  - {h}Gordian South:{/h} a barricade across the street ahead of you (3 riflemen).
+  - {h}Crossing:{/h} sandbags on the far side, an advertising column, a kiosk and the nose of the tram (4).
+  - {h}Vacant lot:{/h} a gap in the houses on Kettenstrasse west, behind a hoarding with a break in it (3).
+  - {h}Ketten East:{/h} behind the tram, with the APC patrolling the tram street (3 + APC).
+  - {h}Gordian North:{/h} the strongpoint up the street: sandbags, a container and a truck across the road (5).
+{h}Gateways:{/h} five houses have their carriage gateway open right through to the courtyard behind (look for the dark tunnel in the facade). Three blocks are ways round:
+  - {h}East yard:{/h} gateway on your right at the brick house, out again onto Kettenstrasse behind the tram. The {h}anti-armor team{/h} waits in this yard.
+  - {h}West yard:{/h} gateway on your left, out through the back of the vacant lot.
+  - {h}North-east yard:{/h} from Kettenstrasse round to the flank of Gordian North.
+{d}Tips: the streets are long straight fields of fire, so don't walk up the middle. Their flankers and reinforcements use the same gateways, so watch the ones behind you.{/d}
 
 {h}OPERATION SLEIPNIR{/h}  {d}(day){/d}
 {h}Objective:{/h} clear all four positions. The biggest map (220 m across): open farmland, an asphalt road winding north, dirt tracks, hedgerows with gaps wide enough for a vehicle. You have a {h}LAV-25{/h} (see COMBINED ARMS).

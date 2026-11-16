@@ -179,6 +179,9 @@ GODOT=/path/to/godot tests/run_all.sh          # MINUTES=10 for longer soak runs
 - `tactics_test.gd`: enemy tactics on the TEST FIELD: a flanker reaches cover on the squad's side while the
   others give covering fire, a man pinned on a long move goes to ground, a man warned of a frag gets clear, a quiet
   area reinforces one in a fight, a worn-down area falls back away from the squad, and a strong one assaults.
+- `berlin_test.gd`: OPERATION GORDIAN: every enemy post and the rocket team can be walked to, each gateway and
+  the vacant lot really is a way through, the closed block can't be entered, nobody spawns inside a box, and the
+  squad marches through a gateway into the courtyard and links up with the rocket team without losing anyone.
 - `lav_test.gd`: combined arms on OPERATION SLEIPNIR: the infantry stack behind the LAV at the start, keep behind
   it while it drives (nobody in front of it, nobody left behind), both the 25mm and the leaning-out men fire at the
   outpost, Z sends the LAV to overwatch and calls it back, and losing the LAV turns the men back into normal infantry.
@@ -194,8 +197,8 @@ GODOT=/path/to/godot tests/run_all.sh          # MINUTES=10 for longer soak runs
 - `soak_test.gd`: random orders (including split / switch / bound / hold), WASD bursts in and out of cover, cover toggles, fire modes, specials, graphics toggles and restarts; fails on any script error.
 
 ## Maps
-The game opens on a level select (`menu.tscn` / `scripts/menu.gd`): three operations (two by day, one by night)
-and two training grounds. 1-5 or a click deploys; Backspace in game comes back; the last map played is marked.
+The game opens on a level select (`menu.tscn` / `scripts/menu.gd`): four operations (three by day, one by night)
+and two training grounds. 1-6 or a click deploys; Backspace in game comes back; the last map played is marked.
 - **OPERATION BIFROST** (day): a river crosses the map; one 56 m road bridge, choked with abandoned cars, a bus
   and two box trucks (tall cover), leads to the enemy-held north bank: a sandbag BRIDGEHEAD (3) at the far end of
   the bridge, a CHECKPOINT (3) at its foot, and a DEPOT (4 + APC) behind. The anti-armor team waits on the south
@@ -211,6 +214,17 @@ and two training grounds. 1-5 or a click deploys; Backspace in game comes back; 
   crossroads village, dirt tracks, hedgerows with gaps wide enough for the LAV, trees, hay bales and rocks.
   Enemies: an OUTPOST checkpoint on the road (3), a hedgerow TREELINE to the west (3), a FARM to the east (4) and
   the CROSSROADS village (5 + APC patrolling the crossroad). The anti-armor team waits at a ruined barn by the start.
+- **OPERATION GORDIAN** (day, `scripts/maps/berlin_mission.gd`): a Berlin crossroads, built from the Kettenkiez
+  study in `design/berlin` (a three.js Prenzlauer Berg district from the Chain State project). The map file is
+  **generated**: `tests/tools/berlin/dump_layout.cjs` runs the study's own layout code headless and records where
+  it puts everything (`layout.json`: 36 lots, 82 parked cars, the tram, lanterns, trees, street furniture), and
+  `tests/tools/berlin/make_map.py` turns that into the game's boxes and adds the mission. Every house is at its
+  real position and width with its style's colour, the corners at the crossing are cut, two in three of the
+  parked cars stay, the 30 m tram stands on its track, and one lot is a vacant lot behind a hoarding.
+  Five houses the study gives a wide gate have their **carriage gateway open through to the courtyard** (a box
+  off the ground is a lintel: you walk under it, and it makes no cover), so three blocks are ways round the
+  crossing; the fourth is closed. Enemies: GORDIAN SOUTH barricade (3), CROSSING (4), VACANT LOT (3), KETTEN EAST
+  (3 + APC on the tram street), GORDIAN NORTH strongpoint (5). The anti-armor team waits in the south-east yard.
 - **TEST FIELD** (day): open ground with three small enemy positions, for tuning mechanics.
 - **MODEL VIEWER** (day, no enemies): every variant of the universal soldier (`scripts/soldier_model.gd`) on a
   turntable in its idle pose: rifleman, sergeant, grenadier, rocketman, enemy, crouched, and a hand-signal loop;

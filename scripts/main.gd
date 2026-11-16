@@ -21,7 +21,8 @@ const TestField = preload("res://scripts/maps/test_field.gd")
 const ModelViewer = preload("res://scripts/maps/model_viewer.gd")
 const BridgeMission = preload("res://scripts/maps/bridge_mission.gd")
 const ArmorMission = preload("res://scripts/maps/armor_mission.gd")
-const MAPS := [StreetMission, TestField, ModelViewer, BridgeMission, ArmorMission]     # M cycles through these
+const BerlinMission = preload("res://scripts/maps/berlin_mission.gd")
+const MAPS := [StreetMission, TestField, ModelViewer, BridgeMission, ArmorMission, BerlinMission]     # M cycles through these
 const NEON := Color(0.45, 1.0, 0.30)
 
 const NAV_HALF := 50.0          # default playable half-size of the field (metres); maps may set HALF
@@ -282,6 +283,7 @@ uniform float wet = 0.0;      // 1 at night: dark, glossy, puddles
 uniform float street = 0.0;   // 1: street map surfaces, 0: grass field
 uniform float river_z = 0.0;  // > 0: a river crosses at |z| < river_z, bridged where |x| < deck_x
 uniform float deck_x = 0.0;
+uniform float city = 0.0;     // 1: Berlin crossroads (setts and tram rails on the x street, asphalt on the z street, slab pavements, dirt courtyards)
 uniform float rural = 0.0;    // 1: farmland (patchwork fields, an asphalt road, dirt tracks)
 uniform float half_size = 50.0;
 varying vec3 wpos;
@@ -330,6 +332,50 @@ void fragment() {
 		}
 		if (yard) c = vec3(0.16, 0.16, 0.15) * (0.85 + 0.3 * noise(wpos.xz * 0.8));
 		rough = 0.75;
+	} else if (city > 0.5) {
+		// Two streets crossing at the origin. Street A (along x): granite setts
+		// with tram rails, kerbs at |z| = 8, house fronts at 13. Street B (along
+		// z): asphalt with sett gutters, kerbs at |x| = 6, fronts at 11.
+		float ax = abs(wpos.x);
+		float az = abs(wpos.z);
+		if (az < 8.0) {
+			vec2 q = wpos.xz / vec2(0.22, 0.15);
+			q.x += mod(floor(q.y), 2.0) * 0.5;
+			vec2 f = fract(q);
+			float joint = step(0.1, f.x) * step(0.12, f.y);
+			c = vec3(0.33, 0.32, 0.31) * (0.75 + 0.35 * hash(floor(q))) * mix(0.55, 1.0, joint) * (0.85 + 0.3 * patch);
+			rough = 0.6;
+			for (int k = 0; k < 4; k++) {
+				float rz = (k < 2 ? -1.55 : 1.55) + (mod(float(k), 2.0) < 0.5 ? -0.7175 : 0.7175);
+				if (abs(wpos.z - rz) < 0.05) { c = vec3(0.5, 0.52, 0.53); rough = 0.25; }
+			}
+		} else if (ax < 6.0) {
+			c = vec3(0.17, 0.17, 0.17) * (0.85 + 0.3 * noise(wpos.xz * 1.5)) * (0.9 + 0.2 * patch);
+			if (ax > 5.65) c = vec3(0.3, 0.29, 0.28) * (0.8 + 0.3 * hash(floor(wpos.xz / vec2(0.15, 0.22))));    // sett gutter
+			if (ax < 0.07 && fract((az - 14.0) / 9.0) < 0.5 && az > 14.0) c = vec3(0.7, 0.69, 0.66);              // centre dashes
+			rough = 0.8;
+		} else if (az < 13.0 || ax < 11.0 || ax + az < 28.6) {
+			// Pavement, kerb to house: granite kerb, mosaic strip, two rows of 1 m slabs, mosaic.
+			float d_a = az - 8.0;
+			float d_b = ax - 6.0;
+			bool use_a = ax >= 11.0 || (az < 13.0 && d_a < d_b);
+			float d = use_a ? d_a : d_b;
+			float along = use_a ? wpos.x : wpos.z;
+			if (d < 0.3) {
+				c = vec3(0.6, 0.59, 0.56) * (0.9 + 0.1 * hash(floor(vec2(along, d))));
+			} else if (d > 1.5 && d < 3.5) {
+				vec2 q = vec2(along + floor(d - 1.5) * 0.5, d - 1.5);
+				vec2 f = fract(q);
+				c = vec3(0.5, 0.49, 0.47) * (0.9 + 0.15 * hash(floor(q))) * mix(0.6, 1.0, step(0.03, f.x) * step(0.03, f.y));
+			} else {
+				c = vec3(0.4, 0.39, 0.37) * (0.8 + 0.3 * hash(floor(wpos.xz / 0.12)));
+			}
+			c *= 0.9 + 0.2 * patch;
+			rough = 0.8;
+		} else {
+			c = vec3(0.34, 0.31, 0.26) * (0.85 + 0.2 * noise(wpos.xz * 3.0)) * (0.9 + 0.15 * hash(floor(wpos.xz / 0.25)));     // courtyards: packed dirt and gravel
+			rough = 0.95;
+		}
 	} else if (rural > 0.5) {
 		// Patchwork fields: dry wheat, green crop, ploughed earth, each with rows.
 		vec2 q = wpos.xz + vec2(noise(wpos.xz * 0.02), noise(wpos.zx * 0.02)) * 16.0;
@@ -463,6 +509,7 @@ func _build_ground() -> void:
 		mat.set_shader_parameter("river_z", map.RIVER_Z)
 		mat.set_shader_parameter("deck_x", map.DECK_X)
 	mat.set_shader_parameter("rural", 1.0 if map.GROUND == "rural" else 0.0)
+	mat.set_shader_parameter("city", 1.0 if map.GROUND == "city" else 0.0)
 	mat.set_shader_parameter("half_size", nav_half)
 	# Tiles: 10 m on the small maps, 20 m on the big one (fewer pieces).
 	var ts := 10.0 if nav_half <= 60.0 else 20.0
@@ -529,11 +576,15 @@ func _build_boxes() -> void:
 		var type: String = entry[3]
 		var xform := Transform3D(Basis(Vector3.UP, yaw), pos)
 		var def := {"xform": xform, "size": size, "type": type}
-		cover_defs.append(def)
-		if type in ["building", "cwall", "water"]:
-			solid_defs.append(def)
-		if type == "water":
-			water_defs.append(def)
+		# A box off the ground (the house over a carriage gateway) is only
+		# something overhead: no cover round it, and you walk underneath.
+		var raised := pos.y > 0.5
+		if not raised:
+			cover_defs.append(def)
+			if type in ["building", "cwall", "water"]:
+				solid_defs.append(def)
+			if type == "water":
+				water_defs.append(def)
 
 		var body := StaticBody3D.new()
 		body.collision_layer = 1
@@ -546,6 +597,8 @@ func _build_boxes() -> void:
 				_build_car(body, size, rng)
 			"bus", "truck":
 				_build_big_vehicle(body, size, type, rng)
+			"tram":
+				_build_tram(body, size)
 			"tree":
 				_build_tree(body, size, rng)
 			"hedge":
@@ -562,7 +615,10 @@ func _build_boxes() -> void:
 				var m := ShaderMaterial.new()
 				m.shader = sh
 				var tones := [Color(0.2, 0.19, 0.18), Color(0.17, 0.17, 0.19), Color(0.23, 0.2, 0.17), Color(0.15, 0.15, 0.14)]
-				m.set_shader_parameter("wall_col", tones[rng.randi() % tones.size()] * (1.0 if night else 2.2))
+				var tone: Color = tones[rng.randi() % tones.size()] * (1.0 if night else 2.2)
+				if entry.size() > 4:
+					tone = (entry[4] as Color) * (0.45 if night else 1.0)      # the map's own house colour
+				m.set_shader_parameter("wall_col", tone)
 				m.set_shader_parameter("seed", rng.randf() * 100.0)
 				m.set_shader_parameter("night", 1.0 if night else 0.0)
 				mi.material_override = m
@@ -583,7 +639,7 @@ func _build_boxes() -> void:
 
 		# Big hollow boxes would otherwise leave walkable "floor" inside them
 		# in the navigation mesh; an obstacle footprint blocks that out.
-		if size.x * size.z > 6.0:
+		if size.x * size.z > 6.0 and not raised:
 			var ob := NavigationObstacle3D.new()
 			var hx := size.x * 0.5
 			var hz := size.z * 0.5
@@ -596,6 +652,31 @@ func _build_boxes() -> void:
 			ob.avoidance_enabled = false
 			ob.position = pos
 			nav_region.add_child(ob)
+
+
+## One section of a tram standing on its rails (length along x): yellow
+## body, a dark band of windows, a grey roof box. Tall cover.
+func _build_tram(body: Node3D, size: Vector3) -> void:
+	var yellow := StandardMaterial3D.new()
+	yellow.albedo_color = Color(0.94, 0.77, 0.1)
+	yellow.roughness = 0.45
+	var glass := StandardMaterial3D.new()
+	glass.albedo_color = Color(0.05, 0.06, 0.07)
+	glass.roughness = 0.1
+	var grey := StandardMaterial3D.new()
+	grey.albedo_color = Color(0.4, 0.42, 0.44)
+	grey.roughness = 0.6
+	for part in [[Vector3(size.x, size.y * 0.42, size.z), -size.y * 0.29, yellow],
+			[Vector3(size.x - 0.1, size.y * 0.3, size.z - 0.04), size.y * 0.07, glass],
+			[Vector3(size.x, size.y * 0.2, size.z), size.y * 0.32, yellow],
+			[Vector3(size.x - 2.0, size.y * 0.08, size.z * 0.6), size.y * 0.46, grey]]:
+		var mi := MeshInstance3D.new()
+		var bm := BoxMesh.new()
+		bm.size = part[0]
+		mi.mesh = bm
+		mi.material_override = part[2]
+		mi.position.y = part[1]
+		body.add_child(mi)
 
 
 ## Abandoned bus or box truck: tall cover you lean around. Length along x;

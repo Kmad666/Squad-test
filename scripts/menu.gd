@@ -1,6 +1,6 @@
 extends Control
-## Level select: the first screen. Three operations and two training
-## grounds. 1-5 or a click deploys; BACKSPACE in game comes back
+## Level select: the first screen. Four operations and two training
+## grounds. 1-6 or a click deploys; BACKSPACE in game comes back
 ## here. The last map played is marked.
 
 const UI_FONT = preload("res://fonts/ShareTechMono-Regular.ttf")
@@ -16,6 +16,7 @@ const NIGHT := Color(0.5, 0.72, 1.0)
 const ENTRIES := [
 	[3, "OPERATION BIFROST", true, "Force a river bridge choked with abandoned cars, a bus and trucks. The enemy holds the far bank: a sandbag line on the bridge, a checkpoint at its foot, a depot with an APC behind.", true],
 	[0, "OPERATION LAMPLIGHTER", false, "A rain-soaked street at night. Get past the roadblock and the alley ambush, link up with the rocket team and take the walled compound.", true],
+	[5, "OPERATION GORDIAN", true, "A Berlin crossroads: tram street, parked cars, five-storey blocks. Barricades hold the streets, so go round them through the carriage gateways and courtyards. They can do the same to you.", true],
 	[4, "OPERATION SLEIPNIR", true, "Combined arms on open farmland, the biggest map. Advance stacked behind your LAV-25 on a checkpoint, a hedgerow treeline, a farm and a crossroads village with an APC.", true],
 	[1, "TEST FIELD", true, "Open ground and three small enemy positions, for trying out orders.", false],
 	[2, "MODEL VIEWER", true, "Every soldier, pose, gait and firing position on a turntable.", false],
@@ -74,8 +75,10 @@ void fragment() {
 	col.add_child(_label("SQUAD TEST", 56, GREEN))
 	col.add_child(_label("SELECT OPERATION", 20, DIM))
 	col.add_child(HSeparator.new())
-	var big := HBoxContainer.new()
-	big.add_theme_constant_override("separation", 16)
+	var big := GridContainer.new()        # the operations, two to a row
+	big.columns = 2
+	big.add_theme_constant_override("h_separation", 16)
+	big.add_theme_constant_override("v_separation", 12)
 	col.add_child(big)
 	col.add_child(_label("TRAINING", 18, DIM))
 	var small := HBoxContainer.new()
@@ -85,7 +88,7 @@ void fragment() {
 		var e: Array = ENTRIES[i]
 		(big if e[4] else small).add_child(_card(i + 1, e))
 	col.add_child(HSeparator.new())
-	col.add_child(_label("1-5 OR CLICK TO DEPLOY      IN GAME: BACKSPACE = THIS MENU   ESC = FIELD MANUAL", 15, DIM))
+	col.add_child(_label("1-6 OR CLICK TO DEPLOY      IN GAME: BACKSPACE = THIS MENU   ESC = FIELD MANUAL", 15, DIM))
 	col.add_child(_label("Soldier model: \"Soldier Full Tactical Gear\" by DanlyVostok (CC BY 4.0)    Motion capture: Haley Tuffles, Rokoko", 12, Color(0.45, 1.0, 0.3, 0.4)))
 
 
@@ -94,7 +97,7 @@ func _card(key: int, e: Array) -> Button:
 	b.name = "Map%d" % e[0]
 	b.focus_mode = Control.FOCUS_NONE
 	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	b.custom_minimum_size = Vector2(0, 190 if e[4] else 84)
+	b.custom_minimum_size = Vector2(0, 170 if e[4] else 84)
 	var normal := StyleBoxFlat.new()
 	normal.bg_color = Color(0.02, 0.08, 0.03, 0.85)
 	normal.border_color = GREEN if e[0] == _last else Color(0.45, 1.0, 0.3, 0.35)
