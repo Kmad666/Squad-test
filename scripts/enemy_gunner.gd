@@ -132,7 +132,11 @@ func _pick_target() -> Node3D:
 		reach = minf(reach, spot_range)
 	for s in ([] if armor_only else main.squad.soldiers):
 		var d := global_position.distance_to(s.global_position)
-		if d > reach or not _can_see(s):
+		# A sentry notices men walking carefully late, men rushing early.
+		var r: float = reach
+		if reach == spot_range and s.get("pace") != null:
+			r *= [0.6, 1.0, 1.25][s.pace] if s.is_moving() or s.pace == 0 else 1.0
+		if d > r or not _can_see(s):
 			continue
 		var score := d + _rng.randf_range(0.0, 10.0)
 		if score < best_score:

@@ -32,6 +32,8 @@ const FIRE_HOLD := 0       # must match squad.gd
 const FIRE_AT_WILL := 1
 const FIRE_FOCUS := 2
 const MAX_HP := 100.0
+const PACE_SPEED := [0.5, 1.0, 1.4]   # WALK / MOVE / RUSH (as the squad's)
+const WALK_ACC := 0.85          # walking: steady enough to shoot almost as from a halt
 const ACCEL := 12.0            # m/s^2: how fast he gets up to speed / slows down
 const LOW_SPEED := 0.45        # speed factor while moving low out of cover
 const HOP_SPEED := 0.85        # speed factor running low from one cover to the next
@@ -48,6 +50,8 @@ var main: Node3D
 var index := 0
 var team := 0                  # fire team (0 = A, 1 = B) when the squad is split
 var slot_offset := Vector3.ZERO
+var slot_index := 0            # place in the team's formation (squad deals them)
+var pace := 1                  # squad.WALK / MOVE / RUSH, set by the squad every frame
 var cover_off := Vector3.ZERO  # his place in the unit's spread while it's in cover
 var role := "rifleman"
 var recruited := true
@@ -531,6 +535,8 @@ func _physics_process(delta: float) -> void:
 			dir = to_dest
 		dir = dir.normalized()
 		var spd := BASE_SPEED * _speed_mul
+		if state == State.FOLLOW:
+			spd *= PACE_SPEED[pace]
 		var down: float = _model.prone_amount()
 		if _prone:
 			spd = CRAWL_SPEED * _speed_mul * smoothstep(0.75, 1.0, down)   # get down first, then crawl
@@ -540,8 +546,8 @@ func _physics_process(delta: float) -> void:
 				spd *= HOP_SPEED if _hop else 1.12   # running for cover: flat out, but carrying kit
 			elif _low_t > 0.0:
 				spd *= LOW_SPEED   # leaving cover: low and slow
-			elif dist > 5.0:
-				spd *= 1.25        # catch up with the group
+			elif state == State.FOLLOW:
+				spd *= clampf(1.0 + (dist - 1.0) * 0.15, 1.0, 1.45)  # off his place: hurry back to it
 		if hp < MAX_HP * 0.5:
 			spd *= 0.75            # wounded
 		spd *= clampf(dist / 1.0, 0.35, 1.0)
@@ -801,7 +807,7 @@ func _update_combat(delta: float) -> void:
 	match state:
 		State.FOLLOW:
 			_set_crouch(_low_t > 0.0)     # low while coming out of cover
-			can_fire = true
+			can_fire = not (pace == 2 and _moving)   # rushing: running flat out, not shooting
 		State.TO_COVER:
 			_set_crouch(_hop)            # cover to cover: stays low
 		State.IN_COVER:
@@ -887,7 +893,7 @@ func _shoot() -> void:
 	var aim: Vector3
 	if target:
 		var c: Vector3 = target.aim_point()
-		var chance := Weapons.hit_chance(primary, target, from.distance_to(c), _moving, _mode == FIRE_FOCUS, _burst_idx > 0) * _fight_mod()
+		var chance := Weapons.hit_chance(primary, target, from.distance_to(c), _moving and pace != 0, _mode == FIRE_FOCUS, _burst_idx > 0) * _fight_mod() * (WALK_ACC if _moving and pace == 0 else 1.0)
 		if _rng.randf() < chance:
 			aim = c + Vector3(_rng.randf_range(-0.12, 0.12), _rng.randf_range(-0.15, 0.15), _rng.randf_range(-0.12, 0.12))
 		else:
@@ -910,7 +916,7 @@ func _shoot() -> void:
 			if c.take_damage(primary["soft"], primary["armor"]):
 				main.hits += 1   # only hits that hurt (ricochets off armor don't count)
 		main.spawn_impact(end, hit["normal"], spark)
-	main.suppress_enemies(from, end, 0.08 * (Weapons.tune("pin_move") if _moving and state != State.IN_COVER else 1.0))
+	main.suppress_enemies(from, end, 0.08 * (Weapons.tune("pin_move") if _moving and pace != 0 and state != State.IN_COVER else 1.0))
 	shots += 1
 	main.spawn_tracer(_flash.global_position, end)
 	main.on_shot(_flash.global_position)

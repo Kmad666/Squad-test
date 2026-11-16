@@ -40,8 +40,8 @@ func _ready() -> void:
 func _process(_delta: float) -> void:
 	if squad == null or cam_rig == null:
 		return
-	_text.text = "[color=#8fbf80]MOVE[/color]   %s\n[color=#8fbf80]COVER[/color]  %s\n[color=#8fbf80]LAST FIRE ORDERS[/color]\n%s" \
-		% [move_text(), cover_text(), orders_text()]
+	_text.text = "[color=#8fbf80]MOVE[/color]   %s\n[color=#8fbf80]FORM[/color]   %s\n[color=#8fbf80]COVER[/color]  %s\n[color=#8fbf80]LAST FIRE ORDERS[/color]\n%s" \
+		% [move_text(), form_text(), cover_text(), orders_text()]
 	_dial.queue_redraw()
 
 
@@ -66,6 +66,14 @@ func move_text() -> String:
 	var v: Vector3 = squad.move_vel
 	var tag := "BOUNDING " if not squad.bound.is_empty() else ""
 	return "[color=#ffbf33]%s%s[/color]  %03d°  %.1f m/s" % [tag, point_name(bearing(v)), roundi(bearing(v)) % 360, v.length()]
+
+
+## Formation and pace of the unit you command: "WEDGE  RUSH".
+func form_text() -> String:
+	var pace: int = squad.pace_of()
+	var col: String = ["#73ff4d", "#cfe8c4", "#ffbf33"][pace]
+	var pace_tag: String = ["WALK", "MOVE", "RUSH (no fire)"][pace]
+	return "%s   [color=%s]%s[/color]" % [squad.formation_text(), col, pace_tag]
 
 
 func cover_text() -> String:

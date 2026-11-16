@@ -228,6 +228,9 @@ const PAGES := [
   {k}MOUSE{/k}          Aim the camera. {k}Click{/k} to grab the mouse
   {k}WHEEL{/k}          Zoom
   {k}E{/k}              Move to the spot under the reticle
+  {k}Y{/k}              Formation: WEDGE / FILE / LINE
+  {k}J{/k}              Walk on / off
+  {k}SHIFT{/k} (hold)    Rush
   {k}C / SPACE{/k}      Take cover against where the camera faces / leave cover
                  (in cover, WASD and E move cover to cover)
   {k}H{/k}              Hold position (WASD scouts with the camera instead)
@@ -282,42 +285,49 @@ const PAGES := [
   3. Where there's no cover, they go {h}prone and crawl{/h}: slow, but much harder to hit.
   4. {k}C{/k} again takes the unit out of cover to move fast. Do that once you're out of the fight.
 
-{h}3. FIRE AND MOVEMENT (BOUNDING){/h}
+{h}3. THE APPROACH: FORMATION AND PACE{/h}
+  1. Crossing open ground toward the enemy: {h}WEDGE{/h} (the default), and {k}J{/k} to {h}walk{/h}. Walking men are spotted late and shoot nearly as well as standing.
+  2. Shots fired? Walking, the men can fight back on the move. Or {k}C{/k} for cover.
+  3. A gap of open ground between two pieces of cover: hold {k}SHIFT{/k} and {h}rush{/h} it. Fast and hard to hit, but nobody shoots, so get the other team or the LAV to cover you.
+  4. Into an alley or a gateway: {k}Y{/k} to {h}FILE{/h} (it also happens by itself where it's narrow).
+  5. Going in on a position at close range: {k}Y{/k} to {h}LINE{/h} so every gun points forward, fire at will ({k}F{/k}), walk ({k}J{/k}).
+
+{h}4. FIRE AND MOVEMENT (BOUNDING){/h}
   1. {k}T{/k} splits the squad into two fire teams, side by side. {k}Q{/k} switches which one you command.
   2. Put the reticle where you want to go and press {k}B{/k}. One team moves while the other covers it, then they swap, leapfrogging up.
   3. Or do it by hand: put team A in cover firing at will ({k}C{/k}, {k}F{/k}), switch to team B ({k}Q{/k}) and move it up or round the flank.
   4. {k}T{/k} again joins them back up.
 
-{h}4. WHEN THE ENEMY FLANKS{/h}
+{h}5. WHEN THE ENEMY FLANKS{/h}
   1. The sergeant shouts {h}"ENEMY FLANKING LEFT / RIGHT"{/h} when one of your men sees a flanker.
   2. Cover only protects you from the front, so turn to face him: look his way and press {k}C{/k} twice (out of cover, then straight back in). The men pick new cover against the direction you're looking.
   3. Or split ({k}T{/k}) and turn one team to face him, with focus fire ({k}LEFT MOUSE{/k}) on him.
   4. A flanker caught in the open under heavy fire goes to ground. Pin him, then finish him.
 
-{h}5. CLEARING A HOUSE{/h}  {d}(OPERATION GORDIAN){/d}
+{h}6. CLEARING A HOUSE{/h}  {d}(OPERATION GORDIAN){/d}
   1. Pick your door. A back door from a courtyard is usually better than a front door on a street they're covering.
   2. Put the reticle on the door and press {k}G{/k}. The team stacks single file against the wall beside it. Wait for the status to show everyone in place (e.g. {h}6/6{/h}).
   3. {k}G{/k} again. A flashbang goes in first if the room is occupied and someone carries one. Then four men go through to the corners, firing at will.
   4. {h}ROOM CLEAR{/h}: you're in the room. Put the reticle on the next door and repeat.
   5. No flashbangs left? Throw a frag through the door or window first (right click).
 
-{h}6. FIGHTING WITH THE LAV{/h}  {d}(OPERATION SLEIPNIR){/d}
+{h}7. FIGHTING WITH THE LAV{/h}  {d}(OPERATION SLEIPNIR){/d}
   1. The LAV leads. Steer as usual; your men stack behind its hull, away from the enemy.
   2. It fires with your fire orders. Press {k}F{/k} and its 25mm does the heavy work at range.
   3. Find the {h}RPG men{/h} at each position and kill them first: four RPG hits destroy the LAV.
   4. {k}Z{/k} leaves the LAV on overwatch where it is, and the men go forward on foot. {k}Z{/k} calls it back.
 
-{h}7. AT NIGHT{/h}  {d}(OPERATION LAMPLIGHTER){/d}
+{h}8. AT NIGHT{/h}  {d}(OPERATION LAMPLIGHTER){/d}
   1. {k}L{/k}: weapon lights. They light up what you aim at, but give you away.
   2. {k}N{/k}: night vision. Brightens everything but flares near lamps and fire.
   3. {k}I{/k}: thermal, inside the reticle only. Bodies glow white, the best way to spot men in the dark.
 
-{h}8. THE ANTI-ARMOR TEAM AND THE APC{/h}
+{h}9. THE ANTI-ARMOR TEAM AND THE APC{/h}
   1. Every operation has a 3-man anti-armor team waiting somewhere near the start (the briefing says where). Walk the squad to them and they join.
   2. Pick rockets ({k}4{/k}), put the reticle on the APC and right click.
   3. Three rocket hits kill it. Grenades and rifles barely scratch it, and the anti-armor team carries six rockets between them, so don't waste them on infantry.
 
-{h}9. THE MOUSE AND THE CAMERA{/h}
+{h}10. THE MOUSE AND THE CAMERA{/h}
   - Click to aim: the mouse turns the camera. {k}ESC{/k} lets go of the mouse and opens this manual.
   - {k}TAB{/k} lets go of the mouse without pausing: the cursor moves freely and you can hold {k}RIGHT MOUSE{/k} and drag to look around. {k}TAB{/k} again to aim.
   - {k}H{/k} holds the squad in place and lets {k}WASD{/k} scout ahead with the camera.
@@ -332,7 +342,20 @@ If he goes down, a rifleman takes over. When split into teams, the other team's 
 Men speed up and slow down with weight; they don't snap to a run or a stop.
 
 {h}THE SQUAD MOVES AS ONE{/h}
-You steer an invisible point. Each man keeps his own spot in a loose cluster around it and finds his own way around cars and crates. Buildings and compound walls stop the squad; small cover doesn't. If men fall behind, the group slows so nobody gets left.
+You steer an invisible point. Each man keeps his own place in the formation around it and finds his own way around cars and crates. Buildings and compound walls stop the squad; small cover doesn't. If men fall behind, the group slows so nobody gets left.
+
+{h}FORMATIONS  ({k}Y{/k}){/h}
+The formation turns with the way you're heading. When you set off in a new direction or turn hard, the places are dealt out again so each man takes the one nearest him: nobody runs back through the group, and the point is whoever is out front.
+  - {h}WEDGE{/h} (start): a point man, the rest spread back to both sides. Everyone can shoot forward and to the flanks. Open ground.
+  - {h}FILE{/h}: a staggered column. Narrow, and only the front can shoot ahead. Alleys, gateways, doors.
+  - {h}LINE{/h}: everyone abreast, all guns forward. The assault, or a short dash to a wall.
+Squeezing through somewhere narrow (a gateway, a gap between walls), a wedge or line closes into a file on its own ({h}FILE, NARROW{/h} on the panel) and opens out again once through.
+
+{h}PACE  ({k}J{/k} walk,  hold {k}SHIFT{/k} rush){/h}
+  - {h}WALK{/h} (half speed): steady. The men shoot nearly as well as from a halt and their fire pins the enemy fully. A sentry who hasn't been alerted spots walking men much later ({h}60%{/h} of his usual range). The pace to approach in, and to fight on the move.
+  - {h}MOVE{/h}: the usual pace. On NORMAL the men hit very little while moving like this.
+  - {h}RUSH{/h} (hold {k}SHIFT{/k}, a third faster): flat out. Hard to hit, but {h}nobody shoots{/h}, and sentries spot you further off. For crossing open ground to the next cover.
+The panel shows formation and pace on the {h}FORM{/h} line. A breach or the LAV sets its own pace.
 
 {h}MOVE ORDER  ({k}E{/k}){/h}
 The squad (or your active team) moves to the ground under the reticle center. A green ring marks the spot. {k}WASD{/k} cancels. In cover, they go there {h}cover to cover{/h} (below).

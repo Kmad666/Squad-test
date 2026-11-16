@@ -198,6 +198,9 @@ const ENEMY_RPG := {
 ## not), x(1 - 0.75 x the shooter's own suppression).
 const PRONE_HIT := 0.45
 
+const RUSH_EVADE := 0.6        # enemy hit chance on a man rushing (on top of moving)
+
+
 static func enemy_hit_chance(w: Dictionary, soldier: Node3D, dist: float, own_suppression: float) -> float:
 	if dist > w["max"]:
 		return 0.0
@@ -210,7 +213,12 @@ static func enemy_hit_chance(w: Dictionary, soldier: Node3D, dist: float, own_su
 		p *= PRONE_HIT
 	else:
 		if soldier.is_moving():
-			p *= tune("moving")
+			# Walking men are an easy mark; a man rushing flat out is hard to hit.
+			var pace: int = soldier.get("pace") if soldier.get("pace") != null else 1
+			if pace == 1:
+				p *= tune("moving")
+			elif pace == 2:
+				p *= tune("moving") * RUSH_EVADE
 		if soldier.is_in_cover():
 			p *= tune("cover")
 	p *= 1.0 - tune("pin_acc") * own_suppression

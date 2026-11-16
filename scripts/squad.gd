@@ -1,7 +1,7 @@
 extends Node3D
 ## The squad: one unit, or two fire teams.
 ##
-## Joined: WASD moves an anchor point, soldiers hold a loose cluster around
+## Joined: WASD moves an anchor point, soldiers hold a formation (Y) around
 ## it, and the cover order sends each soldier to his own cover spot on the far
 ## side of a crate from where the camera faces.
 ##
@@ -43,6 +43,21 @@ const COVER_LEAD := 6.0          # cover move: the unit's point stays this close
 const SHIFT_EVERY := 0.4         # cover move: how often the men re-pick their spots
 const COVER_SPREAD := 4.5        # cover move: furthest a man keeps from the unit's point
 const TEAM_NAMES := ["A", "B"]
+# Formations (Y cycles): the men's places around the unit's point, turned to
+# the way it's heading. Squeezing through somewhere narrow, a wedge or line
+# closes up into a file by itself and opens out again after.
+enum { WEDGE, FILE, LINE }
+const FORMATION_NAMES := ["WEDGE", "FILE", "LINE"]
+const FILE_GAP := 1.7            # file: metres between men
+const WEDGE_GAP := Vector2(1.9, 1.6)   # wedge: across, back per step out from the point man
+const LINE_GAP := 2.1            # line: metres between men abreast
+const NARROW := 6.5              # clear width (m) below which the unit goes to file
+const TURN_RATE := 3.5           # rad/s the formation swings round to a new heading
+const RESLOT_TURN := 1.1         # rad: a turn this big re-deals the places (nobody walks through the group)
+# Pace (J walks / moves, hold SHIFT to rush).
+enum { WALK, MOVE, RUSH }
+const PACE_NAMES := ["WALK", "MOVE", "RUSH"]
+const PACE_SPEED := [0.5, 1.0, 1.4]
 const DOOR_STACK_GAP := 0.95     # door stack: spacing between men along the wall
 const ENTRY_MEN := 4             # how many go in; the rest hold the door
 const ENTRY_GAP := 0.45          # seconds between men through the door
@@ -105,7 +120,8 @@ func _init() -> void:
 	for i in 2:
 		teams.append({"anchor": Vector3.ZERO, "in_cover": false, "order_target": null, "threat_dir": Vector3.FORWARD,
 			"order_id": 0, "move_id": 0,    # ids: a man's delayed reaction is dropped if a newer order replaced it
-			"shift_t": 0.0, "shifted": false})   # cover move: next re-pick, and one last re-pick owed on stopping
+			"shift_t": 0.0, "shifted": false,
+			"formation": WEDGE, "narrow": false, "yaw": INF, "slot_yaw": INF, "pace": MOVE, "walk": false, "narrow_t": 0.0})   # cover move: next re-pick, and one last re-pick owed on stopping
 
 
 func setup(m: Node3D, start: Vector3) -> void:
@@ -285,6 +301,177 @@ func _make_offsets() -> void:
 	for s in soldiers:
 		s.set_team_patch(s.team if split else -1)
 		s.update_light()          # LOW graphics lights every third man, by index
+
+
+# ---------------------------------------------------------------- formation & pace
+
+func cycle_formation() -> void:
+	var team: Dictionary = teams[active]
+	team["formation"] = (team["formation"] + 1) % FORMATION_NAMES.size()
+	team["slot_yaw"] = INF                     # re-deal the places
+	main.sgt_callout("%sFORMATION: %s" % ["TEAM %s  " % TEAM_NAMES[active] if split else "", FORMATION_NAMES[team["formation"]]])
+
+
+func toggle_walk() -> void:
+	teams[active]["walk"] = not teams[active]["walk"]
+	main.sgt_callout("WALK  -  slow, steady, quiet" if teams[active]["walk"] else "MOVE  -  normal pace")
+
+
+## WALK / MOVE / RUSH for a team. SHIFT held rushes the team you command.
+func _update_pace() -> void:
+	var rush := Input.is_action_pressed("rush")
+	for t in 2:
+		var p: int = WALK if teams[t]["walk"] else MOVE
+		if t == active and rush:
+			p = RUSH
+		if lav_with(t) or teams[t].get("breach") != null:
+			p = MOVE                          # the LAV and the door set the pace
+		teams[t]["pace"] = p
+	for s in soldiers:
+		s.pace = teams[s.team]["pace"]
+
+
+func pace_speed(t: int) -> float:
+	return PACE_SPEED[teams[t]["pace"]]
+
+
+func pace_of(t := -1) -> int:
+	return teams[active if t < 0 else t]["pace"]
+
+
+func formation_of(t := -1) -> int:
+	return teams[active if t < 0 else t]["formation"]
+
+
+## The formation in use right now (a wedge or line squeezing through a gap is a file).
+func formation_now(t := -1) -> int:
+	var team: Dictionary = teams[active if t < 0 else t]
+	return FILE if team["narrow"] else team["formation"]
+
+
+func formation_text(t := -1) -> String:
+	var team: Dictionary = teams[active if t < 0 else t]
+	return FORMATION_NAMES[team["formation"]] + ("  (FILE, NARROW)" if team["narrow"] and team["formation"] != FILE else "")
+
+
+## Places for `n` men in formation `f`: x right, -z ahead, centred on the
+## unit's point. Index 0 leads.
+static func formation_slots(f: int, n: int) -> Array:
+	var out: Array = []
+	for i in n:
+		match f:
+			FILE:
+				out.append(Vector3(0.35 if i % 2 else -0.35, 0, i * FILE_GAP))     # staggered column
+			LINE:
+				out.append(Vector3((i - (n - 1) / 2.0) * LINE_GAP, 0, 0))
+			_:
+				var k := (i + 1) / 2
+				var side := -1.0 if i % 2 else 1.0
+				out.append(Vector3(side * k * WEDGE_GAP.x, 0, k * WEDGE_GAP.y))
+	var mid := Vector3.ZERO
+	for p in out:
+		mid += p
+	mid /= float(maxi(1, n))
+	for i in n:
+		out[i] -= mid
+	return out
+
+
+## Turn the team's formation toward where it's heading, check for a squeeze,
+## and set each man's place (slot_offset, world).
+func _update_formation(t: int, delta: float) -> void:
+	var team: Dictionary = teams[t]
+	var members := team_members(t)
+	if members.is_empty():
+		return
+	var a: Vector3 = team["anchor"]
+	var key := "prev_f_anchor"
+	var v: Vector3 = (a - team.get(key, a)) / maxf(delta, 0.001)
+	team[key] = a
+	v.y = 0
+	if v.length() > 15.0:
+		v = Vector3.ZERO                       # a jump (respawn, test set-up), not a move
+	if team["yaw"] == INF:
+		team["yaw"] = main.cam_rig.yaw if main.cam_rig else 0.0
+	var moving := v.length() > 0.6
+	team["still_t"] = 0.0 if moving else team.get("still_t", 1.0) + delta
+	if moving:
+		var want := atan2(-v.x, -v.z)
+		team["want_yaw"] = want
+		var diff := wrapf(want - team["yaw"], -PI, PI)
+		if team.get("was_still", true):
+			# Setting off from a halt: face the new way at once and deal the
+			# places afresh (no swinging the whole group round).
+			if absf(diff) > 0.3:
+				team["yaw"] = want
+				team["slot_yaw"] = INF
+		else:
+			team["yaw"] = team["yaw"] + clampf(diff, -TURN_RATE * delta, TURN_RATE * delta)
+		# Narrow? Look across the way ahead, now and then.
+		team["narrow_t"] -= delta
+		if team["narrow_t"] <= 0.0:
+			team["narrow_t"] = 0.25
+			var was: bool = team["narrow"]
+			var w := _clear_width(a + v.normalized() * 2.0, v.normalized())
+			team["narrow"] = w < (NARROW + 1.5 if was else NARROW)
+			if team["narrow"] != was:
+				team["slot_yaw"] = INF
+	elif team["narrow"] and team["narrow_t"] < -3.0:
+		team["narrow"] = false                 # halted for a while: spread out again
+		team["slot_yaw"] = INF
+	elif not moving:
+		team["narrow_t"] -= delta
+	team["was_still"] = team["still_t"] > 0.6
+	var yaw: float = team["yaw"]
+	var slots := formation_slots(formation_now(t), members.size())
+	var rot := Basis(Vector3.UP, yaw)
+	# Re-deal by the heading it's turning to, so the places fit where it ends up.
+	var want_yaw: float = team.get("want_yaw", yaw)
+	# ...or when men join, split off or fall: every man needs a place of this formation.
+	var stale: bool = team.get("slot_men", []) != members
+	for s in members:
+		if s.slot_index >= slots.size():
+			stale = true                       # a place number from a bigger group (split after a join)
+	if team["slot_yaw"] == INF or absf(wrapf(want_yaw - team["slot_yaw"], -PI, PI)) > RESLOT_TURN or stale:
+		_deal_slots(members, slots, Basis(Vector3.UP, want_yaw), a)
+		team["slot_yaw"] = want_yaw
+		team["slot_men"] = members.duplicate()
+	if slot_offsets.size() != soldiers.size():
+		slot_offsets.resize(soldiers.size())
+	for s in members:
+		s.slot_offset = rot * slots[s.slot_index]
+		slot_offsets[s.index] = s.slot_offset
+
+
+## Each man takes the place nearest him (closest pairs first), so nobody
+## crosses the group to reach his place and the point is whoever is out front.
+func _deal_slots(members: Array, slots: Array, rot: Basis, a: Vector3) -> void:
+	var pairs: Array = []
+	for s in members:
+		for i in slots.size():
+			pairs.append([s.global_position.distance_squared_to(a + rot * slots[i]), s, i])
+	pairs.sort_custom(func(x, y): return x[0] < y[0])
+	var man_done := {}
+	var slot_done := {}
+	for pr in pairs:
+		if man_done.has(pr[1]) or slot_done.has(pr[2]):
+			continue
+		pr[1].slot_index = pr[2]
+		man_done[pr[1]] = true
+		slot_done[pr[2]] = true
+
+
+## Clear width across the way the unit is going, at `p` (walls and buildings only).
+func _clear_width(p: Vector3, fwd: Vector3) -> float:
+	var side := Vector3(-fwd.z, 0, fwd.x)
+	var space := main.get_world_3d().direct_space_state
+	var total := 0.0
+	for sgn in [-1.0, 1.0]:
+		var from := p + Vector3(0, 1.7, 0)    # over crates and cars: walls and buildings
+		var q := PhysicsRayQueryParameters3D.create(from, from + side * sgn * 8.0, 1)
+		var hit := space.intersect_ray(q)
+		total += 8.0 if hit.is_empty() else from.distance_to(hit["position"])
+	return total
 
 
 # ---------------------------------------------------------------- fire control
@@ -470,6 +657,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		toggle_lav()
 	elif event.is_action_pressed("breach"):
 		breach_order()
+	elif event.is_action_pressed("formation"):
+		cycle_formation()
+	elif event.is_action_pressed("walk"):
+		toggle_walk()
 	elif event is InputEventKey and event.pressed and not event.echo and event.physical_keycode >= KEY_1 and event.physical_keycode <= KEY_4:
 		select_special(event.physical_keycode - KEY_1)
 
@@ -676,6 +867,7 @@ func centroid(t := -1) -> Vector3:
 
 func _physics_process(delta: float) -> void:
 	var input := Input.get_vector("move_left", "move_right", "move_forward", "move_back")
+	_update_pace()
 	var lim: float = main.nav_half - 2.0
 	if input.length() > 0.05:
 		var dir: Vector3 = main.cam_rig.get_yaw_basis() * Vector3(input.x, 0, input.y)
@@ -690,7 +882,7 @@ func _physics_process(delta: float) -> void:
 			order_target = null
 			cancel_breach(active)
 			# Slow the anchor down if the team is lagging so the group stays tight.
-			var speed := MOVE_SPEED * _lag_factor(active)
+			var speed := MOVE_SPEED * _lag_factor(active) * pace_speed(active)
 			if in_cover:
 				speed = MOVE_SPEED   # held to the men by _lead() instead
 			# The anchor is a ghost point with no collision: it passes straight
@@ -741,7 +933,7 @@ func _physics_process(delta: float) -> void:
 			if to.length() < 0.4:
 				team["order_target"] = null
 			else:
-				var speed := MOVE_SPEED * _lag_factor(t)
+				var speed := MOVE_SPEED * _lag_factor(t) * pace_speed(t)
 				if team["in_cover"]:
 					speed = MOVE_SPEED
 				team["anchor"] = _lead(t, team["anchor"] + to.normalized() * minf(speed * delta, to.length()))
@@ -750,6 +942,7 @@ func _physics_process(delta: float) -> void:
 		elif lav_with(t):
 			_lav_stack(t)
 		elif not team["in_cover"]:
+			_update_formation(t, delta)
 			for s in team_members(t):
 				s.move_target = CoverUtil.push_out(main.cover_defs, team["anchor"] + s.slot_offset, 0.6)
 		elif _was_moving[t]:
@@ -1139,7 +1332,7 @@ func status_text() -> String:
 		if lav_with(0):
 			return "STACKED BEHIND THE LAV (%s)  (%d/%d in position)" % [STACK_FACES[maxi(_stack_face, 0)], stacked_count(0), soldiers.size()] + tag
 		if not in_cover:
-			return ("HOLDING POSITION" if holding else "MOVING (loose cluster)") + tag
+			return ("HOLDING POSITION" if holding else "MOVING (%s, %s)" % [formation_text(0), PACE_NAMES[pace_of(0)]]) + tag
 		var settled := 0
 		var flat := 0
 		for s in soldiers:

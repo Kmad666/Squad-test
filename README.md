@@ -38,6 +38,9 @@ sky reflections are off. CI builds both desktop versions after the tests and the
 | Esc | Field manual: pauses; BRIEFING for the mission you're on, GUIDES (step-by-step walkthroughs), then a tab per mechanic (Esc again to resume) |
 | F | Auto fire toggle: fire at will (each soldier picks any target he can see) |
 | E | Move the squad to the spot under the reticle (WASD cancels); in cover, they go cover to cover |
+| Y | Formation: WEDGE / FILE / LINE (turns with the squad's heading; closes into a file by itself where it's narrow) |
+| J | Walk on / off: half speed, steady fire, spotted late |
+| Shift (hold) | Rush: a third faster and hard to hit, but nobody shoots |
 | C / Space | Take cover against the direction the camera faces / leave cover. Cover stays on while you move: WASD / E go cover to cover |
 | T | Split into fire teams A + B (helmet patches: A green, B amber) / join back up |
 | Q | Switch which fire team you command (the other gives covering fire at will) |

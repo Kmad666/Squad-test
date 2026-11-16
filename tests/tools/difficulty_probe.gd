@@ -130,7 +130,9 @@ func _physics_process(delta: float) -> bool:
 			_finish("WON")
 			return false
 	var tc: Vector3 = target["center"]
-	if style == "frontal":
+	if style == "frontal" or style == "walking":
+		if style == "walking" and not sq.teams[0]["walk"]:
+			sq.toggle_walk()                # same straight line in, at a walk
 		sq.move_to(tc)
 		return false
 	if target.get("rect") != null and _house(sq, c):

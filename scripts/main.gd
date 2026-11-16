@@ -282,6 +282,9 @@ func _setup_input() -> void:
 	_bind("cycle_special", [KEY_X])
 	_bind("lav_toggle", [KEY_Z])
 	_bind("breach", [KEY_G])
+	_bind("formation", [KEY_Y])
+	_bind("walk", [KEY_J])
+	_bind("rush", [KEY_SHIFT])
 
 
 func _bind(action: String, keys: Array) -> void:
@@ -1871,7 +1874,7 @@ func _build_hud() -> void:
 	help_label.text = "WASD move   MOUSE aim   WHEEL zoom   E move to reticle   C / SPACE cover on / off\n" \
 		+ "LMB focus fire   RMB throw / fire special   1-4 pick special   X next special\n" \
 		+ "F auto fire   T split / join teams   Q switch team   B bound   H hold + scout   Z LAV with us / overwatch\n" \
-		+ "G on a door: stack up, G again: breach and clear the room\n" \
+		+ "G on a door: stack up, G again: breach and clear the room   Y formation   J walk   SHIFT rush\n" \
 		+ "L lights   N night vision   I thermal (in reticle)   F2 graphics   V retro   F3 difficulty\n" \
 		+ "TAB aim / free mouse (free: hold RMB to pan)   ESC manual   O reticle\n" \
 		+ "M next map   BACKSPACE level select   R restart   F1 help"
