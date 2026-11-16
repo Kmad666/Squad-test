@@ -104,6 +104,10 @@ var _pending: Array = []       # [[seconds_left, Callable]] delayed reactions to
 var _hold_point: Variant = null   # set while he holds his ground (not yet reacted / halted)
 var _low_t := 0.0              # leaving cover: crouched, slow, covering fire
 var _vel := Vector3.ZERO       # smoothed velocity (weight)
+var _stuck_t := 0.0            # wants to move but isn't getting anywhere
+var _dodge := Vector3.ZERO     # sidestep to get round whatever he's stuck on
+var _dodge_t := 0.0
+var _dodge_side := 1.0
 var _mode_target := -1         # fire mode he's been told, applied after his reaction delay
 var _mode_timer := 0.0
 var _reticle_only := false     # covering fire: only enemies inside the reticle, no area fire
@@ -120,6 +124,7 @@ func _ready() -> void:
 	collision_layer = 2
 	collision_mask = 1
 	floor_snap_length = 0.3
+	wall_min_slide_angle = 0.0     # always slide along a wall, however squarely he walks into it
 
 	_col = CollisionShape3D.new()
 	_cap = CapsuleShape3D.new()
@@ -540,7 +545,10 @@ func _physics_process(delta: float) -> void:
 		if hp < MAX_HP * 0.5:
 			spd *= 0.75            # wounded
 		spd *= clampf(dist / 1.0, 0.35, 1.0)
+		if _dodge_t > 0.0:
+			dir = (dir * 0.3 + _dodge).normalized()    # stepping round an obstacle
 		vel = dir * spd
+	_dodge_t = maxf(0.0, _dodge_t - delta)
 
 	if state != State.IN_COVER:
 		vel += _separation() * (0.4 if _prone else 2.5)
@@ -552,6 +560,18 @@ func _physics_process(delta: float) -> void:
 	_vel = _vel.move_toward(vel, ACCEL * delta)
 	velocity = Vector3(_vel.x, -4.0, _vel.z)
 	move_and_slide()
+	# Lodged against something (a crate corner, another man): after half a
+	# second of pushing and going nowhere, sidestep, the other way each time.
+	var real := get_real_velocity()
+	if _moving and vel.length() > 0.15 and Vector2(real.x, real.z).length() < 0.15 * vel.length():
+		_stuck_t += delta
+		if _stuck_t > 0.5:
+			_stuck_t = 0.0
+			_dodge_side = -_dodge_side
+			_dodge = Vector3(-vel.z, 0, vel.x).normalized() * _dodge_side
+			_dodge_t = 0.9
+	else:
+		_stuck_t = 0.0
 	_model.animate(get_real_velocity(), delta)
 
 	_update_combat(delta)

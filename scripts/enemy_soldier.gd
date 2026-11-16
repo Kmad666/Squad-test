@@ -76,6 +76,7 @@ func _ready() -> void:
 	collision_layer = 4      # "targets": your squad's rounds hit it
 	collision_mask = 1
 	floor_snap_length = 0.3
+	wall_min_slide_angle = 0.0     # always slide along a wall
 	_col = CollisionShape3D.new()
 	_cap = CapsuleShape3D.new()
 	_cap.radius = 0.32

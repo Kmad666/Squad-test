@@ -65,6 +65,13 @@ func _watch() -> void:
 			if s.is_prone() and s._model.prone_amount() >= 1.0 and to > 0.6 and last_pos.has(s) and p.distance_to(last_pos[s]) < 0.1:
 				stuck[s] = stuck.get(s, 0.0) + 0.5
 				worst_stuck = maxf(worst_stuck, stuck[s])
+				if stuck[s] == 3.0:        # say who and where, once
+					var near := ""
+					for o in sq.soldiers:
+						if o != s and o.global_position.distance_to(p) < 1.2:
+							near += " #%d at %.2f m (prone %s)" % [o.index, o.global_position.distance_to(p), o.is_prone()]
+					print("stuck: #%d at %s, spot %s (%.2f m away), state %d, vel %s, frame %d, in a box %s, neighbours:%s" % [s.index, p, s.cover_pos, to, s.state, s.get_real_velocity(), f,
+						main.CoverUtil.inside_any(main.cover_defs, s.cover_pos, 0.3), near if near != "" else " none"])
 			else:
 				stuck[s] = 0.0
 			last_pos[s] = p
