@@ -15,6 +15,9 @@ extends Node
 ##            nearby (riflemen only; once each way).
 ##  ASSAULT   Outnumbering the squad two to one, they close in, cover to cover.
 ##
+## A house garrison (an area with a "rect") only ever receives: it doesn't
+## flank, assault, fall back out of its house or send men away.
+##
 ## Each can be switched off (the statics) for tests and tuning.
 
 const EnemySoldier = preload("res://scripts/enemy_soldier.gd")
@@ -103,11 +106,15 @@ func _think(area: Dictionary, dt: float) -> void:
 	for m in men:
 		m.covering = mover and m.role == "hold"
 
-	if falling_back and contact and _fall_back(area, men, sq_c):
+	# Men posted to hold a house hold it: they give ground room by room
+	# (their own cover sense does that) but don't go out to flank, assault
+	# or fall back, and aren't sent off to reinforce the street.
+	var garrison: bool = area.get("rect") != null
+	if falling_back and contact and not garrison and _fall_back(area, men, sq_c):
 		return
-	if assaulting:
+	if assaulting and not garrison:
 		_assault(area, men, sq_c, contact)
-	if flanking:
+	if flanking and not garrison:
 		_flank(area, men, sq_c, contact, dt)
 	if reinforcing and contact and area["contact_t"] > 12.0 and not area.get("qrf_got", false):
 		_reinforce(area)
@@ -271,7 +278,7 @@ func _reinforce(area: Dictionary) -> void:
 	var donor: Dictionary = {}
 	var best := INF
 	for a in main.areas:
-		if a == area or a.get("qrf_sent", false) or a.get("fell_back", false) or in_contact(a):
+		if a == area or a.get("qrf_sent", false) or a.get("fell_back", false) or in_contact(a) or a.get("rect") != null:
 			continue
 		var riflemen := 0
 		for m in infantry(a):

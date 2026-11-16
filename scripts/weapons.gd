@@ -44,6 +44,14 @@ const ROCKET_LAUNCHER := {
 ## The LAV-25's M242 chain gun firing HE: short bursts, long reach, a small
 ## burst on impact (radius) that catches men next to the strike, and enough
 ## punch to chew through the enemy APC.
+## Close quarters: inside this range an enemy's aim gets better the closer
+## you are (x CLOSE_HIT at arm's length). Rooms are where men get killed,
+## which is what the flashbang is for.
+const CLOSE_RANGE := 10.0
+const CLOSE_HIT := 2.4
+const CLOSE_DAMAGE := 2.0        # ... his hits do this much more (at arm's length)
+const CLOSE_REACTION := 0.4      # ... and he gets onto a new target this much quicker
+
 const LAV_25MM := {
 	"name": "25MM CHAIN GUN", "kind": "bullet",
 	"acc": 0.5, "eff": 55.0, "max": 100.0,
@@ -152,6 +160,8 @@ static func enemy_hit_chance(w: Dictionary, soldier: Node3D, dist: float, own_su
 	var p: float = w["acc"]
 	if dist > w["eff"]:
 		p *= lerpf(1.0, 0.3, clampf((dist - w["eff"]) / (w["max"] - w["eff"]), 0.0, 1.0))
+	if dist < CLOSE_RANGE:
+		p *= lerpf(CLOSE_HIT, 1.0, dist / CLOSE_RANGE)     # across a room it's hard to miss
 	if soldier.has_method("is_prone") and soldier.is_prone():
 		p *= PRONE_HIT
 	else:

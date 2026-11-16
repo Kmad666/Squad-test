@@ -25,6 +25,7 @@ const BerlinMission = preload("res://scripts/maps/berlin_mission.gd")
 const MAPS := [StreetMission, TestField, ModelViewer, BridgeMission, ArmorMission, BerlinMission]     # M cycles through these
 const NEON := Color(0.45, 1.0, 0.30)
 
+const HOUSE_CEILING := 3.6     # ground-floor height of the houses you can go into
 const NAV_HALF := 50.0          # default playable half-size of the field (metres); maps may set HALF
 const TRACER_COUNT := 48
 const TRACER_LIFE := 0.06
@@ -41,6 +42,10 @@ var solid_defs: Array = []      # buildings and compound walls: the squad's anch
 var cover_points: Array = []    # [{pos, normal, height}]
 var water_defs: Array = []      # the river: invisible, solid, no cover
 var targets: Array = []         # everything the squad can shoot: enemy soldiers + vehicles
+var houses: Array = []           # enterable houses: {name, rect: Rect2 (x, z), roof: Node3D, bodies: [walls...]}
+var rooms: Array = []            # {rect: Rect2, house: int}
+var doors: Array = []            # {pos, normal (from room a into room b), a, b}  (-1 = outside)
+var inside_house := -1           # the house the squad you command is in (its upper storeys are lifted off)
 var tactics: Node                # enemy small-unit tactics (flank, fall back, reinforce, assault)
 var areas: Array = []           # [{name, center, radius, members, alerted, claimed, label}]
 var vehicles: Array = []
@@ -114,6 +119,7 @@ func _ready() -> void:
 	nav_region.name = "Nav"
 	add_child(nav_region)
 	_build_ground()
+	_build_houses()
 	_build_boxes()
 	_bake_nav()
 	if map_const("LAV", false):
@@ -146,6 +152,9 @@ func _ready() -> void:
 	atmosphere.cam_rig = cam_rig
 	if squad.lav:
 		cam_rig.ignore(squad.lav)       # the camera arm looks past the LAV, not into it
+	for h in houses:
+		for b in h["bodies"]:
+			cam_rig.ignore(b)           # ... and through the walls of houses you can go into
 
 	postfx = PostFxScript.new()
 	add_child(postfx)
@@ -260,6 +269,7 @@ func _setup_input() -> void:
 	_bind("hold_position", [KEY_H])
 	_bind("cycle_special", [KEY_X])
 	_bind("lav_toggle", [KEY_Z])
+	_bind("breach", [KEY_G])
 
 
 func _bind(action: String, keys: Array) -> void:
@@ -553,6 +563,91 @@ func _build_ground() -> void:
 
 ## Every cover object / building from the map. Low cover and tall crates go
 ## in cover_defs; buildings and compound walls also go in solid_defs.
+## Houses with a real ground floor (maps with HOUSES / ROOMS / DOORS). The
+## walls come in with the map's boxes; this registers the rooms and doors
+## and builds the storeys above as one block per house, which is lifted off
+## (hidden) while the squad is inside so you can see into the rooms.
+func _build_houses() -> void:
+	for def in map_const("HOUSES", []):
+		var r: Array = def["rect"]
+		var rect := Rect2(r[0], r[1], r[2] - r[0], r[3] - r[1])
+		var top: float = def["height"]
+		var roof := StaticBody3D.new()
+		roof.collision_layer = 1
+		roof.collision_mask = 0
+		roof.position = Vector3(rect.get_center().x, HOUSE_CEILING + (top - HOUSE_CEILING) * 0.5, rect.get_center().y)
+		var size := Vector3(rect.size.x, top - HOUSE_CEILING, rect.size.y)
+		var mi := MeshInstance3D.new()
+		var bm := BoxMesh.new()
+		bm.size = size
+		mi.mesh = bm
+		var sh := Shader.new()
+		sh.code = BUILDING_SHADER
+		var m := ShaderMaterial.new()
+		m.shader = sh
+		m.set_shader_parameter("wall_col", def["color"])
+		m.set_shader_parameter("seed", float(houses.size()) * 13.7)
+		m.set_shader_parameter("night", 1.0 if AtmosphereScript.night else 0.0)
+		mi.material_override = m
+		roof.add_child(mi)
+		var col := CollisionShape3D.new()
+		var bs := BoxShape3D.new()
+		bs.size = size
+		col.shape = bs
+		roof.add_child(col)
+		add_child(roof)
+		houses.append({"name": def["name"], "rect": rect, "roof": roof, "bodies": [roof]})
+	for r in map_const("ROOMS", []):
+		rooms.append({"rect": Rect2(r[0], r[1], r[2] - r[0], r[3] - r[1]), "house": r[4]})
+	for d in map_const("DOORS", []):
+		doors.append({"pos": d[0], "normal": d[1], "a": d[2], "b": d[3]})
+
+
+## The house `p` is in (index into houses), or -1.
+func house_at(p: Vector3) -> int:
+	for i in houses.size():
+		if (houses[i]["rect"] as Rect2).has_point(Vector2(p.x, p.z)):
+			return i
+	return -1
+
+
+## The room `p` is in (index into rooms), or -1. `grow` loosens the edges
+## (a man in a doorway counts for both rooms).
+func room_at(p: Vector3, grow := 0.0) -> int:
+	for i in rooms.size():
+		if (rooms[i]["rect"] as Rect2).grow(grow).has_point(Vector2(p.x, p.z)):
+			return i
+	return -1
+
+
+func room_center(i: int) -> Vector3:
+	var c: Vector2 = (rooms[i]["rect"] as Rect2).get_center()
+	return Vector3(c.x, 0, c.y)
+
+
+## Live enemies inside room `i`.
+func enemies_in_room(i: int) -> Array:
+	var out: Array = []
+	var rect: Rect2 = (rooms[i]["rect"] as Rect2).grow(0.25)
+	for t in targets:
+		if t.alive and t.kind == "infantry" and rect.has_point(Vector2(t.global_position.x, t.global_position.z)):
+			out.append(t)
+	return out
+
+
+## Lift the storeys off the house the squad is in; put them back when it leaves.
+func _update_houses() -> void:
+	if houses.is_empty():
+		return
+	var now := house_at(squad.get_focus()) if not squad.soldiers.is_empty() else -1
+	if now == inside_house:
+		return
+	inside_house = now
+	for i in houses.size():
+		(houses[i]["roof"] as Node3D).visible = i != now
+	cam_rig.indoors = now >= 0
+
+
 func _build_boxes() -> void:
 	var night: bool = AtmosphereScript.night
 	var mats := {
@@ -605,6 +700,17 @@ func _build_boxes() -> void:
 				_build_hedge(body, size, mats["hedge"], rng)
 			"water":
 				pass                        # invisible: the river bank / water edge
+			"hwall":
+				# A wall of a house you can go into: plain plaster in the house's colour.
+				var wmi := MeshInstance3D.new()
+				var wbm := BoxMesh.new()
+				wbm.size = size
+				wmi.mesh = wbm
+				var wm := StandardMaterial3D.new()
+				wm.albedo_color = (entry[4] as Color) if entry.size() > 4 else Color(0.7, 0.66, 0.56)
+				wm.roughness = 0.9
+				wmi.material_override = wm
+				body.add_child(wmi)
 			"building":
 				var mi := MeshInstance3D.new()
 				var bm := BoxMesh.new()
@@ -636,6 +742,9 @@ func _build_boxes() -> void:
 		bs.size = size
 		col.shape = bs
 		body.add_child(col)
+		for h in houses:                      # everything built inside a house belongs to it
+			if (h["rect"] as Rect2).grow(0.3).has_point(Vector2(pos.x, pos.z)):
+				h["bodies"].append(body)
 
 		# Big hollow boxes would otherwise leave walkable "floor" inside them
 		# in the navigation mesh; an obstacle footprint blocks that out.
@@ -910,7 +1019,7 @@ func _build_cover_points() -> void:
 			continue
 		var xf: Transform3D = def["xform"]
 		var size: Vector3 = def["size"]
-		var corners_only: bool = def.get("type", "") in ["building", "cwall"]
+		var corners_only: bool = def.get("type", "") in ["building", "cwall", "hwall"]
 		for face in [Vector3.RIGHT, Vector3.LEFT, Vector3.FORWARD, Vector3.BACK]:
 			var along_x: bool = absf(face.x) > 0.0
 			var half_n: float = size.x * 0.5 if along_x else size.z * 0.5
@@ -922,6 +1031,11 @@ func _build_cover_points() -> void:
 				for side in [-1.0, 1.0]:
 					var local: Vector3 = face * (half_n + 0.6) + tangent * side * maxf(span * 0.5 - 0.6, 0.0)
 					var lp: Vector3 = face * (half_n + 0.6) + tangent * side * (span * 0.5 + 0.5)
+					# A wall end that runs into another wall or building isn't a
+					# corner: there's nothing to lean round (and the lean-out
+					# spot would come out on the far side of that wall).
+					if CoverUtil.inside_any(cover_defs, xf * lp, 0.05) or CoverUtil.inside_any(cover_defs, xf * (face * (half_n + 0.6) + tangent * side * (span * 0.5 + 0.1)), 0.05):
+						continue
 					cover_points.append({
 						"pos": xf * local,
 						"normal": (xf.basis * face).normalized(),
@@ -976,6 +1090,7 @@ func _build_areas() -> void:
 		var area := {
 			"name": def["name"], "center": def["center"], "radius": def["radius"],
 			"members": [], "alerted": false, "claimed": claims,
+			"rect": def.get("rect"),       # a house garrison keeps to its house: [x0, z0, x1, z1]
 		}
 		var rpgs: Array = def.get("rpg", [])
 		for i in def["men"].size():
@@ -1040,6 +1155,13 @@ func on_area_alerted(area: Dictionary) -> void:
 	notify("CONTACT  -  AREA %s" % area["name"])
 
 
+var rooms_cleared := 0
+
+
+func on_room_cleared(_room: int) -> void:
+	rooms_cleared += 1
+
+
 func refresh_area(area: Dictionary) -> void:
 	_update_area_label(area)
 
@@ -1092,12 +1214,19 @@ func any_area_alerted() -> bool:
 	return false
 
 
-func areas_text() -> String:
+## `wrap`: what to put between rows of three (the HUD breaks long lists so
+## they stay clear of the help panel); empty = one line.
+func areas_text(wrap := "") -> String:
 	var parts: Array = []
 	for a in areas:
 		var n := _alive_in(a)
 		parts.append("%s %s" % [a["name"], "CLEAR" if n == 0 else str(n)])
-	return "   ".join(parts)
+	if wrap == "" or parts.size() <= 4:
+		return "   ".join(parts)
+	var rows: Array = []
+	for i in range(0, parts.size(), 3):
+		rows.append("   ".join(parts.slice(i, i + 3)))
+	return wrap.join(rows)
 
 
 ## Ground point under the centre of the reticle (for the move order).
@@ -1640,6 +1769,7 @@ func _build_hud() -> void:
 	help_label.text = "WASD move   MOUSE aim   WHEEL zoom   E move to reticle   C / SPACE cover on / off\n" \
 		+ "LMB focus fire   RMB throw / fire special   1-4 pick special   X next special\n" \
 		+ "F auto fire   T split / join teams   Q switch team   B bound   H hold + scout   Z LAV with us / overwatch\n" \
+		+ "G on a door: stack up, G again: breach and clear the room\n" \
 		+ "L lights   N night vision   I thermal (in reticle)   G graphics   V retro\n" \
 		+ "TAB aim / free mouse (free: hold RMB to pan)   ESC manual   O reticle\n" \
 		+ "M next map   BACKSPACE level select   R restart   F1 help"
@@ -1818,6 +1948,8 @@ func _process(delta: float) -> void:
 			if _tracer_life[i] <= 0.0:
 				_tracers[i].visible = false
 
+	_update_houses()
+
 	# Firing intensity decays when the guns go quiet.
 	fire_heat = move_toward(fire_heat, 0.0, delta * 1.1)
 	flash = move_toward(flash, 0.0, delta * 9.0)
@@ -1855,7 +1987,7 @@ func _process(delta: float) -> void:
 			+ "UNIT    %s\n" % squad.roster_text() \
 			+ "FIRE    %s%s\n" % [squad.fire_mode_text(), "   (auto fire ON)" if squad.auto_fire else ""] \
 			+ "FIRE ON US  %s\n" % _supp_bar(squad.avg_suppression()) \
-			+ "ENEMY   %s\n" % areas_text() \
+			+ "ENEMY   %s\n" % areas_text("\n        ") \
 			+ "HITS    %d     KILLS  %d     GFX %s" % [hits, kills, ("LOW" if low_quality else "HIGH") + (" DESKTOP" if AtmosphereScript.rich else "") + (" RETRO" if retro else "") + (" NVG" if night_vision else "") + (" IR" if thermal else "") + (" LIGHTS" if SquadScript.SoldierScript.lights_on else "")] \
 			+ ("\n\n>> %s" % _notice if _notice_t > 0.0 else "")
 

@@ -43,6 +43,9 @@ const COVER_LEAD := 6.0          # cover move: the unit's point stays this close
 const SHIFT_EVERY := 0.4         # cover move: how often the men re-pick their spots
 const COVER_SPREAD := 4.5        # cover move: furthest a man keeps from the unit's point
 const TEAM_NAMES := ["A", "B"]
+const DOOR_STACK_GAP := 0.95     # door stack: spacing between men along the wall
+const ENTRY_MEN := 4             # how many go in; the rest hold the door
+const ENTRY_GAP := 0.45          # seconds between men through the door
 const STACK_ROW := 0.95          # LAV stack: spacing between men in a file
 const STACK_FACES := ["REAR", "FRONT", "RIGHT", "LEFT"]
 
@@ -300,6 +303,9 @@ func fire_mode() -> int:
 ## (any enemy area alerted, or you're shooting), it fires at will. It won't
 ## start a fight on its own.
 func fire_mode_for(s: Node3D) -> int:
+	var br: Variant = teams[s.team].get("breach")
+	if br != null and br["phase"] == "go":
+		return AT_WILL               # going through a door: weapons free
 	if split and s.team != active:
 		return AT_WILL if (main.any_area_alerted() or fire_mode() != HOLD) else HOLD
 	return fire_mode()
@@ -462,6 +468,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		cycle_special()
 	elif event.is_action_pressed("lav_toggle"):
 		toggle_lav()
+	elif event.is_action_pressed("breach"):
+		breach_order()
 	elif event is InputEventKey and event.pressed and not event.echo and event.physical_keycode >= KEY_1 and event.physical_keycode <= KEY_4:
 		select_special(event.physical_keycode - KEY_1)
 
@@ -476,6 +484,7 @@ func move_to(p: Vector3, t := -1) -> void:
 		t = active
 		bound = {}
 		set_holding(false)
+	cancel_breach(t)
 	var lim: float = main.nav_half - 2.0
 	teams[t]["order_target"] = CoverUtil.push_out(main.solid_defs, Vector3(clampf(p.x, -lim, lim), 0, clampf(p.z, -lim, lim)), 1.0)
 	if teams[t]["in_cover"] and not ordered:
@@ -675,6 +684,7 @@ func _physics_process(delta: float) -> void:
 		else:
 			bound = {}
 			order_target = null
+			cancel_breach(active)
 			# Slow the anchor down if the team is lagging so the group stays tight.
 			var speed := MOVE_SPEED * _lag_factor(active)
 			if in_cover:
@@ -731,7 +741,9 @@ func _physics_process(delta: float) -> void:
 				if team["in_cover"]:
 					speed = MOVE_SPEED
 				team["anchor"] = _lead(t, team["anchor"] + to.normalized() * minf(speed * delta, to.length()))
-		if lav_with(t):
+		if team.get("breach") != null:
+			_breach_tick(t, delta)
+		elif lav_with(t):
 			_lav_stack(t)
 		elif not team["in_cover"]:
 			for s in team_members(t):
@@ -801,6 +813,7 @@ func take_cover(t := -1, facing := Vector3.ZERO) -> void:
 	if lav_with(t):
 		main.notify("ALREADY IN COVER BEHIND THE LAV  -  Z SENDS IT TO OVERWATCH")
 		return
+	cancel_breach(t)
 	var team: Dictionary = teams[t]
 	team["in_cover"] = true
 	team["order_target"] = null
@@ -1087,6 +1100,8 @@ func avg_suppression() -> float:
 
 func _team_status(t: int) -> String:
 	var members := team_members(t)
+	if teams[t].get("breach") != null:
+		return breach_text(t)
 	if lav_with(t):
 		return "BEHIND LAV %d/%d" % [stacked_count(t), members.size()]
 	if not teams[t]["in_cover"]:
@@ -1114,6 +1129,8 @@ func status_text() -> String:
 	elif not bound.is_empty():
 		tag = "  [BOUNDING]"
 	if not split:
+		if teams[0].get("breach") != null:
+			return breach_text(0) + tag
 		if lav_with(0):
 			return "STACKED BEHIND THE LAV (%s)  (%d/%d in position)" % [STACK_FACES[maxi(_stack_face, 0)], stacked_count(0), soldiers.size()] + tag
 		if not in_cover:
@@ -1409,3 +1426,221 @@ static func _seg_hits(a: Vector2, b: Vector2, r: Rect2) -> bool:
 		if r.has_point(a.lerp(b, float(k) / 10.0)):
 			return true
 	return false
+
+
+# ---------------------------------------------------------------- doors: stack, breach, clear
+# G with the reticle on a door: the team you command stacks up beside it,
+# single file against the wall, clear of the opening. G again: go. If
+# there's anyone in the room and somebody has a flashbang, it goes in first.
+# Then four men go through one behind the other, weapons free, the first
+# across the doorway to the far corner, the second hooking round to the near
+# one, the third and fourth following them along the two side walls, so
+# nobody stops in the doorway and every corner is covered. The rest hold the
+# door. "ROOM CLEAR" when all four are in and nothing in the room is alive.
+# Any move order calls it off.
+
+## `want`: a door index to use instead of the one under the reticle (tests).
+func breach_order(want := -1) -> void:
+	var t := active
+	var br: Variant = teams[t].get("breach")
+	if br != null:
+		if br["phase"] == "stack":
+			_breach_go(t)
+		else:
+			main.notify("ALREADY GOING IN")
+		return
+	if main.doors.is_empty():
+		main.notify("NO DOORS TO STACK ON HERE")
+		return
+	if lav_with(t):
+		main.notify("STACKED ON THE LAV  -  Z SENDS IT TO OVERWATCH FIRST")
+		return
+	var members := team_members(t)
+	if members.size() < 2:
+		main.notify("NOT ENOUGH MEN TO CLEAR A ROOM")
+		return
+	var c := centroid(t)
+	var aim_v: Variant = main.reticle_ground_point()
+	var aim: Vector3 = aim_v if aim_v != null else Vector3.INF
+	var best := -1
+	var best_s := INF
+	for i in main.doors.size():
+		var dp: Vector3 = main.doors[i]["pos"]
+		var from_team := dp.distance_to(c)
+		var from_aim := dp.distance_to(aim) if aim != Vector3.INF else 99.0
+		if from_team > 22.0 or (from_aim > 4.5 and from_team > 7.0):
+			continue
+		var sc := minf(from_aim, from_team + 2.0) + 0.1 * from_team
+		if sc < best_s:
+			best_s = sc
+			best = i
+	if want >= 0:
+		best = want
+	if best < 0:
+		main.notify("NO DOOR THERE  -  PUT THE RETICLE ON A DOOR AND PRESS G")
+		return
+	var door: Dictionary = main.doors[best]
+	# Which way is in: the side of the door the team isn't on.
+	var n: Vector3 = door["normal"]
+	var into: int = door["b"]
+	if (c - (door["pos"] as Vector3)).dot(n) > 0.0:
+		n = -n
+		into = door["a"]
+	if into < 0:
+		main.notify("THAT DOOR LEADS OUTSIDE  -  NOTHING TO CLEAR")
+		return
+	# Which side of it to stack on: wherever there's more wall to stand against.
+	var tan := Vector3(-n.z, 0, n.x)
+	var side := 1.0
+	var best_free := -1
+	for sd in [1.0, -1.0]:
+		var free := 0
+		for i in mini(members.size(), ENTRY_MEN):
+			if _stack_spot_free(_door_spot(door["pos"], n, tan, sd, i)):
+				free += 1
+		if free > best_free:
+			best_free = free
+			side = sd
+	if best_free < 2:
+		main.notify("NO ROOM TO STACK ON THAT DOOR")
+		return
+	members.sort_custom(func(a, b): return a.global_position.distance_to(door["pos"]) < b.global_position.distance_to(door["pos"]))
+	if teams[t]["in_cover"]:
+		leave_cover(t)
+	bound = {}
+	set_holding(false)
+	teams[t]["order_target"] = null
+	for m in members:
+		if m.state != m.State.FOLLOW:
+			m.leave_cover()
+	teams[t]["breach"] = {"door": best, "room": into, "n": n, "tan": tan, "side": side, "phase": "stack", "t": 0.0, "order": members, "points": [], "flash_t": 0.0}
+	main.notify("STACK UP  -  G TO GO")
+	main.sgt_callout(("SGT: " if leader_of(t) and leader_of(t).is_sergeant else "") + "STACK ON THE DOOR")
+
+
+func _door_spot(door_pos: Vector3, n: Vector3, tan: Vector3, side: float, i: int) -> Vector3:
+	return door_pos - n * 0.85 + tan * side * (0.8 + 0.6 + float(i) * DOOR_STACK_GAP)
+
+
+func _stack_spot_free(p: Vector3) -> bool:
+	if CoverUtil.inside_any(main.cover_defs, p, 0.3):
+		return false
+	var near := NavigationServer3D.map_get_closest_point(main.get_world_3d().navigation_map, p)
+	return Vector2(near.x - p.x, near.z - p.z).length() < 0.6
+
+
+func cancel_breach(t: int) -> void:
+	if teams[t].get("breach") == null:
+		return
+	teams[t]["breach"] = null
+	if not team_members(t).is_empty():
+		teams[t]["anchor"] = centroid(t)
+		teams[t]["anchor"].y = 0
+
+
+## How many of the stack are in place against the wall.
+func stack_ready(t: int) -> int:
+	var br: Variant = teams[t].get("breach")
+	if br == null:
+		return 0
+	var door: Dictionary = main.doors[br["door"]]
+	var n := 0
+	var i := 0
+	for m in br["order"]:
+		if is_instance_valid(m) and not m.dead:
+			if m.global_position.distance_to(CoverUtil.push_out(main.cover_defs, _door_spot(door["pos"], br["n"], br["tan"], br["side"], i), 0.45)) < 0.9:
+				n += 1
+			i += 1
+	return n
+
+
+func breach_text(t: int) -> String:
+	var br: Dictionary = teams[t]["breach"]
+	if br["phase"] == "stack":
+		return "STACKED ON THE DOOR %d/%d  -  G: GO" % [stack_ready(t), team_members(t).size()]
+	return "CLEARING THE ROOM" if br["flash_t"] <= 0.0 else "FLASHBANG IN..."
+
+
+func _breach_go(t: int) -> void:
+	var br: Dictionary = teams[t]["breach"]
+	var door: Dictionary = main.doors[br["door"]]
+	var rect: Rect2 = main.rooms[br["room"]]["rect"]
+	var n: Vector3 = br["n"]
+	var tan: Vector3 = br["tan"]
+	var sd: float = br["side"]
+	var dp: Vector3 = door["pos"]
+	# How far the room runs from the door: to each side along the wall, and in.
+	var along_x := absf(tan.x) > 0.5
+	var lo: float = (dp.x - rect.position.x) if along_x else (dp.z - rect.position.y)
+	var hi: float = (rect.end.x - dp.x) if along_x else (rect.end.y - dp.z)
+	var plus: float = hi if (tan.x + tan.z) > 0.0 else lo       # room to the +tan side
+	var minus: float = lo if (tan.x + tan.z) > 0.0 else hi
+	var w_far: float = maxf((minus if sd > 0.0 else plus) - 0.9, 0.6)     # the side away from the stack
+	var w_near: float = maxf((plus if sd > 0.0 else minus) - 0.9, 0.6)
+	var depth: float = rect.size.y if along_x else rect.size.x
+	var deep: float = clampf(depth * 0.55, 2.0, 3.4)
+	var pts := [dp + n * 1.1 - tan * sd * w_far, dp + n * 1.1 + tan * sd * w_near,
+			dp + n * deep - tan * sd * w_far, dp + n * deep + tan * sd * w_near]
+	br["points"] = pts.map(func(p): return CoverUtil.push_out(main.cover_defs, p, 0.5))
+	br["phase"] = "go"
+	br["t"] = 0.0
+	log_fire("BREACH AND CLEAR")
+	# Flashbang first, if the room's occupied and somebody's carrying one.
+	if not main.enemies_in_room(br["room"]).is_empty():
+		for m in br["order"]:
+			if is_instance_valid(m) and not m.dead and m.special_kind == "flash" and m.special_ammo > 0:
+				m.special_ammo -= 1
+				br["flash_t"] = 1.0
+				# Tossed a couple of steps in through the door, clear of the furniture.
+				br["flash_at"] = CoverUtil.push_out(main.cover_defs, dp + n * minf(depth * 0.4, 1.8), 0.7) + Vector3(0, 0.8, 0)
+				main.notify("FLASHBANG OUT!  -  STAND BY")
+				break
+	if br["flash_t"] <= 0.0:
+		main.notify("GO GO GO")
+		main.sgt_callout("GO!")
+
+
+func _breach_tick(t: int, delta: float) -> void:
+	var br: Dictionary = teams[t]["breach"]
+	var door: Dictionary = main.doors[br["door"]]
+	var order: Array = []
+	for m in br["order"]:
+		if is_instance_valid(m) and not m.dead and m.team == t:
+			order.append(m)
+	for m in team_members(t):            # anyone who joined since
+		if not order.has(m):
+			order.append(m)
+	br["order"] = order
+	if order.is_empty():
+		teams[t]["breach"] = null
+		return
+	teams[t]["anchor"] = centroid(t)
+	teams[t]["anchor"].y = 0
+	teams[t]["threat_dir"] = br["n"]
+	if br["phase"] == "go" and br["flash_t"] > 0.0:
+		br["flash_t"] -= delta
+		if br["flash_t"] <= 0.0:
+			main.spawn_explosion(br["flash_at"], Weapons.SPECIALS["flash"][0], null, false)
+			br["t"] = -0.25               # a beat for the bang, then in
+			main.sgt_callout("GO!")
+	else:
+		br["t"] += delta
+	var entering: bool = br["phase"] == "go" and br["flash_t"] <= 0.0
+	var inside := 0
+	for i in order.size():
+		var m: Node3D = order[i]
+		if entering and i < ENTRY_MEN and br["t"] >= float(i) * ENTRY_GAP:
+			m.move_target = br["points"][i]
+			if m.global_position.distance_to(br["points"][i]) < 1.5:
+				inside += 1
+		else:
+			m.move_target = CoverUtil.push_out(main.cover_defs, _door_spot(door["pos"], br["n"], br["tan"], br["side"], i), 0.45)
+	if not entering:
+		return
+	var men_in := mini(order.size(), ENTRY_MEN)
+	if br["t"] > float(men_in) * ENTRY_GAP + 0.8 and main.enemies_in_room(br["room"]).is_empty() and (inside >= men_in or br["t"] > 7.0):
+		teams[t]["breach"] = null
+		teams[t]["anchor"] = main.room_center(br["room"])
+		main.notify("ROOM CLEAR")
+		main.sgt_callout(("SGT: " if leader_of(t) and leader_of(t).is_sergeant else "") + "ROOM CLEAR")
+		main.on_room_cleared(br["room"])

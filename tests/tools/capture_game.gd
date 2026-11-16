@@ -7,6 +7,8 @@ extends SceneTree
 ##        the firefight (shouldered rifles, recoil).
 ## cover: TEST FIELD, the squad takes cover, then W is held: frames of the
 ##        cover-to-cover move (men hopping low, others prone and crawling).
+## breach: GORDIAN (MAP=5), the squad stacks on the EAST HOUSE's front door,
+##        goes in, then stacks on the inside door to the back room.
 ## lav:   SLEIPNIR (MAP=4), the stack behind the LAV at the start, driving
 ##        north, side views, then the fight at the outpost.
 var main
@@ -100,6 +102,44 @@ func _lav(pf: int) -> bool:
 	return false
 
 
+var _breach_shots := {560: "stack", 640: "entry", 700: "entry2", 900: "inside", 1250: "inside_stack", 1420: "back_room"}
+
+
+func _breach(pf: int) -> bool:
+	var sq = main.squad
+	var rig = main.cam_rig
+	for s in sq.soldiers:
+		s.hp = s.MAX_HP
+	for a in main.areas:
+		if a["name"] != "EAST HOUSE":
+			for m in a["members"]:
+				if m.kind == "infantry":
+					m._gun.blind_t = 2.0
+	if _once(pf, 20):
+		rig.yaw = -PI * 0.5
+		rig.dist = 9.0
+		rig.pitch = -0.45
+		sq.anchor = Vector3(6.5, 0, 46.5)
+		for s in sq.soldiers:
+			s.global_position = sq.anchor + s.slot_offset * 0.6
+	if _once(pf, 200):
+		sq.breach_order(0)
+	if _once(pf, 600):
+		sq.breach_order()
+	if _once(pf, 1000):
+		sq.breach_order(3)
+	if _once(pf, 1330):
+		sq.breach_order()
+	for k in _breach_shots:
+		if pf >= k and not _done.has(k):
+			_done[k] = true
+			root.get_viewport().get_texture().get_image().save_png(out.path_join("breach_%s.png" % _breach_shots[k]))
+			print(pf, " ", _breach_shots[k], "  ", sq.status_text())
+	if pf > 1450:
+		quit()
+	return false
+
+
 var _done := {}
 var _fired := {}
 
@@ -117,6 +157,8 @@ func _process(_d) -> bool:
 		return _cover(Engine.get_physics_frames())
 	if mode == "lav":
 		return _lav(Engine.get_physics_frames())
+	if mode == "breach":
+		return _breach(Engine.get_physics_frames())
 	if frame == 5 and OS.get_environment("RETRO") == "1" and not main.retro and mode != "cover":
 		main.toggle_retro()
 	if frame == 20:

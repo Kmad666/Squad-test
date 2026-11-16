@@ -9,6 +9,8 @@ extends Node3D
 
 const Atmosphere = preload("res://scripts/atmosphere.gd")
 const PIVOT_HEIGHT := 1.9     # pivot above the squad's anchor
+const INDOOR_PITCH := -1.0     # looking down into rooms (rad)
+const INDOOR_DIST := 9.5
 const CAM_LIFT := 1.7         # extra camera height above the pivot line
 
 var target: Node3D
@@ -21,6 +23,8 @@ var cam: Camera3D
 var _arm: SpringArm3D
 var _snapped := false
 var _shake_t := 0.0
+var indoors := false          # the squad is inside a house: look down into the rooms
+var _in := 0.0
 var free_mouse := false       # Tab: cursor free, clicks don't grab, RMB drag pans
 var _panning := false
 var _pan_from := Vector2.ZERO
@@ -133,8 +137,12 @@ func _process(delta: float) -> void:
 		_snapped = true
 	else:
 		global_position = global_position.lerp(focus, 1.0 - exp(-8.0 * delta))
-	rotation = Vector3(pitch, yaw, 0)
-	_arm.spring_length = lerpf(_arm.spring_length, dist, clampf(10.0 * delta, 0.0, 1.0))
+	# Indoors the camera swings up to look steeply down into the rooms (the
+	# storeys above are lifted off by main) and comes in a little.
+	_in = move_toward(_in, 1.0 if indoors else 0.0, delta * 2.5)
+	var ease_in := smoothstep(0.0, 1.0, _in)
+	rotation = Vector3(lerpf(pitch, minf(pitch, INDOOR_PITCH), ease_in), yaw, 0)
+	_arm.spring_length = lerpf(_arm.spring_length, lerpf(dist, minf(dist, INDOOR_DIST), ease_in), clampf(10.0 * delta, 0.0, 1.0))
 
 	# Firing intensity -> rattling shake and a slight FOV punch.
 	var heat: float = main.fire_heat if main else 0.0

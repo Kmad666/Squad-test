@@ -71,6 +71,11 @@ func move_text() -> String:
 func cover_text() -> String:
 	var t: int = squad.active
 	var members: Array = squad.team_members(t)
+	if squad.teams[t].get("breach") != null:
+		var br: Dictionary = squad.teams[t]["breach"]
+		if br["phase"] == "stack":
+			return "[color=#ffbf33]DOOR STACK[/color] %d/%d" % [squad.stack_ready(t), members.size()]
+		return "[color=#ff5a4d]CLEARING ROOM[/color]"
 	if squad.lav_with(t):
 		var lav_txt := "[color=#73ff4d]BEHIND LAV[/color] %d/%d" % [squad.stacked_count(t), members.size()]
 		return lav_txt + "  [color=#a8c8a0]%s[/color]" % squad.STACK_FACES[maxi(squad._stack_face, 0)]

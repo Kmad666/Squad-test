@@ -16,7 +16,7 @@ const NIGHT := Color(0.5, 0.72, 1.0)
 const ENTRIES := [
 	[3, "OPERATION BIFROST", true, "Force a river bridge choked with abandoned cars, a bus and trucks. The enemy holds the far bank: a sandbag line on the bridge, a checkpoint at its foot, a depot with an APC behind.", true],
 	[0, "OPERATION LAMPLIGHTER", false, "A rain-soaked street at night. Get past the roadblock and the alley ambush, link up with the rocket team and take the walled compound.", true],
-	[5, "OPERATION GORDIAN", true, "A Berlin crossroads: tram street, parked cars, five-storey blocks. Barricades hold the streets, so go round them through the carriage gateways and courtyards. They can do the same to you.", true],
+	[5, "OPERATION GORDIAN", true, "A Berlin crossroads: tram street, parked cars, five-storey blocks. Barricades hold the streets and garrisons hold the houses: go round through the gateways and courtyards, stack on a door (G) and clear room by room.", true],
 	[4, "OPERATION SLEIPNIR", true, "Combined arms on open farmland, the biggest map. Advance stacked behind your LAV-25 on a checkpoint, a hedgerow treeline, a farm and a crossroads village with an APC.", true],
 	[1, "TEST FIELD", true, "Open ground and three small enemy positions, for trying out orders.", false],
 	[2, "MODEL VIEWER", true, "Every soldier, pose, gait and firing position on a turntable.", false],

@@ -43,6 +43,7 @@ sky reflections are off. CI builds both desktop versions after the tests and the
 | Q | Switch which fire team you command (the other gives covering fire at will) |
 | B | Bounding advance to the point under the reticle: teams leapfrog, one moves while one covers |
 | H | Hold position: nobody moves, WASD scouts ahead with the camera (H again to release) |
+| G | Reticle on a door: stack up beside it. G again: breach and clear the room (OPERATION GORDIAN) |
 | Z | LAV with us (it leads, the infantry stack behind it) / LAV on overwatch (OPERATION SLEIPNIR) |
 | M | Next map (remembered) |
 | Backspace | Back to the level select |
@@ -55,6 +56,26 @@ sky reflections are off. CI builds both desktop versions after the tests and the
 | I | Thermal sight, inside the reticle only: bodies white-hot, everything else cold grey |
 | R | Restart |
 | Wheel | Zoom |
+
+## Houses and room clearing (OPERATION GORDIAN)
+Four houses have a real ground floor (maps declare `HOUSES`, `ROOMS`, `DOORS`; the generator lays out the plans):
+walls, open doorways, a front and a back row of rooms, and windows.
+- A **window** is a 1 m sill (ordinary low cover: crouch behind it, pop up to shoot through the opening) under a
+  piece of wall off the ground. A **door** is a gap with wall above it. Boxes off the ground never make cover.
+- **Inside**, the storeys above that house are hidden and the camera swings up to look down into the rooms
+  (`camera_rig.indoors`); the camera arm ignores those houses' walls.
+- **G** with the reticle on a door (or standing by one): the team **stacks** single file against the wall beside
+  it, on whichever side has more wall, clear of the opening. **G again**: if the room is occupied and someone
+  carries a **flashbang**, it goes in first; then **four men enter** one behind the other, weapons free: first
+  man across to the far corner, second hooking to the near corner, third and fourth along the two side walls.
+  The rest hold the door. "ROOM CLEAR" when all four are in and nothing in the room is alive. Any move order
+  calls it off. Works from outside or on an inside door.
+- **Garrisons** (an area with a `rect`) keep to their house: they don't flank, assault, fall back out of it or
+  get sent to reinforce the street, but give ground room by room. Other positions can fall back into a house.
+- **Close quarters** (inside 10 m): an enemy's hit chance rises to x2.4, his hits to x2 damage, and he gets
+  onto a new target in 40% of the time. Clearing a defended room without a flashbang costs wounded men.
+- Cover fix that came with this: a wall end that runs into another wall or building is no longer treated as a
+  corner to lean round (it put the lean-out spot on the far side of that wall).
 
 ## Combined arms: the LAV-25 (OPERATION SLEIPNIR)
 The unit gets an eight-wheeled LAV-25 (woodland camo, orange air-recognition panel on the deck) with a 25mm
@@ -182,6 +203,10 @@ GODOT=/path/to/godot tests/run_all.sh          # MINUTES=10 for longer soak runs
 - `berlin_test.gd`: OPERATION GORDIAN: every enemy post and the rocket team can be walked to, each gateway and
   the vacant lot really is a way through, the closed block can't be entered, nobody spawns inside a box, and the
   squad marches through a gateway into the courtyard and links up with the rocket team without losing anyone.
+- `breach_test.gd`: houses and room clearing: every door can be walked and shot through, windows pass a
+  chest-high shot only, the garrison stays in its house, the stack forms beside the door with nobody in the
+  doorway, a flashbang goes in and blinds the defender, four men enter and the rest hold, ROOM CLEAR, the roof
+  lifts and the camera looks down, the same again through an inside door, a move order calls a stack off.
 - `lav_test.gd`: combined arms on OPERATION SLEIPNIR: the infantry stack behind the LAV at the start, keep behind
   it while it drives (nobody in front of it, nobody left behind), both the 25mm and the leaning-out men fire at the
   outpost, Z sends the LAV to overwatch and calls it back, and losing the LAV turns the men back into normal infantry.
@@ -223,8 +248,10 @@ and two training grounds. 1-6 or a click deploys; Backspace in game comes back; 
   parked cars stay, the 30 m tram stands on its track, and one lot is a vacant lot behind a hoarding.
   Five houses the study gives a wide gate have their **carriage gateway open through to the courtyard** (a box
   off the ground is a lintel: you walk under it, and it makes no cover), so three blocks are ways round the
-  crossing; the fourth is closed. Enemies: GORDIAN SOUTH barricade (3), CROSSING (4), VACANT LOT (3), KETTEN EAST
-  (3 + APC on the tram street), GORDIAN NORTH strongpoint (5). The anti-armor team waits in the south-east yard.
+  crossing; the fourth is closed. Four houses can be entered (see Houses and room clearing). Enemies: GORDIAN
+  SOUTH barricade (3), CROSSING (3), VACANT LOT (3), KETTEN EAST (3 + APC on the tram street), GORDIAN NORTH
+  strongpoint (3), and garrisons in the EAST HOUSE (3), KETTEN HOUSE (4) and NORTH HOUSE (4); the WEST HOUSE is
+  empty. The anti-armor team waits in the south-east yard.
 - **TEST FIELD** (day): open ground with three small enemy positions, for tuning mechanics.
 - **MODEL VIEWER** (day, no enemies): every variant of the universal soldier (`scripts/soldier_model.gd`) on a
   turntable in its idle pose: rifleman, sergeant, grenadier, rocketman, enemy, crouched, and a hand-signal loop;

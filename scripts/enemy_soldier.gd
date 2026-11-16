@@ -254,7 +254,17 @@ func join_area(a: Dictionary) -> void:
 
 func _in_scope() -> bool:
 	var at: Vector3 = _dest if state != State.POST else global_position
-	return Vector2(at.x - _scope_c.x, at.z - _scope_c.z).length() <= _scope_r + 0.5
+	return _scope_has(at, 0.5)
+
+
+## Is `p` where he's meant to fight? Holding a house (an area with a
+## "rect") that means inside the house, not just near it: he gives ground
+## room by room but doesn't run out into the street.
+func _scope_has(p: Vector3, slack := 0.0) -> bool:
+	if role == "hold" and area.get("rect") != null:
+		var r: Array = area["rect"]
+		return p.x > r[0] - slack and p.x < r[2] + slack and p.z > r[1] - slack and p.z < r[3] + slack
+	return Vector2(p.x - _scope_c.x, p.z - _scope_c.z).length() <= _scope_r + slack
 
 
 ## "GRENADE!": if he isn't pinned and has his wits about him he sprints
@@ -292,7 +302,7 @@ func _pick_cover() -> void:
 	var best_score := INF
 	for cp in main.cover_points:
 		var p: Vector3 = cp["pos"]
-		if Vector2(p.x - _scope_c.x, p.z - _scope_c.z).length() > _scope_r:
+		if not _scope_has(p):
 			continue
 		if area["claimed"].has(p) and (_cover.is_empty() or _cover["pos"] != p):
 			continue
@@ -337,6 +347,8 @@ func _take_hasty_position() -> void:
 	_release_cover()
 	_hasty = true
 	var r := minf(_scope_r, 6.0)
+	if role == "hold" and area.get("rect") != null:
+		r = 2.0                    # stay well inside the house
 	_dest = CoverUtil.push_out(main.cover_defs, _scope_c + Vector3(_rng.randf_range(-r, r), 0, _rng.randf_range(-r, r)), 0.6)
 	_dest.y = 0
 	state = State.MOVING

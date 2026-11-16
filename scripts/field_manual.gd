@@ -210,6 +210,9 @@ const PAGES := [
   {k}Q{/k}              Switch which team you command
   {k}B{/k}              Bounding advance to the spot under the reticle
 
+ {h}HOUSES{/h}  {d}(OPERATION GORDIAN){/d}
+  {k}G{/k}              Reticle on a door: stack up beside it. {k}G{/k} again: breach and clear the room
+
 {h}COMBINED ARMS{/h}  {d}(OPERATION SLEIPNIR){/d}
   {k}Z{/k}              LAV with us (it leads, the men stack behind it) / LAV on overwatch
 
@@ -333,6 +336,24 @@ The LAV {h}leads{/h}: it drives to the unit's point (the front) and the infantry
 The LAV stops where it is and covers: once a fight is on it fires at will at anything it can see. The men get up and act as normal infantry (cover, cover to cover, prone). {k}Z{/k} calls it back: they stack on it where it is and it leads again.
 With fire teams split, the LAV works with team A.
 """],
+["HOUSES & ROOM CLEARING", """{h}HOUSES YOU CAN GO INTO{/h}  {d}(OPERATION GORDIAN){/d}
+Four houses have a real ground floor: the {h}East House{/h} and {h}West House{/h} either side of the south barricade, the {h}Ketten House{/h} on the tram street, and the {h}North House{/h} by the north strongpoint. You can tell them by the open doorways and window openings at street level. Three are garrisoned; the West House is empty, yours to take and fire from.
+  - {h}Doors{/h} are open doorways. Each house has a front door on the street; three have a back door onto their courtyard. Inside, a front row and a back row of rooms, with doors between.
+  - {h}Windows{/h} are openings over a sill. The sill is low cover: a man behind it crouches out of sight and pops up to fire through the opening. That works for you too: take a house and your men fire from its windows ({k}C{/k} inside).
+  - {h}Inside{/h}, the storeys above lift away and the camera swings up to look down into the rooms. It goes back when you leave.
+  - You can simply walk in with {k}WASD{/k} or {k}E{/k}. Against a defended room, don't.
+
+{h}STACK, BREACH, CLEAR  ({k}G{/k}){/h}
+  1. {h}Stack:{/h} put the reticle on a door and press {k}G{/k}. The team you command lines up single file against the wall beside it, clear of the opening. (Standing close to a door works too.) Stack from outside, or from inside on a door to the next room.
+  2. {h}Go:{/h} {k}G{/k} again. If the room is occupied and anyone still carries a {h}flashbang{/h}, it goes in first: men it catches in the open are blind for a few seconds. Then {h}four men go through{/h}, one behind the other, weapons free whatever your fire orders: the first across the doorway to the far corner, the second hooking round to the near corner, the third and fourth following them along the two side walls. Nobody stops in the doorway, every corner is covered. The rest hold the door.
+  3. {h}Clear:{/h} when all four are in and nothing in the room is alive: "ROOM CLEAR", and the team is yours again, standing in that room.
+Any move order ({k}WASD{/k}, {k}E{/k}, {k}C{/k}) calls it off.
+
+{h}THE DEFENDERS{/h}
+  - A garrison {h}holds its house{/h}: it doesn't come out to flank or fall back down the street. Inside, the men give ground room by room and make a stand in the far rooms. Others may fall back {h}into{/h} a house, or be sent to reinforce it.
+  - {h}Close quarters is deadly.{/h} Inside 10 m an enemy gets onto you much faster, rarely misses and hits harder. A man in a doorway facing an unblinded rifle gets hurt. Use the flashbang (you carry two), a frag through the door or window first, or come at the room from a door they aren't watching.
+  {d}The back door through the courtyard is usually the better way in than the front door on a street they're covering.{/d}
+"""],
 ["HEALTH & SUPPRESSION", """{h}HEALTH{/h}
 Each man has 100 HP. Below 50 he's {h}wounded{/h}: slower and less accurate. At 0 he's {h}down{/h}. He stays where he fell and the squad closes ranks. The panel at bottom right shows every man's health and special; the screen edge flashes red when someone is hit.
 
@@ -412,12 +433,14 @@ You start at the south end of a street between two rows of buildings.
 {d}Tips: link up with the rocket team first. Send a team down the alley to flank the roadblock. Save rockets for the APC.{/d}
 
 {h}OPERATION GORDIAN{/h}  {d}(day){/d}
-{h}Objective:{/h} take the crossroads: clear all five positions. A Berlin crossroads, 190 m across: {h}Gordianstrasse{/h} (asphalt, lindens, parked cars down both kerbs) runs north from your start and crosses {h}Kettenstrasse{/h} (setts, tram rails, a 30 m tram standing east of the crossing). Five-storey houses wall in both streets.
+{h}Objective:{/h} take the crossroads: clear all eight positions, three of them inside houses. A Berlin crossroads, 190 m across: {h}Gordianstrasse{/h} (asphalt, lindens, parked cars down both kerbs) runs north from your start and crosses {h}Kettenstrasse{/h} (setts, tram rails, a 30 m tram standing east of the crossing). Five-storey houses wall in both streets.
   - {h}Gordian South:{/h} a barricade across the street ahead of you (3 riflemen).
-  - {h}Crossing:{/h} sandbags on the far side, an advertising column, a kiosk and the nose of the tram (4).
+  - {h}Crossing:{/h} sandbags on the far side, a kiosk and the nose of the tram (3).
   - {h}Vacant lot:{/h} a gap in the houses on Kettenstrasse west, behind a hoarding with a break in it (3).
   - {h}Ketten East:{/h} behind the tram, with the APC patrolling the tram street (3 + APC).
-  - {h}Gordian North:{/h} the strongpoint up the street: sandbags, a container and a truck across the road (5).
+  - {h}Gordian North:{/h} the strongpoint up the street: sandbags, a container and a truck across the road (3).
+  - {h}East House{/h} (3), {h}Ketten House{/h} (4) and {h}North House{/h} (4): garrisons inside, firing from the windows (see HOUSES & ROOM CLEARING).
+  - The {h}West House{/h}, opposite the East House, is empty: its windows look onto the south barricade.
 {h}Gateways:{/h} five houses have their carriage gateway open right through to the courtyard behind (look for the dark tunnel in the facade). Three blocks are ways round:
   - {h}East yard:{/h} gateway on your right at the brick house, out again onto Kettenstrasse behind the tram. The {h}anti-armor team{/h} waits in this yard.
   - {h}West yard:{/h} gateway on your left, out through the back of the vacant lot.

@@ -40,7 +40,23 @@ PALETTE = {
 GATES = {"B 1,1 1": 57.0, "A 1,1 1": 58.0, "B -1,1 1": 63.0, "A 1,-1 0": 42.0, "B 1,-1 1": -63.0}
 OPEN_YARDS = [(1, 1), (-1, 1), (1, -1)]     # quadrants (sign x, sign z) whose courtyards you can get into; (-1,-1) is closed
 
+# Houses you can go into: the ground floor is real (walls, doors, rooms,
+# windows); the storeys above are one block the game lifts off when the squad
+# is inside. lot name -> [label, does it have a back door onto its yard, how
+# many of the enemy are inside].
+INTERIORS = {
+    "B 1,1 0": ["EAST HOUSE", True, 3],        # beside the south barricade; backs onto the south-east yard
+    "B -1,1 0": ["WEST HOUSE", True, 0],       # opposite it, empty: yours to take and fire from
+    "A -1,-1 0": ["KETTEN HOUSE", False, 4],   # north side of Kettenstrasse, looks onto the crossing and the vacant lot
+    "B 1,-1 0": ["NORTH HOUSE", True, 4],      # beside the north strongpoint; backs onto the north-east yard
+}
+WALL_T, CEIL, DOOR_W, WIN_W, SILL_H, HEAD_H = 0.4, 3.6, 1.6, 2.0, 1.0, 2.3
+
 rnd = random.Random(1887)
+houses = []         # {name, rect, height, colour}
+rooms = []          # [x0, z0, x1, z1, house]
+doors = []          # [pos, normal (from room a into room b), a, b]   (-1 = outside)
+garrisons = []      # {name, rect, men}
 boxes = []          # (comment or None, [x, y, z], [sx, sy, sz], yaw, type, colour or None)
 
 
@@ -102,10 +118,131 @@ def house(lot):
                 rect(x0, x1, gate - GATE_W / 2, gate + GATE_W / 2, h - GATE_H, "building", col, y=GATE_H)
 
 
+def interior(lot):
+    """A house with a real ground floor. Plan, in the house's own frame (u
+    along the street, v back from the front): a front row and a back row of
+    rooms either side of a spine wall, two or three bays long. The front
+    door is in the last bay, the back door (if any) in the first, and the
+    doors through the spine are off to one side of each bay, so no door looks
+    straight through another."""
+    label, has_back, men_n = INTERIORS[lot["name"]]
+    seg = lot["segs"][0]
+    (ox, oz), (ax, az), w = seg["o"], seg["a"], seg["w"]
+    ex, ez = ox + ax * w, oz + az * w
+    along_x = abs(ax) > 0.5
+    h = round(rnd.uniform(20.5, 23.0), 1)
+    col = colour(lot["style"])
+    if along_x:
+        s = math.copysign(1, oz)
+        u0 = min(ox, ex)
+        to_world = lambda u, v: (u0 + u, s * (A_FRONT + v))
+        v_dir, u_dir = (0, 0, s), (1, 0, 0)
+    else:
+        s = math.copysign(1, ox)
+        u0 = min(oz, ez)
+        to_world = lambda u, v: (s * (B_FRONT + v), u0 + u)
+        v_dir, u_dir = (s, 0, 0), (0, 0, 1)
+    Lh = w
+    hi = len(houses)
+
+    def piece(ua, ub, va, vb, hgt, kind, y=0.0, c=col):
+        (xa, za), (xb, zb) = to_world(ua, va), to_world(ub, vb)
+        rect(min(xa, xb), max(xa, xb), min(za, zb), max(za, zb), hgt, kind, c if kind == "hwall" else None, y=y)
+
+    def run(along_u, a, b, c0, c1, openings):
+        """A wall from a to b (along u, or along v) filling the band c0..c1
+        across it, with door / window openings [(centre, kind)]."""
+        def put(p, q, hgt, kind, y=0.0):
+            if q - p < 0.05:
+                return
+            if along_u:
+                piece(p, q, c0, c1, hgt, kind, y)
+            else:
+                piece(c0, c1, p, q, hgt, kind, y)
+        at = a
+        for centre, kind in sorted(openings):
+            half = (DOOR_W if kind == "door" else WIN_W) / 2
+            put(at, centre - half, CEIL, "hwall")
+            if kind == "window":
+                put(centre - half, centre + half, SILL_H, "wall")
+            put(centre - half, centre + half, CEIL - HEAD_H, "hwall", HEAD_H)
+            at = centre + half
+        put(at, b, CEIL, "hwall")
+
+    bays = 2 if Lh < 18 else 3
+    bw = Lh / bays
+    mid_v = DEPTH / 2
+    hall, back_bay = bays - 1, 0
+    centre = lambda k: (k + 0.5) * bw
+    # Outside walls.
+    run(True, 0, Lh, 0, WALL_T, [(centre(k), "door" if k == hall else "window") for k in range(bays)])
+    run(True, 0, Lh, DEPTH - WALL_T, DEPTH, [(centre(k), "door" if k == back_bay else "window") for k in range(bays)] if has_back else [])
+    run(False, WALL_T, DEPTH - WALL_T, 0, WALL_T, [])
+    run(False, WALL_T, DEPTH - WALL_T, Lh - WALL_T, Lh, [])
+    # Spine wall and the walls between bays.
+    spine = [(centre(k) + (1.6 if k % 2 == 0 else -1.6), "door") for k in range(bays)]
+    run(True, WALL_T, Lh - WALL_T, mid_v - WALL_T / 2, mid_v + WALL_T / 2, spine)
+    for k in range(1, bays):
+        run(False, WALL_T, mid_v - WALL_T / 2, k * bw - WALL_T / 2, k * bw + WALL_T / 2, [(mid_v / 2 - 0.6, "door")])
+        run(False, mid_v + WALL_T / 2, DEPTH - WALL_T, k * bw - WALL_T / 2, k * bw + WALL_T / 2, [(mid_v * 1.5 + 0.6, "door")])
+    # Rooms, front row then back row, and the doors between them.
+    base = len(rooms)
+
+    def room_rect(k, back):
+        ua, ub = k * bw + (WALL_T if k == 0 else WALL_T / 2), (k + 1) * bw - (WALL_T if k == bays - 1 else WALL_T / 2)
+        va, vb = (mid_v + WALL_T / 2, DEPTH - WALL_T) if back else (WALL_T, mid_v - WALL_T / 2)
+        (xa, za), (xb, zb) = to_world(ua, va), to_world(ub, vb)
+        return [round(min(xa, xb), 2), round(min(za, zb), 2), round(max(xa, xb), 2), round(max(za, zb), 2)]
+
+    for back in (False, True):
+        for k in range(bays):
+            rooms.append(room_rect(k, back) + [hi])
+    front = lambda k: base + k
+    rear = lambda k: base + bays + k
+
+    def door(u, v, n, a, b):
+        x, z = to_world(u, v)
+        doors.append([[round(x, 2), 0, round(z, 2)], list(n), a, b])
+
+    door(centre(hall), WALL_T / 2, v_dir, -1, front(hall))
+    if has_back:
+        door(centre(back_bay), DEPTH - WALL_T / 2, v_dir, rear(back_bay), -1)
+    for k, (u, _) in enumerate(spine):
+        door(u, mid_v, v_dir, front(k), rear(k))
+    for k in range(1, bays):
+        door(k * bw, mid_v / 2 - 0.6, u_dir, front(k - 1), front(k))
+        door(k * bw, mid_v * 1.5 + 0.6, u_dir, rear(k - 1), rear(k))
+    # A table or a cupboard in each room: something to get behind indoors.
+    for i in range(bays * 2):
+        r = rooms[base + i]
+        cx, cz = (r[0] + r[2]) / 2, (r[1] + r[3]) / 2
+        ang = rnd.choice([0.0, 1.571])
+        if i % 2 == 0:
+            box([cx + rnd.uniform(-0.6, 0.6), 0, cz + rnd.uniform(-0.6, 0.6)], [1.8, 0.9, 0.9], ang, "crate")
+        else:
+            box([cx + rnd.uniform(-0.8, 0.8), 0, cz + rnd.uniform(-0.8, 0.8)], [1.3, 2.0, 0.6], ang, "tall")
+    (xa, za), (xb, zb) = to_world(0, 0), to_world(Lh, DEPTH)
+    hrect = [round(min(xa, xb), 2), round(min(za, zb), 2), round(max(xa, xb), 2), round(max(za, zb), 2)]
+    houses.append({"name": label, "rect": hrect, "height": h, "colour": col})
+    # The garrison: men at the front windows first, then the back rooms.
+    if men_n:
+        men = []
+        spots = [(centre(k), WALL_T + 0.7) for k in range(bays) if k != hall] + [(centre(hall) + 2.2, WALL_T + 0.9)] + [(centre(k), mid_v + 2.5) for k in range(bays)]
+        for u, v in spots[:men_n]:
+            x, z = to_world(u, v)
+            men.append([round(x, 2), 0, round(z, 2)])
+        garrisons.append({"name": label, "rect": hrect, "men": men})
+
+
 gap = None
 for lot in L["lots"]:
     if lot.get("gap"):
         gap = lot
+    elif lot["name"] in INTERIORS:
+        first_box = len(boxes)
+        interior(lot)
+        n, pos, size, yaw, kind, c = boxes[first_box]
+        boxes[first_box] = ("%s: %s (%s), enterable: ground-floor walls, sills and furniture" % (INTERIORS[lot["name"]][0], lot["name"], lot["style"]), pos, size, yaw, kind, c)
     else:
         house(lot)
 
@@ -247,6 +384,19 @@ for note, pos, size, yaw, kind, col in boxes:
     extra = ", Color(%g, %g, %g)" % col if col else ""
     lines.append("\t[%s, %s, %g, \"%s\"%s]," % (v3(pos), v3(size), yaw, kind, extra))
 
+def area_radius(r):
+    return round(math.hypot(r[2] - r[0], r[3] - r[1]) / 2 + 1, 1)
+
+
+g_lines = []
+for g in garrisons:
+    r = g["rect"]
+    g_lines.append('\t{"name": "%s", "center": Vector3(%g, 0, %g), "radius": %g, "rect": [%g, %g, %g, %g],\n\t\t"men": [%s]},' % (
+        g["name"], (r[0] + r[2]) / 2, (r[1] + r[3]) / 2, area_radius(r), r[0], r[1], r[2], r[3], ", ".join(v3(m) for m in g["men"])))
+h_lines = ['\t{"name": "%s", "rect": [%g, %g, %g, %g], "height": %g, "color": Color(%g, %g, %g)},' % ((hh["name"],) + tuple(hh["rect"]) + (hh["height"],) + hh["colour"]) for hh in houses]
+r_lines = ["\t[%g, %g, %g, %g, %d]," % tuple(r) for r in rooms]
+d_lines = ["\t[%s, %s, %d, %d]," % (v3(d[0]), v3(d[1]), d[2], d[3]) for d in doors]
+
 lamps = ", ".join("Vector2(%g, %g)" % (round(p["x"], 1), round(p["z"], 1)) for p in L["lamps"])
 
 out = '''extends RefCounted
@@ -269,6 +419,11 @@ out = '''extends RefCounted
 ##   south-west yard: Gordianstraße z 63  <->  the vacant lot (x -57)
 ##   north-east yard: Kettenstraße x 42   <->  Gordianstraße z -63
 ## The north-west block is closed.
+##
+## Four houses have a real ground floor (INTERIORS in the generator): the
+## EAST HOUSE and WEST HOUSE either side of the south barricade, the KETTEN
+## HOUSE on the tram street and the NORTH HOUSE by the north strongpoint.
+## Three are garrisoned; the west one is empty.
 
 const NAME := "OPERATION GORDIAN"
 const NIGHT := false
@@ -289,14 +444,29 @@ const AREAS := [
 	{"name": "GORDIAN SOUTH", "center": Vector3(0, 0, 34), "radius": 13.0,
 		"men": [Vector3(-2.6, 0, 34.8), Vector3(2.9, 0, 36.0), Vector3(8.4, 0, 34.2)]},
 	{"name": "CROSSING", "center": Vector3(2, 0, -6), "radius": 17.0,
-		"men": [Vector3(-3.4, 0, -10.2), Vector3(4.0, 0, -9.8), Vector3(9.3, 0, -11.9), Vector3(19.6, 0, -1.5)]},
+		"men": [Vector3(-3.4, 0, -10.2), Vector3(4.0, 0, -9.8), Vector3(19.6, 0, -1.5)]},
 	{"name": "VACANT LOT", "center": Vector3(%(lot_x)g, 0, 20), "radius": 13.0,
 		"men": [Vector3(%(lot_a)g, 0, 18.8), Vector3(%(lot_b)g, 0, 19.2), Vector3(%(lot_x)g, 0, 24.7)]},
 	{"name": "KETTEN EAST", "center": Vector3(58, 0, -2), "radius": 18.0,
 		"men": [Vector3(63.3, 0, -4.9), Vector3(66, 0, -5.5), Vector3(52.5, 0, -1.5)],
 		"apc": [Vector3(46, 0, 3.4), Vector3(86, 0, 3.4)]},
 	{"name": "GORDIAN NORTH", "center": Vector3(0, 0, -53), "radius": 17.0,
-		"men": [Vector3(-2.6, 0, -45.2), Vector3(3.0, 0, -46.4), Vector3(-8.4, 0, -50.3), Vector3(8.4, 0, -54.2), Vector3(0, 0, -59.5)]},
+		"men": [Vector3(-2.6, 0, -45.2), Vector3(3.0, 0, -46.4), Vector3(0, 0, -59.5)]},
+%(garrisons)s
+]
+
+## Houses with a real ground floor. "rect" is the footprint [x0, z0, x1, z1];
+## the game builds the storeys above (and lifts them off when the squad is
+## inside). ROOMS are [x0, z0, x1, z1, house]; DOORS are [centre, the way
+## through from room a into room b, a, b], with -1 for outside.
+const HOUSES := [
+%(houses)s
+]
+const ROOMS := [
+%(rooms)s
+]
+const DOORS := [
+%(doors)s
 ]
 
 
@@ -352,8 +522,8 @@ static func _box(main: Node3D, pos: Vector3, size: Vector3, mat: Material) -> vo
 	mi.position = pos
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	main.add_child(mi)
-''' % {"half": EDGE, "lamps": lamps, "boxes": "\n".join(lines), "lot_x": round(mid, 1), "lot_a": round(mid + 4.5, 1), "lot_b": round(mid - 5.0, 1)}
+''' % {"half": EDGE, "lamps": lamps, "boxes": "\n".join(lines), "garrisons": "\n".join(g_lines), "houses": "\n".join(h_lines), "rooms": "\n".join(r_lines), "doors": "\n".join(d_lines), "lot_x": round(mid, 1), "lot_a": round(mid + 4.5, 1), "lot_b": round(mid - 5.0, 1)}
 
 path = os.path.join(ROOT, "scripts", "maps", "berlin_mission.gd")
 open(path, "w").write(out)
-print("wrote %s: %d boxes (%d parked cars of %d)" % (os.path.relpath(path, ROOT), len(boxes), kept, len(L["cars"])))
+print("wrote %s: %d boxes (%d parked cars of %d), %d houses with %d rooms and %d doors" % (os.path.relpath(path, ROOT), len(boxes), kept, len(L["cars"]), len(houses), len(rooms), len(doors)))
