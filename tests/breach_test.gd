@@ -220,6 +220,17 @@ func _physics_process(_d: float) -> bool:
 			if e == 30:
 				sq.breach_order(_door(Vector3(21.35, 0, 40.15)))
 				_check(sq.teams[0].get("breach") != null, "a third stack (%s)" % main._notice)
+			if e == 60:
+				# Splitting (and joining) the squad calls a stack off too, for
+				# both teams: nothing left over to come back later.
+				sq.split_teams()
+				_check(sq.teams[0].get("breach") == null and sq.teams[1].get("breach") == null, "splitting calls the stack off")
+				sq.switch_team()
+				sq.breach_order(_door(Vector3(21.35, 0, 40.15)))
+				_check(sq.teams[1].get("breach") != null, "team B can stack (%s)" % main._notice)
+				sq.join_teams()
+				_check(sq.teams[0].get("breach") == null and sq.teams[1].get("breach") == null, "joining calls it off, for team B as well")
+				sq.breach_order(_door(Vector3(21.35, 0, 40.15)))
 			if e == 90:
 				sq.move_to(Vector3(5, 0, 50))
 				_check(sq.teams[0].get("breach") == null, "a move order calls the stack off")

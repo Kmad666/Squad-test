@@ -497,6 +497,8 @@ func split_teams() -> void:
 	if soldiers.size() < 2:
 		main.notify("NOT ENOUGH MEN TO SPLIT")
 		return
+	cancel_breach(0)                 # a door stack doesn't survive reorganising the squad
+	cancel_breach(1)
 	var base: Vector3 = teams[0]["anchor"]
 	var was_in_cover: bool = teams[0]["in_cover"]
 	# Spread specialists across both teams, then alternate riflemen.
@@ -536,6 +538,8 @@ func _role_rank(role: String) -> int:
 
 ## T again: everyone regroups on the team you're commanding.
 func join_teams() -> void:
+	cancel_breach(0)
+	cancel_breach(1)
 	var base: Vector3 = teams[active]["anchor"]
 	bound = {}
 	split = false

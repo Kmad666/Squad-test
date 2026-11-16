@@ -168,6 +168,10 @@ so the blast can still catch the target.
   - Individually: men **stay down when nothing of yours is within their weapon's range** (a quick look every
     few seconds), so positions can't be sniped from far off; and men warned of a **frag** dive clear of it
     (70% of the time, if not pinned), which flushes them out of cover.
+- **Cover you can't reach doesn't exist:** once the navigation map is live, cover spots that are off the mesh
+  or can't be walked to from the start (behind a wall, in a sealed block, past the map edge) are dropped, as
+  are lean-out spots off the mesh (`main.cover_pruned` says how many). Enemy posts are pushed out of any box
+  they were placed in.
 - Soldiers have 100 HP. Below 50 they're **wounded** (slower, less accurate); at 0 they're **down** and leave the squad.
 - **Suppression** (both sides): rounds snapping past within ~2 m build it up; it fades ~1.5 s after the fire stops.
   Suppressed soldiers peek less and shoot worse; **pinned** soldiers stay down. Suppressed enemies fire slower and
@@ -231,7 +235,12 @@ GODOT=/path/to/godot tests/run_all.sh          # MINUTES=10 for longer soak runs
   to cover, go prone and crawl in the open, prone men are harder to hit, and leaving cover stands everyone up.
 - `death_test.gd`: in-game edge cases on both maps: men killed mid-run, mid-signal and crouched, the sergeant killed
   (one heir promoted), crouch toggled every frame, enemies killed while peeking.
-- `soak_test.gd`: random orders (including split / switch / bound / hold), WASD bursts in and out of cover, cover toggles, fire modes, specials, graphics toggles and restarts; fails on any script error.
+- `soak_test.gd`: random orders (including split / switch / bound / hold, LAV toggles, door stacks and breaches),
+  WASD bursts in and out of cover, cover toggles, fire modes, specials, graphics toggles and restarts; fails on
+  any script error. A **watchdog** looks at every man twice a second and fails the run if anyone is outside the
+  map, deep inside a box for 2 s, or trying to move and going nowhere for 12 s.
+- `tests/tools/audit_map.gd` (not in the suite; `MAP=n`): a map's static data: cover and lean-out spots that are
+  off the navigation mesh or can't be walked to, enemies spawned inside a box, doors whose rooms don't match.
 
 ## Maps
 The game opens on a level select (`menu.tscn` / `scripts/menu.gd`): four operations (three by day, one by night)

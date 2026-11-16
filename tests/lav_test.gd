@@ -113,6 +113,10 @@ func _process(_d: float) -> bool:
 				_check(sq.stacked_count(0) == sq.soldiers.size(), "stopped: everyone settles in the stack (%d/%d)" % [sq.stacked_count(0), sq.soldiers.size()])
 				# Fight: fire at will, push up to the outpost.
 				sq.auto_fire = true
+				# Tough defenders for this fight, so it always lasts long enough
+				# to see the infantry lean out (the 25mm can end it in seconds).
+				for m in main.areas[0]["members"]:
+					m.hp = 60.0
 				men_shots0 = _men_shots()
 				Input.action_press("move_forward")
 				phase = 3

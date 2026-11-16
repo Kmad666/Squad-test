@@ -46,6 +46,7 @@ var houses: Array = []           # enterable houses: {name, rect: Rect2 (x, z), 
 var rooms: Array = []            # {rect: Rect2, house: int}
 var doors: Array = []            # {pos, normal (from room a into room b), a, b}  (-1 = outside)
 var inside_house := -1           # the house the squad you command is in (its upper storeys are lifted off)
+var cover_pruned := -1           # cover spots dropped as unreachable (-1 until the check has run)
 var tactics: Node                # enemy small-unit tactics (flank, fall back, reinforce, assault)
 var areas: Array = []           # [{name, center, radius, members, alerted, claimed, label}]
 var vehicles: Array = []
@@ -126,6 +127,7 @@ func _ready() -> void:
 		_bake_vehicle_nav()
 	_build_cover_points()
 	_drop_wet_cover_points()
+	_prune_cover_points()        # finishes a couple of frames from now, once the nav map is live
 	_build_areas()
 	_build_tracers()
 	_build_impacts()
@@ -1064,6 +1066,59 @@ func _build_cover_points() -> void:
 				})
 
 ## (after _build_cover_points) No cover spot or lean-out spot in the river.
+## Once the navigation map is live (its first synchronisation after the
+## bake): drop cover spots nobody can walk to (behind a wall, inside a sealed
+## block, past the edge of the map), and lean-out spots off the mesh. A man
+## who picked one would run at a wall for ever.
+func _prune_cover_points() -> void:
+	var waited := 0
+	while true:
+		await get_tree().physics_frame
+		if not is_inside_tree():
+			return
+		waited += 1
+		var live: RID = get_world_3d().navigation_map
+		# The first synchronisation is of an empty map; wait for the mesh.
+		if NavigationServer3D.map_get_iteration_id(live) > 0 and _on_mesh(live, map.START):
+			break
+		if waited > 300:
+			return                   # no navigation to judge by: leave the spots alone
+	var nav: RID = get_world_3d().navigation_map
+	var start: Vector3 = map.START
+	var keep: Array = []
+	for cp in cover_points:
+		var p: Vector3 = cp["pos"]
+		if not _on_mesh(nav, p) or not _walkable(nav, start, p):
+			continue
+		var peeks: Array = []
+		for lp in cp["peeks"]:
+			if _on_mesh(nav, lp):
+				peeks.append(lp)
+		if not (cp["peeks"] as Array).is_empty() and peeks.is_empty():
+			continue                 # tall cover with nowhere left to lean out: useless
+		cp["peeks"] = peeks
+		keep.append(cp)
+	if keep.size() * 2 < cover_points.size():
+		push_warning("cover check would drop most of the map's cover (%d of %d): skipped" % [cover_points.size() - keep.size(), cover_points.size()])
+		cover_pruned = 0
+		return
+	cover_pruned = cover_points.size() - keep.size()
+	cover_points.assign(keep)        # in place: others hold this array
+
+
+static func _on_mesh(nav: RID, p: Vector3) -> bool:
+	var near := NavigationServer3D.map_get_closest_point(nav, p)
+	return Vector2(near.x - p.x, near.z - p.z).length() <= 0.6
+
+
+static func _walkable(nav: RID, from: Vector3, to: Vector3) -> bool:
+	var path := NavigationServer3D.map_get_path(nav, from, to, true)
+	if path.is_empty():
+		return false
+	var end: Vector3 = path[path.size() - 1]
+	return Vector2(end.x - to.x, end.z - to.z).length() < 0.8
+
+
 func _drop_wet_cover_points() -> void:
 	if water_defs.is_empty():
 		return
@@ -1095,7 +1150,9 @@ func _build_areas() -> void:
 		}
 		var rpgs: Array = def.get("rpg", [])
 		for i in def["men"].size():
-			var p: Vector3 = def["men"][i]
+			# Never inside a crate, a rock or the furniture, whatever the map says.
+			var p: Vector3 = CoverUtil.push_out(cover_defs, def["men"][i], 0.45)
+			p.y = 0
 			var e: CharacterBody3D = EnemySoldierScript.new()
 			e.main = self
 			e.area = area
