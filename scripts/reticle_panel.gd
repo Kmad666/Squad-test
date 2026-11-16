@@ -2,6 +2,8 @@ extends PanelContainer
 ## Tuning panel for the reticle (O to open/close). One slider per
 ## dimension with its live value, a "show dimensions" switch and a reset.
 
+const MovePreview = preload("res://scripts/move_preview.gd")
+
 var reticle: Control
 var _sliders := {}
 var _values := {}
@@ -63,6 +65,13 @@ func _ready() -> void:
 	_dims_check.focus_mode = Control.FOCUS_NONE
 	_dims_check.toggled.connect(func(on): reticle.set_show_dims(on))
 	box.add_child(_dims_check)
+
+	var orbs := CheckBox.new()
+	orbs.text = "Move preview orbs (where E sends each man)"
+	orbs.focus_mode = Control.FOCUS_NONE
+	orbs.button_pressed = MovePreview.enabled
+	orbs.toggled.connect(func(on): MovePreview.set_enabled(on))
+	box.add_child(orbs)
 
 	var reset := Button.new()
 	reset.text = "Reset to defaults"

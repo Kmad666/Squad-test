@@ -51,7 +51,7 @@ sky reflections are off. CI builds both desktop versions after the tests and the
 | M | Next map (remembered) |
 | Backspace | Back to the level select |
 | Tab | Aim / free mouse. Free mouse: cursor moves freely, hold right mouse and drag to pan the camera |
-| O | Reticle settings (sizes are saved in your browser) |
+| O | Reticle settings (sizes are saved in your browser) and the move preview orbs on / off. Rest the reticle on the ground and orbs show where E would send each man: green behind cover, amber prone in the open, blue standing in formation |
 | F2 | Graphics LOW / HIGH (LOW: no shadows or bloom, 70% 3D resolution, lighter screen effects; remembered) |
 | F3 | Difficulty EASY / NORMAL (also on the level select; restarts the operation; remembered). NORMAL punishes walking at a position in the open |
 | V | RETRO graphics on / off (chunky low-poly soldiers, vertex wobble, pixelated dithered screen; remembered) |

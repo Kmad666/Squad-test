@@ -262,7 +262,7 @@ const PAGES := [
   {k}ESC{/k}            This manual (pauses)
   {k}F1{/k}             Controls panel on/off
   {k}TAB{/k}            Aim / free mouse (free: hold {k}RIGHT MOUSE{/k} and drag to pan)
-  {k}O{/k}              Reticle settings
+  {k}O{/k}              Reticle settings (and the move preview orbs on / off)
   {k}F2{/k}             Graphics HIGH / LOW
   {k}F3{/k}             Difficulty EASY / NORMAL (restarts the operation)
   {k}V{/k}              Retro graphics on / off
@@ -343,6 +343,13 @@ Men speed up and slow down with weight; they don't snap to a run or a stop.
 
 {h}THE SQUAD MOVES AS ONE{/h}
 You steer an invisible point. Each man keeps his own place in the formation around it and finds his own way around cars and crates. Buildings and compound walls stop the squad; small cover doesn't. If men fall behind, the group slows so nobody gets left.
+
+{h}MOVE PREVIEW (the orbs){/h}
+Rest the reticle on the ground for a moment and floating orbs show where each man would end up if you pressed {k}E{/k} now. They follow the same rules as the move itself:
+  - {h}green{/h}: behind cover (you're in cover, so they'll go cover to cover)
+  - {h}amber{/h}: flat on the ground in the open: no cover there for him
+  - {h}blue{/h}: standing in formation (an ordinary move; nobody takes cover)
+Lots of amber? Pick a spot with more cover, or go there and spread out. The orbs fade while the reticle sweeps and while the team is already moving. Switch them off in the reticle settings ({k}O{/k}).
 
 {h}FORMATIONS  ({k}Y{/k}){/h}
 The formation turns with the way you're heading. When you set off in a new direction or turn hard, the places are dealt out again so each man takes the one nearest him: nobody runs back through the group, and the point is whoever is out front.

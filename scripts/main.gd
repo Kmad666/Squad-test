@@ -4,6 +4,7 @@ extends Node3D
 
 const CoverUtil = preload("res://scripts/cover_util.gd")
 const SquadScript = preload("res://scripts/squad.gd")
+const MovePreview = preload("res://scripts/move_preview.gd")
 const EnemySoldierScript = preload("res://scripts/enemy_soldier.gd")
 const VehicleScript = preload("res://scripts/vehicle.gd")
 const CameraRigScript = preload("res://scripts/camera_rig.gd")
@@ -84,6 +85,7 @@ var hurt := 0.0               # red screen-edge flash when a soldier is hit
 var _friendly_tracer_mat: StandardMaterial3D
 var _enemy_tracer_mat: StandardMaterial3D
 var kills := 0
+var move_preview: Node3D        # orbs where the men would go (E)
 var game_time := 0.0          # seconds of play (stops while paused): mission clock, fire log ages
 var _debrief: PanelContainer   # end-of-operation panel (won or wiped out)
 var _debrief_label: RichTextLabel
@@ -114,6 +116,7 @@ func _ready() -> void:
 		map_index = forced_map
 	else:
 		Weapons.load_difficulty()   # (tests and probes force a map and set their own)
+		MovePreview.load_setting()
 	if _difficulty_changed:
 		_difficulty_changed = false
 		notify("DIFFICULTY: %s  (operation restarted)" % Weapons.DIFFICULTY_NAMES[Weapons.difficulty], 6.0)
@@ -150,6 +153,9 @@ func _ready() -> void:
 	squad = SquadScript.new()
 	squad.name = "Squad"
 	add_child(squad)
+	move_preview = MovePreview.new()
+	move_preview.main = self
+	add_child(move_preview)
 	squad.setup(self, map.START)
 	squad.spawn_waiting_team("ANTI-ARMOR TEAM", map.AT_TEAM, ["anti_armor", "anti_armor", "anti_armor"])
 	if map_const("LAV", false):
@@ -1871,7 +1877,7 @@ func _build_hud() -> void:
 	ui_root.add_child(help_panel)
 	help_label = Label.new()
 	help_label.add_theme_font_size_override("font_size", 12)
-	help_label.text = "WASD move   MOUSE aim   WHEEL zoom   E move to reticle   C / SPACE cover on / off\n" \
+	help_label.text = "WASD move   MOUSE aim   WHEEL zoom   E move to reticle (orbs show where)   C / SPACE cover on / off\n" \
 		+ "LMB focus fire   RMB throw / fire special   1-4 pick special   X next special\n" \
 		+ "F auto fire   T split / join teams   Q switch team   B bound   H hold + scout   Z LAV with us / overwatch\n" \
 		+ "G on a door: stack up, G again: breach and clear the room   Y formation   J walk   SHIFT rush\n" \

@@ -116,6 +116,7 @@ func _ready() -> void:
 	_label.outline_size = 10
 	_label.pixel_size = 0.0012
 	_label.fixed_size = true           # same size on screen near or far: never fills it
+	_label.visibility_range_end = 50.0 # ... and only when it's close enough to matter
 	_label.font_size = 28
 	_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	_label.modulate = Color(1.0, 0.42, 0.25)

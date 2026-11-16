@@ -446,6 +446,13 @@ func _update_formation(t: int, delta: float) -> void:
 ## Each man takes the place nearest him (closest pairs first), so nobody
 ## crosses the group to reach his place and the point is whoever is out front.
 func _deal_slots(members: Array, slots: Array, rot: Basis, a: Vector3) -> void:
+	var deal := _slot_deal(members, slots, rot, a)
+	for s in members:
+		s.slot_index = deal[s]
+
+
+## Who gets which place (man -> slot index), without handing them out.
+func _slot_deal(members: Array, slots: Array, rot: Basis, a: Vector3) -> Dictionary:
 	var pairs: Array = []
 	for s in members:
 		for i in slots.size():
@@ -456,9 +463,9 @@ func _deal_slots(members: Array, slots: Array, rot: Basis, a: Vector3) -> void:
 	for pr in pairs:
 		if man_done.has(pr[1]) or slot_done.has(pr[2]):
 			continue
-		pr[1].slot_index = pr[2]
-		man_done[pr[1]] = true
+		man_done[pr[1]] = pr[2]
 		slot_done[pr[2]] = true
+	return man_done
 
 
 ## Clear width across the way the unit is going, at `p` (walls and buildings only).
@@ -1147,7 +1154,37 @@ func _cover_shift(t: int) -> void:
 		team["threat_dir"] = main.camera_forward()
 	var tdir: Vector3 = team["threat_dir"]
 	var members := team_members(t)
-	var centre: Vector3 = team["anchor"]
+	var plan := _cover_plan(t, team["anchor"], tdir)
+	var assigned: Dictionary = plan["assigned"]
+	var want: Dictionary = plan["want"]
+	var all_spots: Array = plan["all_spots"]
+	var taken_leans: Array = []
+	var flat: Array = []         # where the men going prone will lie
+	for s in members:
+		if assigned.has(s.index):
+			var cp: Dictionary = assigned[s.index]
+			if s.state != 0 and s.has_real_cover and s.cover_pos.distance_to(cp["pos"]) < 0.3:
+				taken_leans.append_array(s.peeks)
+				continue                   # already there, or on his way
+			var leans := _leans_for(cp, all_spots, taken_leans)
+			taken_leans.append_array(leans)
+			s.go_to_cover(cp["pos"], true, leans, true)
+	for s in members:
+		if assigned.has(s.index):
+			continue
+		var spot := _crawl_spot(want[s.index], tdir, flat + all_spots)
+		flat.append(spot)
+		if s.is_prone() and s.cover_pos.distance_to(spot) < 1.0:
+			continue                       # close enough: keep crawling where he was
+		s.go_prone(spot)
+
+
+## Which cover spot each man of team `t` takes with the unit's point at
+## `centre` and the threat along `tdir` (the cover-to-cover move's pick):
+## {assigned: index -> cover point, want: index -> where he'd like to be,
+## all_spots: every spot taken}. Changes nothing.
+func _cover_plan(t: int, centre: Vector3, tdir: Vector3) -> Dictionary:
+	var members := team_members(t)
 	var claimed: Array = []
 	for s in soldiers:
 		if split and s.team != t and s.state != 0:   # 0 = FOLLOW
@@ -1187,26 +1224,50 @@ func _cover_shift(t: int) -> void:
 		if free:
 			assigned[p[1]] = candidates[p[2]]
 			mine.append(cpos)
-	var all_spots: Array = claimed + mine
-	var taken_leans: Array = []
-	var flat: Array = []         # where the men going prone will lie
+	return {"assigned": assigned, "want": want, "all_spots": claimed + mine}
+
+
+## Where each man of the team you command would end up if you sent it to
+## `p` now (E): [{man, pos, kind}], kind "cover" (behind cover), "prone"
+## (flat in the open: no cover there for him) or "open" (standing in
+## formation). Empty when an order there wouldn't move men to spots (a door
+## stack, the LAV). Same rules as the move itself; changes nothing.
+func preview_move(p: Vector3) -> Array:
+	var t := active
+	var team: Dictionary = teams[t]
+	var members := team_members(t)
+	if members.is_empty() or team.get("breach") != null or lav_with(t):
+		return []
+	var lim: float = main.nav_half - 2.0
+	var dest: Vector3 = CoverUtil.push_out(main.solid_defs, Vector3(clampf(p.x, -lim, lim), 0, clampf(p.z, -lim, lim)), 1.0)
+	var out: Array = []
+	if team["in_cover"]:
+		var tdir: Vector3 = main.camera_forward()
+		var plan := _cover_plan(t, dest, tdir)
+		var flat: Array = []
+		for s in members:
+			if plan["assigned"].has(s.index):
+				out.append({"man": s, "pos": plan["assigned"][s.index]["pos"], "kind": "cover"})
+			else:
+				var spot := _crawl_spot(plan["want"][s.index], tdir, flat + plan["all_spots"])
+				flat.append(spot)
+				out.append({"man": s, "pos": spot, "kind": "prone"})
+		return out
+	var a: Vector3 = team["anchor"]
+	var dir := dest - a
+	dir.y = 0
+	var yaw: float = team["yaw"] if team["yaw"] != INF else main.cam_rig.yaw
+	var f: int = team["formation"]
+	if dir.length() > 1.0:
+		yaw = atan2(-dir.x, -dir.z)
+		if f != FILE and _clear_width(dest, dir.normalized()) < NARROW:
+			f = FILE                           # it'll squeeze into a file to fit there
+	var slots := formation_slots(f, members.size())
+	var rot := Basis(Vector3.UP, yaw)
+	var deal := _slot_deal(members, slots, rot, a)
 	for s in members:
-		if assigned.has(s.index):
-			var cp: Dictionary = assigned[s.index]
-			if s.state != 0 and s.has_real_cover and s.cover_pos.distance_to(cp["pos"]) < 0.3:
-				taken_leans.append_array(s.peeks)
-				continue                   # already there, or on his way
-			var leans := _leans_for(cp, all_spots, taken_leans)
-			taken_leans.append_array(leans)
-			s.go_to_cover(cp["pos"], true, leans, true)
-	for s in members:
-		if assigned.has(s.index):
-			continue
-		var spot := _crawl_spot(want[s.index], tdir, flat + all_spots)
-		flat.append(spot)
-		if s.is_prone() and s.cover_pos.distance_to(spot) < 1.0:
-			continue                       # close enough: keep crawling where he was
-		s.go_prone(spot)
+		out.append({"man": s, "pos": CoverUtil.push_out(main.cover_defs, dest + rot * slots[deal[s]], 0.6), "kind": "open"})
+	return out
 
 
 ## Where a prone man lies: near `p`, but not on top of anyone (bodies are
@@ -1332,7 +1393,7 @@ func status_text() -> String:
 		if lav_with(0):
 			return "STACKED BEHIND THE LAV (%s)  (%d/%d in position)" % [STACK_FACES[maxi(_stack_face, 0)], stacked_count(0), soldiers.size()] + tag
 		if not in_cover:
-			return ("HOLDING POSITION" if holding else "MOVING (%s, %s)" % [formation_text(0), PACE_NAMES[pace_of(0)]]) + tag
+			return ("HOLDING POSITION" if holding else "%s (%s, %s)" % ["MOVING" if move_vel.length() > 0.5 else "HALTED", formation_text(0), PACE_NAMES[pace_of(0)]]) + tag
 		var settled := 0
 		var flat := 0
 		for s in soldiers:
