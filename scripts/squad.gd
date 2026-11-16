@@ -796,7 +796,7 @@ func _track_motion(delta: float) -> void:
 ## Fire orders for the HUD log. A repeat of the newest order within a couple
 ## of seconds counts up instead of filling the log.
 func log_fire(text: String) -> void:
-	var now := Time.get_ticks_msec() / 1000.0
+	var now: float = main.game_time
 	if not fire_log.is_empty() and fire_log[0]["text"] == text and now - fire_log[0]["t"] < 2.5:
 		fire_log[0]["n"] += 1
 		fire_log[0]["t"] = now
@@ -1089,6 +1089,7 @@ func on_soldier_killed(s: Node3D) -> void:
 	_make_offsets()
 	if soldiers.is_empty():
 		main.notify("SQUAD WIPED OUT  -  PRESS R TO RESTART")
+		main.show_debrief(false)
 	else:
 		main.notify("%s DOWN" % s.role_name())
 

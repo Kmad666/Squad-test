@@ -113,9 +113,10 @@ func _ready() -> void:
 
 	_label = Label3D.new()
 	_label.font = UI_FONT
-	_label.font_size = 44
 	_label.outline_size = 10
-	_label.pixel_size = 0.006
+	_label.pixel_size = 0.0012
+	_label.fixed_size = true           # same size on screen near or far: never fills it
+	_label.font_size = 28
 	_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	_label.modulate = Color(1.0, 0.42, 0.25)
 	_label.outline_modulate = Color(0.1, 0.02, 0.0, 0.8)
@@ -186,9 +187,9 @@ func aim_point() -> Vector3:
 
 func _update_label() -> void:
 	if alive:
-		_label.text = "ENEMY VEHICLE\n%s  ARMOR: %s\nHP %d / %d\nMG + CANNON   WEAK TO: ROCKETS" % [vehicle_name, armor_class, ceili(hp), int(MAX_HP)]
+		_label.text = "%s  ARMOR %s\nHP %d / %d   WEAK TO ROCKETS" % [vehicle_name, armor_class, ceili(hp), int(MAX_HP)]
 	else:
-		_label.text = "ENEMY VEHICLE\n%s  DESTROYED" % vehicle_name
+		_label.text = "%s  DESTROYED" % vehicle_name
 
 
 ## Returns true if the hit actually hurt (false = ricochet off the armor).

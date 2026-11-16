@@ -103,7 +103,7 @@ func orders_text() -> String:
 	var entries: Array = squad.fire_log
 	if entries.is_empty():
 		return "  [color=#5f7f55]none yet[/color]"
-	var now := Time.get_ticks_msec() / 1000.0
+	var now: float = squad.main.game_time
 	var lines: Array = []
 	for i in entries.size():
 		var e: Dictionary = entries[i]

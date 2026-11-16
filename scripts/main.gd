@@ -84,6 +84,9 @@ var hurt := 0.0               # red screen-edge flash when a soldier is hit
 var _friendly_tracer_mat: StandardMaterial3D
 var _enemy_tracer_mat: StandardMaterial3D
 var kills := 0
+var game_time := 0.0          # seconds of play (stops while paused): mission clock, fire log ages
+var _debrief: PanelContainer   # end-of-operation panel (won or wiped out)
+var _debrief_label: RichTextLabel
 static var _difficulty_changed := false    # F3 just restarted the operation: say so
 var low_quality := false     # F2: LOW graphics for weaker machines (remembered)
 var retro := false           # V: RETRO graphics, late-90s console look (remembered)
@@ -1272,6 +1275,38 @@ func on_enemy_killed(e: Node3D) -> void:
 					if _alive_in(a) > 0:
 						all_clear = false
 				notify(map.COMPLETE if all_clear else "AREA %s CLEARED" % area["name"], 8.0 if all_clear else 4.0)
+				if all_clear:
+					show_debrief(true)
+
+
+## The end of the operation, in the middle of the screen: how it went and
+## what you can do next. The fight goes on behind it (stragglers, wrecks).
+func show_debrief(won: bool) -> void:
+	if _debrief == null or _debrief.visible:
+		return
+	var total: int = squad.soldiers.size() + squad.kia
+	var col := C_OK if won else C_BAD
+	var t := "[center][font_size=34][color=%s]%s[/color][/font_size]\n" % [col, "MISSION COMPLETE" if won else "SQUAD WIPED OUT"]
+	t += "[color=#8fbf80]%s   -   %s[/color]\n\n" % [map.NAME, Weapons.DIFFICULTY_NAMES[Weapons.difficulty]]
+	t += "[/center][table=2]"
+	var rows := [
+		["TIME", _clock(game_time)],
+		["ENEMIES KILLED", "%d of %d" % [kills, targets.size()]],
+		["MEN LOST", "[color=%s]%d of %d[/color]" % [C_OK if squad.kia == 0 else (C_WARN if squad.kia < total / 2 else C_BAD), squad.kia, total]],
+		["HITS", str(hits)],
+	]
+	if squad.lav:
+		rows.append(["LAV", "[color=%s]%s[/color]" % [C_OK if squad.lav.alive else C_BAD, "INTACT" if squad.lav.alive else "DESTROYED"]])
+	for r in rows:
+		t += "[cell][color=#8fbf80]%s      [/color][/cell][cell]%s[/cell]" % [r[0], r[1]]
+	t += "[/table]\n\n[center]"
+	if won and squad.kia >= total / 2:
+		t += "[color=%s]A win, but costly. Fight from cover and pin them before you move.[/color]\n\n" % C_WARN
+	elif not won and Weapons.difficulty >= 1:
+		t += "[color=%s]Walking at a position in the open gets men killed. F3 switches to EASY.[/color]\n\n" % C_WARN
+	t += "[color=%s]R[/color] REPLAY     [color=%s]M[/color] NEXT MAP     [color=%s]BACKSPACE[/color] LEVEL SELECT[/center]" % [C_OK, C_OK, C_OK]
+	_debrief_label.text = t
+	_debrief.visible = true
 
 
 func any_area_alerted() -> bool:
@@ -1893,6 +1928,24 @@ func _build_hud() -> void:
 	add_child(manual)
 	_first_briefing.call_deferred()
 
+	# End of the operation: won or wiped out (hidden until then).
+	_debrief = PanelContainer.new()
+	var dsb := sb.duplicate()
+	dsb.bg_color = Color(0.0, 0.03, 0.0, 0.95)
+	dsb.border_color = Color(NEON, 0.8)
+	dsb.set_border_width_all(2)
+	dsb.set_content_margin_all(22)
+	_debrief.add_theme_stylebox_override("panel", dsb)
+	_debrief.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	_debrief.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_debrief.grow_vertical = Control.GROW_DIRECTION_BOTH
+	_debrief.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_debrief.visible = false
+	ui_root.add_child(_debrief)
+	_debrief_label = _rich(18)
+	_debrief_label.custom_minimum_size = Vector2(520, 0)
+	_debrief.add_child(_debrief_label)
+
 
 ## The first time you play a map, its briefing opens by itself (the game
 ## waits paused until you close it). Not in tests and tools, which pick the
@@ -1931,7 +1984,7 @@ const C_DIM := "#3f6b35"
 func _unit_text() -> String:
 	var role_short := {"rifleman": "RIF ", "grenadier": "GREN", "anti_armor": "AT  "}
 	var total: int = squad.soldiers.size() + squad.kia
-	var lines: Array = ["UNIT  %d / %d%s   [color=%s]%s[/color]" % [squad.soldiers.size(), total, ("   KIA %d" % squad.kia) if squad.kia > 0 else "", C_DIM, Weapons.DIFFICULTY_NAMES[Weapons.difficulty]]]
+	var lines: Array = ["UNIT  %d / %d%s   [color=%s]%s[/color]" % [squad.soldiers.size(), total, ("   KIA %d" % squad.kia) if squad.kia > 0 else "", C_WARN if Weapons.difficulty >= 1 else C_OK, Weapons.DIFFICULTY_NAMES[Weapons.difficulty]]]
 	var lav: Node3D = squad.lav
 	if lav:
 		if lav.alive:
@@ -2029,6 +2082,8 @@ func _input(event: InputEvent) -> void:
 
 
 func _process(delta: float) -> void:
+	if not get_tree().paused and _debrief and not _debrief.visible:
+		game_time += delta
 	if thermal:
 		var r := reticle_rect()
 		var vs := get_viewport().get_visible_rect().size
@@ -2076,12 +2131,27 @@ func _process(delta: float) -> void:
 		_notice_t = maxf(0.0, _notice_t - delta)
 		hud_label.text = "%s%s\n" % [map.NAME, "" if captured else ("   (FREE MOUSE: TAB TO AIM, HOLD RMB TO PAN)" if cam_rig.free_mouse else "   (CLICK OR TAB TO AIM)")] \
 			+ "SQUAD   %s\n" % squad.status_text() \
-			+ "UNIT    %s\n" % squad.roster_text() \
 			+ "FIRE    %s%s\n" % [squad.fire_mode_text(), "   (auto fire ON)" if squad.auto_fire else ""] \
 			+ "FIRE ON US  %s\n" % _supp_bar(squad.avg_suppression()) \
 			+ "ENEMY   %s\n" % areas_text("\n        ") \
-			+ "HITS    %d     KILLS  %d     GFX %s" % [hits, kills, ("LOW" if low_quality else "HIGH") + (" DESKTOP" if AtmosphereScript.rich else "") + (" RETRO" if retro else "") + (" NVG" if night_vision else "") + (" IR" if thermal else "") + (" LIGHTS" if SquadScript.SoldierScript.lights_on else "")] \
+			+ "HITS    %d     KILLS  %d     TIME  %s%s" % [hits, kills, _clock(game_time), _vision_tags()] \
 			+ ("\n\n>> %s" % _notice if _notice_t > 0.0 else "")
+
+
+static func _clock(t: float) -> String:
+	return "%d:%02d" % [int(t) / 60, int(t) % 60]
+
+
+## Sights and lights that are on (the graphics settings live in the manual).
+func _vision_tags() -> String:
+	var on: Array = []
+	if night_vision:
+		on.append("NVG")
+	if thermal:
+		on.append("THERMAL")
+	if SquadScript.SoldierScript.lights_on:
+		on.append("LIGHTS")
+	return ("     " + "  ".join(on)) if not on.is_empty() else ""
 
 
 func _supp_bar(v: float) -> String:
