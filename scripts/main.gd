@@ -84,6 +84,7 @@ var hurt := 0.0               # red screen-edge flash when a soldier is hit
 var _friendly_tracer_mat: StandardMaterial3D
 var _enemy_tracer_mat: StandardMaterial3D
 var kills := 0
+static var _difficulty_changed := false    # F3 just restarted the operation: say so
 var low_quality := false     # F2: LOW graphics for weaker machines (remembered)
 var retro := false           # V: RETRO graphics, late-90s console look (remembered)
 var night_vision := false    # N: night vision goggles
@@ -108,6 +109,11 @@ func _ready() -> void:
 		map_index = picked_map      # from the level select (remembered below)
 	if forced_map >= 0:
 		map_index = forced_map
+	else:
+		Weapons.load_difficulty()   # (tests and probes force a map and set their own)
+	if _difficulty_changed:
+		_difficulty_changed = false
+		notify("DIFFICULTY: %s  (operation restarted)" % Weapons.DIFFICULTY_NAMES[Weapons.difficulty], 6.0)
 	load("res://scripts/soldier_model.gd").low_quality = low_quality    # before soldiers are built
 	load("res://scripts/soldier_model.gd").retro = retro
 	map = MAPS[map_index]
@@ -1149,9 +1155,12 @@ func _build_areas() -> void:
 			"rect": def.get("rect"),       # a house garrison keeps to its house: [x0, z0, x1, z1]
 		}
 		var rpgs: Array = def.get("rpg", [])
-		for i in def["men"].size():
+		var posts: Array = (def["men"] as Array).duplicate()
+		if Weapons.difficulty >= 1:
+			posts.append_array(def.get("more", []))      # a map's extra defenders on NORMAL
+		for i in posts.size():
 			# Never inside a crate, a rock or the furniture, whatever the map says.
-			var p: Vector3 = CoverUtil.push_out(cover_defs, def["men"][i], 0.45)
+			var p: Vector3 = CoverUtil.push_out(cover_defs, posts[i], 0.45)
 			p.y = 0
 			var e: CharacterBody3D = EnemySoldierScript.new()
 			e.main = self
@@ -1523,7 +1532,7 @@ func _blast_soldiers(pos: Vector3, w: Dictionary, direct: Node3D) -> void:
 		var lp: Vector3 = lav.to_local(pos)
 		var gap := Vector2(maxf(absf(lp.x) - SquadScript.LavScript.HALF_W, 0.0), maxf(absf(lp.z) - SquadScript.LavScript.HALF_L, 0.0)).length()
 		if gap < 1.0 and lp.y < 3.4:
-			lav.armor_hit(w.get("armor", 0.0) * (1.0 - gap))
+			lav.armor_hit(w.get("armor", 0.0) * (1.0 - gap) * (Weapons.tune("rpg") if w["kind"] == "rocket" else 1.0))
 	for s in squad.soldiers.duplicate():
 		var p: Vector3 = s.exposed_point()
 		var d: float = p.distance_to(pos)
@@ -1828,7 +1837,7 @@ func _build_hud() -> void:
 		+ "LMB focus fire   RMB throw / fire special   1-4 pick special   X next special\n" \
 		+ "F auto fire   T split / join teams   Q switch team   B bound   H hold + scout   Z LAV with us / overwatch\n" \
 		+ "G on a door: stack up, G again: breach and clear the room\n" \
-		+ "L lights   N night vision   I thermal (in reticle)   F2 graphics   V retro\n" \
+		+ "L lights   N night vision   I thermal (in reticle)   F2 graphics   V retro   F3 difficulty\n" \
 		+ "TAB aim / free mouse (free: hold RMB to pan)   ESC manual   O reticle\n" \
 		+ "M next map   BACKSPACE level select   R restart   F1 help"
 	help_panel.add_child(help_label)
@@ -1922,7 +1931,7 @@ const C_DIM := "#3f6b35"
 func _unit_text() -> String:
 	var role_short := {"rifleman": "RIF ", "grenadier": "GREN", "anti_armor": "AT  "}
 	var total: int = squad.soldiers.size() + squad.kia
-	var lines: Array = ["UNIT  %d / %d%s" % [squad.soldiers.size(), total, ("   KIA %d" % squad.kia) if squad.kia > 0 else ""]]
+	var lines: Array = ["UNIT  %d / %d%s   [color=%s]%s[/color]" % [squad.soldiers.size(), total, ("   KIA %d" % squad.kia) if squad.kia > 0 else "", C_DIM, Weapons.DIFFICULTY_NAMES[Weapons.difficulty]]]
 	var lav: Node3D = squad.lav
 	if lav:
 		if lav.alive:
@@ -1981,6 +1990,12 @@ func _unhandled_key_input(event: InputEvent) -> void:
 			get_tree().reload_current_scene()
 		elif event.physical_keycode == KEY_F2:
 			toggle_quality()
+		elif event.physical_keycode == KEY_F3:
+			# The enemy's numbers change with it, so the operation starts over.
+			Weapons.cycle_difficulty()
+			_difficulty_changed = true
+			get_tree().paused = false
+			get_tree().reload_current_scene()
 		elif event.physical_keycode == KEY_V:
 			toggle_retro()
 		elif event.physical_keycode == KEY_M:

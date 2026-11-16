@@ -41,17 +41,59 @@ const ROCKET_LAUNCHER := {
 	"reload": 5.0, "speed": 45.0, "vs_infantry": 0.55,
 }
 
-## The LAV-25's M242 chain gun firing HE: short bursts, long reach, a small
-## burst on impact (radius) that catches men next to the strike, and enough
-## punch to chew through the enemy APC.
+## Difficulty (F3, remembered): 0 EASY, the game as it was before the
+## difficulty pass; 1 NORMAL, tuned so that walking at a position in the
+## open gets most of the squad killed while fighting from cover doesn't.
+## Everything the pass changed is one of these numbers:
+##   acc      enemy hit chance, overall
+##   dmg      enemy bullet damage
+##   pause    time between an enemy's bursts
+##   react    how long an enemy takes to get onto a new target
+##   cover    enemy hit chance against a man in cover
+##   moving   ... against a man moving upright in the open
+##   pin_move how much our fire rattles the enemy when fired on the move
+##   pin_acc  how much being rattled spoils an enemy's aim
+##   our_move our men's hit chance when firing on the move
+##   behind   our hit chance against an enemy who is behind cover
+##   close_hit, close_dmg   enemy hit chance and damage at arm's length (see CLOSE_RANGE)
+##   rpg, rpg_reload        enemy RPG damage to the LAV, and time between rockets
+static var difficulty := 0     # main.gd loads the player's choice (NORMAL unless he's picked EASY); tests run on EASY
+const DIFFICULTY_NAMES := ["EASY", "NORMAL"]
+const TUNING := [
+	{"acc": 1.0, "dmg": 1.0, "pause": 1.0, "react": 1.0, "cover": 0.6, "moving": 0.75, "pin_move": 1.0, "pin_acc": 0.75, "our_move": 0.6, "behind": 1.0, "close_hit": 2.4, "close_dmg": 2.0, "rpg": 1.0, "rpg_reload": 1.0},
+	{"acc": 1.7, "dmg": 1.5, "pause": 0.7, "react": 0.7, "cover": 0.4, "moving": 1.0, "pin_move": 0.2, "pin_acc": 0.75, "our_move": 0.25, "behind": 0.55, "close_hit": 1.3, "close_dmg": 1.3, "rpg": 1.34, "rpg_reload": 0.65},
+]
+
+
+static func tune(key: String) -> float:
+	return TUNING[difficulty][key]
+
+
+static func load_difficulty() -> void:
+	var cfg := ConfigFile.new()
+	cfg.load("user://settings.cfg")
+	difficulty = clampi(int(cfg.get_value("game", "difficulty", 1)), 0, DIFFICULTY_NAMES.size() - 1)
+
+
+static func cycle_difficulty() -> void:
+	difficulty = (difficulty + 1) % DIFFICULTY_NAMES.size()
+	var cfg := ConfigFile.new()
+	cfg.load("user://settings.cfg")
+	cfg.set_value("game", "difficulty", difficulty)
+	cfg.save("user://settings.cfg")
+
+
 ## Close quarters: inside this range an enemy's aim gets better the closer
 ## you are (x CLOSE_HIT at arm's length). Rooms are where men get killed,
 ## which is what the flashbang is for.
+## How much is in TUNING (close_hit, close_dmg): NORMAL's enemies already
+## shoot better everywhere, so their close-quarters bonus is smaller.
 const CLOSE_RANGE := 10.0
-const CLOSE_HIT := 2.4
-const CLOSE_DAMAGE := 2.0        # ... his hits do this much more (at arm's length)
-const CLOSE_REACTION := 0.4      # ... and he gets onto a new target this much quicker
+const CLOSE_REACTION := 0.4      # ... and he gets onto a new target this much quicker (on EASY's reaction time)
 
+## The LAV-25's M242 chain gun firing HE: short bursts, long reach, a small
+## burst on impact (radius) that catches men next to the strike, and enough
+## punch to chew through the enemy APC.
 const LAV_25MM := {
 	"name": "25MM CHAIN GUN", "kind": "bullet",
 	"acc": 0.5, "eff": 55.0, "max": 100.0,
@@ -103,7 +145,9 @@ static func hit_chance(w: Dictionary, target: Node3D, dist: float, moving: bool,
 	if target.kind == "infantry":
 		p *= w.get("vs_infantry", 1.0)
 	if moving:
-		p *= 0.6
+		p *= tune("our_move") if w["kind"] == "bullet" else 0.6    # rifles suffer most; a rocket man still stops to aim
+	if target.kind == "infantry" and target.has_method("behind_cover") and target.behind_cover():
+		p *= tune("behind")           # only his head and rifle show
 	if aimed:
 		p *= 1.15
 	if followup:
@@ -157,17 +201,17 @@ const PRONE_HIT := 0.45
 static func enemy_hit_chance(w: Dictionary, soldier: Node3D, dist: float, own_suppression: float) -> float:
 	if dist > w["max"]:
 		return 0.0
-	var p: float = w["acc"]
+	var p: float = w["acc"] * tune("acc")
 	if dist > w["eff"]:
 		p *= lerpf(1.0, 0.3, clampf((dist - w["eff"]) / (w["max"] - w["eff"]), 0.0, 1.0))
 	if dist < CLOSE_RANGE:
-		p *= lerpf(CLOSE_HIT, 1.0, dist / CLOSE_RANGE)     # across a room it's hard to miss
+		p *= lerpf(tune("close_hit"), 1.0, dist / CLOSE_RANGE)     # across a room it's hard to miss
 	if soldier.has_method("is_prone") and soldier.is_prone():
 		p *= PRONE_HIT
 	else:
 		if soldier.is_moving():
-			p *= 0.75
+			p *= tune("moving")
 		if soldier.is_in_cover():
-			p *= 0.6
-	p *= 1.0 - 0.75 * own_suppression
+			p *= tune("cover")
+	p *= 1.0 - tune("pin_acc") * own_suppression
 	return clampf(p, 0.02, 0.9)

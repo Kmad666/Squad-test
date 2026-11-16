@@ -21,12 +21,14 @@ extends Node
 ## Each can be switched off (the statics) for tests and tuning.
 
 const EnemySoldier = preload("res://scripts/enemy_soldier.gd")
+const Weapons = preload("res://scripts/weapons.gd")
 
 const FLANK_OUT := 20.0        # how far off to the side a flanker goes (m from the squad)
 const FLANK_SCOPE := 14.0      # ... and how far from that spot he'll take cover
 const CONTACT := 45.0          # squad this close to an area's edge: in contact
 const REINFORCE_REACH := 95.0  # areas this close send help
 const FALLBACK_REACH := 110.0
+const WAKE_REACH := 75.0        # NORMAL: positions this close hear the fight and stand to
 
 static var flanking := true
 static var falling_back := true
@@ -97,6 +99,15 @@ func _think(area: Dictionary, dt: float) -> void:
 	var sq_c := squad_near(area["center"])
 	var contact := in_contact(area)
 	area["contact_t"] = area["contact_t"] + dt if contact else maxf(0.0, area["contact_t"] - dt)
+
+	# NORMAL: gunfire wakes the neighbours. A few seconds into a fight the
+	# positions close by get into cover and stand to, instead of being found
+	# at their posts when the squad arrives.
+	if Weapons.difficulty >= 1 and area["contact_t"] > 3.0 and not area.get("woke", false):
+		area["woke"] = true
+		for a in main.areas:
+			if a != area and not a["alerted"] and (a["center"] as Vector3).distance_to(area["center"]) < WAKE_REACH and not infantry(a).is_empty():
+				_alert_quietly(a)
 
 	# Covering fire while a mate is moving up.
 	var mover := false

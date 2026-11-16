@@ -261,6 +261,7 @@ const PAGES := [
   {k}TAB{/k}            Aim / free mouse (free: hold {k}RIGHT MOUSE{/k} and drag to pan)
   {k}O{/k}              Reticle settings
   {k}F2{/k}             Graphics HIGH / LOW
+  {k}F3{/k}             Difficulty EASY / NORMAL (restarts the operation)
   {k}V{/k}              Retro graphics on / off
   {k}M{/k}              Next map
   {k}BACKSPACE{/k}      Level select
@@ -554,7 +555,12 @@ Every variant of the universal soldier on a turntable: rifleman, sergeant, grena
 {h}SWITCHING{/h}
 {k}M{/k} loads the next map (remembered). {k}R{/k} restarts the current one. {k}BACKSPACE{/k}: back to the level select.
 """],
-["SETTINGS", """{h}GRAPHICS  ({k}F2{/k}){/h}
+["SETTINGS", """{h}DIFFICULTY  ({k}F3{/k}, or on the level select){/h}
+NORMAL: the enemy shoots straight, hits hard, reacts fast and wakes up the positions next door when the shooting starts; your men can't hit much while walking. Walking at a position in the open costs most of the squad. Fight from cover, pin them, then move.
+EASY: the game as it was: forgiving, a charge usually works.
+Changing it restarts the operation. Shown next to UNIT in the top-left; remembered in your browser.
+
+{h}GRAPHICS  ({k}F2{/k}){/h}
 HIGH: shadows, bloom, anti-aliasing, full-resolution 3D, full screen effects.
 LOW: no shadows or bloom, 3D drawn at 70% resolution, lighter screen effects. For weaker machines; remembered in your browser.
 

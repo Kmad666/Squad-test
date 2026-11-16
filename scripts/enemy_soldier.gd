@@ -252,6 +252,12 @@ func join_area(a: Dictionary) -> void:
 	hurry()
 
 
+## Fighting from behind something (not caught in the open, not on the run):
+## a small target.
+func behind_cover() -> bool:
+	return state == State.IN_COVER and not _hasty and not _cover.is_empty()
+
+
 func _in_scope() -> bool:
 	var at: Vector3 = _dest if state != State.POST else global_position
 	return _scope_has(at, 0.5)

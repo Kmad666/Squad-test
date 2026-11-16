@@ -92,9 +92,9 @@ func _physics_process(delta: float) -> void:
 		var t: Node3D = target if keep else _pick_target()
 		if t != target:
 			target = t
-			_reaction = _rng.randf_range(reaction_min, reaction_max)
+			_reaction = _rng.randf_range(reaction_min, reaction_max) * Weapons.tune("react")
 			if t and global_position.distance_to(t.global_position) < Weapons.CLOSE_RANGE:
-				_reaction *= Weapons.CLOSE_REACTION       # a man coming through the door: he's on him at once
+				_reaction *= Weapons.CLOSE_REACTION / Weapons.tune("react")       # a man coming through the door: he's on him at once
 			if t and host.has_method("on_spotted"):
 				host.on_spotted()
 	if target == null or not is_instance_valid(target) or target.dead:
@@ -118,10 +118,10 @@ func _physics_process(delta: float) -> void:
 			_burst_left = _rng.randi_range(weapon["burst_min"], weapon["burst_max"])
 		_shoot()
 		_burst_left -= 1
-		_fire_timer = weapon["cycle"] if _burst_left > 0 else _rng.randf_range(weapon["pause_min"], weapon["pause_max"]) * (1.0 + 2.5 * suppression)
+		_fire_timer = weapon["cycle"] if _burst_left > 0 else _rng.randf_range(weapon["pause_min"], weapon["pause_max"]) * Weapons.tune("pause") * (1.0 + 2.5 * suppression)
 	else:
 		_fire_shell()
-		_fire_timer = weapon["reload"] * (1.0 + suppression)
+		_fire_timer = weapon["reload"] * (1.0 + suppression) * (Weapons.tune("rpg_reload") if weapon["kind"] == "rocket" else 1.0)
 
 
 func _pick_target() -> Node3D:
@@ -180,10 +180,10 @@ func _shoot() -> void:
 		end = hit["position"]
 		var col: Object = hit["collider"]
 		if col.has_method("take_damage") and col.has_method("exposed_point"):
-			var dmg: float = weapon["soft"]
+			var dmg: float = weapon["soft"] * Weapons.tune("dmg")
 			var near: float = from.distance_to(end)
 			if weapon["kind"] == "bullet" and near < Weapons.CLOSE_RANGE:
-				dmg *= lerpf(Weapons.CLOSE_DAMAGE, 1.0, near / Weapons.CLOSE_RANGE)     # close quarters: hits tell
+				dmg *= lerpf(Weapons.tune("close_dmg"), 1.0, near / Weapons.CLOSE_RANGE)     # close quarters: hits tell
 			col.take_damage(dmg, from)
 			main.spawn_impact(end, hit["normal"], false, Color(0.6, 0.05, 0.03))
 		else:

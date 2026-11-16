@@ -23,6 +23,9 @@ const ENTRIES := [
 ]
 
 var _last := -1
+var _diff: Button
+const Weapons = preload("res://scripts/weapons.gd")
+const DIFFICULTY_BLURB := ["Forgiving: a charge usually works.", "They shoot straight. Fight from cover or lose the squad."]
 
 
 func _ready() -> void:
@@ -31,6 +34,7 @@ func _ready() -> void:
 	var cfg := ConfigFile.new()
 	if cfg.load(SETTINGS_PATH) == OK:
 		_last = int(cfg.get_value("game", "map", -1))
+	Weapons.load_difficulty()
 	_build()
 
 
@@ -88,6 +92,17 @@ void fragment() {
 		var e: Array = ENTRIES[i]
 		(big if e[4] else small).add_child(_card(i + 1, e))
 	col.add_child(HSeparator.new())
+	_diff = Button.new()
+	_diff.name = "Difficulty"
+	_diff.focus_mode = Control.FOCUS_NONE
+	_diff.flat = true
+	_diff.add_theme_font_override("font", UI_FONT)
+	_diff.add_theme_font_size_override("font_size", 18)
+	_diff.add_theme_color_override("font_color", GREEN)
+	_diff.add_theme_color_override("font_hover_color", Color.WHITE)
+	_diff.pressed.connect(_cycle_difficulty)
+	col.add_child(_diff)
+	_show_difficulty()
 	col.add_child(_label("1-6 OR CLICK TO DEPLOY      IN GAME: BACKSPACE = THIS MENU   ESC = FIELD MANUAL", 15, DIM))
 	col.add_child(_label("Soldier model: \"Soldier Full Tactical Gear\" by DanlyVostok (CC BY 4.0)    Motion capture: Haley Tuffles, Rokoko", 12, Color(0.45, 1.0, 0.3, 0.4)))
 
@@ -143,9 +158,21 @@ func _card(key: int, e: Array) -> Button:
 
 func _unhandled_key_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
+		if event.physical_keycode == KEY_F3:
+			_cycle_difficulty()
+			return
 		var k: int = event.physical_keycode - KEY_1
 		if k >= 0 and k < ENTRIES.size():
 			_deploy(ENTRIES[k][0])
+
+
+func _cycle_difficulty() -> void:
+	Weapons.cycle_difficulty()
+	_show_difficulty()
+
+
+func _show_difficulty() -> void:
+	_diff.text = "[F3]  DIFFICULTY: %s   %s" % [Weapons.DIFFICULTY_NAMES[Weapons.difficulty], DIFFICULTY_BLURB[Weapons.difficulty]]
 
 
 func _deploy(map_index: int) -> void:

@@ -910,7 +910,7 @@ func _shoot() -> void:
 			if c.take_damage(primary["soft"], primary["armor"]):
 				main.hits += 1   # only hits that hurt (ricochets off armor don't count)
 		main.spawn_impact(end, hit["normal"], spark)
-	main.suppress_enemies(from, end, 0.08)
+	main.suppress_enemies(from, end, 0.08 * (Weapons.tune("pin_move") if _moving and state != State.IN_COVER else 1.0))
 	shots += 1
 	main.spawn_tracer(_flash.global_position, end)
 	main.on_shot(_flash.global_position)

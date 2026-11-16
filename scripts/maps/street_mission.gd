@@ -121,11 +121,11 @@ const BOXES := [
 
 const AREAS := [
 	{"name": "ROADBLOCK", "center": Vector3(0, 0, 2), "radius": 9.0,
-		"men": [Vector3(-2.5, 0, 4.3), Vector3(2.5, 0, 4.0)]},
+		"men": [Vector3(-2.5, 0, 4.3), Vector3(2.5, 0, 4.0)], "more": [Vector3(6.5, 0, 1.5)]},      # "more": extra men on NORMAL
 	{"name": "ALLEY", "center": Vector3(-19.5, 0, -7), "radius": 8.0,
-		"men": [Vector3(-18, 0, -4.1), Vector3(-20.4, 0, -11.2)]},
+		"men": [Vector3(-18, 0, -4.1), Vector3(-20.4, 0, -11.2)], "more": [Vector3(-17.5, 0, -9)]},
 	{"name": "COMPOUND", "center": Vector3(0, 0, -35), "radius": 16.0,
-		"men": [Vector3(-1, 0, -29), Vector3(-9, 0, -31.2), Vector3(8, 0, -31), Vector3(-4, 0, -38)],
+		"men": [Vector3(-1, 0, -29), Vector3(-9, 0, -31.2), Vector3(8, 0, -31), Vector3(-4, 0, -38)], "more": [Vector3(4, 0, -36)],
 		"apc": [Vector3(-12, 0, -43.5), Vector3(4, 0, -43.5)]},
 ]
 
