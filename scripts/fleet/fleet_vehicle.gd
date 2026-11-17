@@ -1,8 +1,11 @@
 extends Node3D
 ## One armored vehicle of the fleet (fleet_main.gd drives it): a hull that
 ## drives to its place in the formation over the hills, sitting on the
-## ground and tilting with it, and a turret that turns its main gun (and the
-## coaxial machine gun beside it) onto the aim point.
+## ground and tilting with it, and a turret that turns its 125mm gun (and the
+## coaxial machine gun beside it) onto the aim point. A mortar tube on the
+## rear deck lobs rounds over the hills (it needs no turret: the arc aims it).
+
+static var MORTAR_RELOAD := 8.0       # s between mortar rounds
 
 const HULL := Vector3(3.4, 1.4, 6.6)
 const TURRET := Vector3(2.4, 0.85, 2.9)
@@ -22,7 +25,10 @@ var vel := Vector3.ZERO
 var hull_yaw := 0.0
 var turret_yaw := 0.0           # relative to the hull
 var gun_pitch := 0.0
-var reload := 0.0               # main gun: seconds until loaded
+var reload := 0.0               # 125mm: seconds until loaded
+var mortar_reload := 0.0        # mortar: seconds until ready
+var shots_mortar := 0
+var mortar_tip: Node3D          # where mortar rounds leave the tube
 var mg_t := 0.0
 var shots_main := 0
 var shots_mg := 0
@@ -57,6 +63,16 @@ func build(col: Color) -> void:
 	mg_muzzle = Node3D.new()
 	mg_muzzle.position = Vector3(0.42, 0.05, -0.95)
 	_gun.add_child(mg_muzzle)
+	# Mortar: a stubby tube on the rear deck, tilted up and forward.
+	var tube := Node3D.new()
+	tube.position = Vector3(-0.9, HULL.y + 0.55, HULL.z / 2.0 - 0.9)
+	tube.rotation.x = 1.05
+	_body.add_child(tube)
+	_box(tube, Vector3(0.62, 0.62, 0.35), Vector3(0, 0, 0.35), col.darkened(0.35))           # base
+	_box(tube, Vector3(0.36, 0.36, 1.5), Vector3(0, 0, -0.5), Color(0.14, 0.15, 0.12))      # tube
+	mortar_tip = Node3D.new()
+	mortar_tip.position = Vector3(0, 0, -1.3)
+	tube.add_child(mortar_tip)
 
 
 func _box(parent: Node3D, size: Vector3, at: Vector3, col: Color) -> MeshInstance3D:
@@ -118,6 +134,7 @@ func drive(goal: Vector3, aim: Vector3, delta: float) -> void:
 	gun_pitch = move_toward(gun_pitch, want_pitch, GUN_ELEV * delta)
 	_gun.rotation.x = gun_pitch
 	reload = maxf(0.0, reload - delta)
+	mortar_reload = maxf(0.0, mortar_reload - delta)
 	mg_t = maxf(0.0, mg_t - delta)
 
 

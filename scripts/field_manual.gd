@@ -643,7 +643,7 @@ Open ground with crates and walls. Three small positions: {h}ALPHA{/h} (2 riflem
 Every variant of the blocky soldier on a turntable: rifleman, sergeant, grenadier, rocketman, enemy, crouched (hunched forward), and a sergeant looping his hand signals. Further along: firing (standing, crouched, the grenadier), then prone, lying still and firing. Your squad holds back; {k}WASD{/k} pans along the line-up, wheel zooms.
 
 {h}ARMORED FLEET{/h}  {d}(prototype, key 7 on the level select){/d}
-A separate mode: five armored vehicles on open hills, a big box in the middle to shoot at. {k}WASD{/k} drives the fleet (it keeps a wedge), {k}SHIFT{/k} faster, the mouse aims every turret at the reticle. {k}LEFT MOUSE{/k} (hold): coaxial machine guns. {k}RIGHT MOUSE{/k}: main guns, each vehicle firing when loaded (4 s) and on target. {k}R{/k} reset, {k}BACKSPACE{/k} level select. The HUD there shows loaded guns and the target's health.
+A separate mode: five armored vehicles on open hills, a big box in the middle to shoot at. {k}WASD{/k} drives the fleet (it keeps a wedge), {k}SHIFT{/k} faster, the mouse aims every turret at the reticle. {k}LEFT MOUSE{/k} (hold): coaxial machine guns. {k}RIGHT MOUSE{/k}: 125mm cannons, each vehicle firing when loaded (4 s) and on target. {k}F{/k} or {k}MIDDLE MOUSE{/k}: mortar barrage, every ready tube (8 s reload) lobbing a round in a high arc over the hills onto the reticle (40 to 650 m away); red rings show where they'll land. {k}R{/k} reset, {k}BACKSPACE{/k} level select. The HUD there shows loaded guns and the target's health.
 
 {h}SWITCHING{/h}
 {k}M{/k} loads the next map (remembered). {k}R{/k} restarts the current one. {k}BACKSPACE{/k}: back to the level select.

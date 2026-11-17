@@ -6,7 +6,9 @@ extends Node3D
 ##   SHIFT (hold)   faster
 ##   MOUSE          aim (every turret tracks the reticle); WHEEL zoom
 ##   LMB (hold)     coaxial machine guns
-##   RMB            main guns (each vehicle fires when loaded and on target)
+##   RMB            125mm cannons (each vehicle fires when loaded and on target)
+##   F / MMB        mortar barrage: every tube that's ready lobs a round over
+##                  the hills onto the reticle (high arc, some scatter)
 ##   R              reset   BACKSPACE level select   ESC let go of the mouse
 ##
 ## Everything is analytic (no physics): the ground is a height function, the
@@ -30,6 +32,12 @@ static var MAIN_DMG := 90.0          # a main gun hit on the box
 const MAIN_SPLASH := 8.0        # ... and blast radius on the ground
 static var MG_DMG := 1.5             # a machine gun round on the box
 static var SHELL_SPEED := 320.0      # m/s, straight line (prototype: no drop)
+static var MORTAR_DMG := 140.0      # a mortar round landing on the box
+static var MORTAR_SCATTER := 6.0    # m: rounds land within this of the aim point (more at long range)
+const MORTAR_SPLASH := 12.0     # a round landing this close to the box still hurts it
+const MORTAR_G := 20.0          # gravity for the arc (m/s2): brisk, game-feel flight times
+const MORTAR_MIN := 40.0        # m: too close to lob at
+const MORTAR_MAX := 650.0
 static var SPEED := 11.0             # fleet speed (m/s); SHIFT x1.6
 const N_VEHICLES := 5
 const SLOTS := [Vector3(0, 0, -14), Vector3(-12, 0, -2), Vector3(12, 0, -2), Vector3(-24, 0, 10), Vector3(24, 0, 10)]   # wedge
@@ -46,6 +54,9 @@ var target_hp := TARGET_HP
 var target_dead := false
 var hits_main := 0
 var hits_mg := 0
+var hits_mortar := 0
+var _mortars: Array = []        # rounds in the air: {pos, vel, land (where it should come down), ring}
+var _mortar_queue: Array = []   # [vehicle, time]: a barrage fires tube by tube
 var aim := Vector3.ZERO         # where the reticle is on the ground / box
 var mg_firing := false
 
@@ -70,7 +81,7 @@ var dev: CanvasLayer             # F4: developer mode
 var _pause: Control              # Esc: paused, with the level list
 var _was_captured := false
 var _expect_release := false
-var forced_input := {}          # tests: {"mg": bool, "main": bool, "move": Vector2, "aim": Vector3}
+var forced_input := {}          # tests: {"mg": bool, "main": bool, "mortar": bool, "move": Vector2, "aim": Vector3}
 
 
 func _ready() -> void:
@@ -349,6 +360,114 @@ func _shells_tick(delta: float) -> void:
 			_shells.erase(s)
 
 
+# ---------------------------------------------------------------- mortars
+
+func mortars_ready() -> int:
+	var n := 0
+	for v in vehicles:
+		if v.mortar_reload <= 0.0:
+			n += 1
+	return n
+
+
+func _mortar_range_text() -> String:
+	var d := Vector2(aim.x - anchor.x, aim.z - anchor.z).length()
+	if d < MORTAR_MIN:
+		return "[color=%s]TOO CLOSE (%.0f m)[/color]" % [C_BAD, d]
+	if d > MORTAR_MAX:
+		return "[color=%s]OUT OF RANGE (%.0f m)[/color]" % [C_BAD, d]
+	return "TARGET %.0f m" % d
+
+
+## F / middle mouse: every tube that's ready fires on the reticle, one after
+## another. Nothing if the reticle is too close or out of range.
+func mortar_barrage() -> void:
+	var d := Vector2(aim.x - anchor.x, aim.z - anchor.z).length()
+	if d < MORTAR_MIN or d > MORTAR_MAX:
+		return                                   # (the HUD says TOO CLOSE / OUT OF RANGE)
+	var t := 0.0
+	for v in vehicles:
+		if v.mortar_reload <= 0.0:
+			v.mortar_reload = v.MORTAR_RELOAD
+			_mortar_queue.append([v, t, aim])
+			t += 0.22
+
+
+## Launch speed for a round from `from` to come down on `to`: a high arc,
+## higher the further it goes, always well clear of the hills.
+func mortar_velocity(from: Vector3, to: Vector3) -> Vector3:
+	var flat := Vector2(to.x - from.x, to.z - from.z)
+	var apex := maxf(from.y, to.y) + 40.0 + flat.length() * 0.12
+	var up := sqrt(2.0 * MORTAR_G * (apex - from.y))
+	var t_up := up / MORTAR_G
+	var t_down := sqrt(2.0 * (apex - to.y) / MORTAR_G)
+	var tt := t_up + t_down
+	return Vector3(flat.x / tt, up, flat.y / tt)
+
+
+func _launch_mortar(v: Node3D, at: Vector3) -> void:
+	var from: Vector3 = v.mortar_tip.global_position
+	var d := Vector2(at.x - from.x, at.z - from.z).length()
+	var r := MORTAR_SCATTER * (0.6 + d / 400.0) * sqrt(randf())
+	var a := randf() * TAU
+	var land := at + Vector3(cos(a) * r, 0, sin(a) * r)
+	land.y = height(land.x, land.z)
+	if target_box().has_point(Vector3(land.x, target_box().position.y + 1.0, land.z)):
+		land.y = target_box().end.y               # comes down on its roof
+	v.shots_mortar += 1
+	_muzzle(from, 0.7)
+	_puff(from + Vector3(0, 1.0, 0), 2.6, Color(0.8, 0.78, 0.74))
+	# A red ring where it will come down, until it does.
+	var tm := TorusMesh.new()
+	tm.inner_radius = 2.6
+	tm.outer_radius = 3.0
+	var ring := MeshInstance3D.new()
+	ring.mesh = tm
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.no_depth_test = true
+	m.albedo_color = Color(1.0, 0.3, 0.2, 0.6)
+	ring.material_override = m
+	add_child(ring)
+	ring.global_position = land + Vector3(0, 0.3, 0)
+	_mortars.append({"pos": from, "vel": mortar_velocity(from, land), "land": land, "ring": ring, "t": 0.0})
+
+
+func _mortar_tick(delta: float) -> void:
+	for q in _mortar_queue.duplicate():
+		q[1] -= delta
+		if q[1] <= 0.0:
+			_mortar_queue.erase(q)
+			_launch_mortar(q[0], q[2])
+	for r in _mortars.duplicate():
+		r["t"] += delta
+		var p0: Vector3 = r["pos"]
+		r["vel"] = r["vel"] + Vector3(0, -MORTAR_G * delta, 0)
+		var p1: Vector3 = p0 + r["vel"] * delta
+		(r["ring"] as Node3D).scale = Vector3.ONE * (1.0 + 0.12 * sin(r["t"] * 9.0))
+		# Coming down: did this step reach the ground or the box?
+		var seg := p1 - p0
+		var hit := trace(p0, seg.normalized(), seg.length()) if r["vel"].y < 0.0 else {}
+		if not hit.is_empty() or r["t"] > 30.0:
+			var at: Vector3 = hit.get("pos", p1)
+			_mortars.erase(r)
+			(r["ring"] as Node).queue_free()
+			if hit.get("box", false):
+				damage_target(MORTAR_DMG)
+				hits_mortar += 1
+			else:
+				var box := target_box()
+				var out := Vector2(maxf(absf(at.x - box.get_center().x) - box.size.x / 2.0, 0.0), maxf(absf(at.z - box.get_center().z) - box.size.z / 2.0, 0.0)).length()
+				if out < MORTAR_SPLASH:
+					damage_target(MORTAR_DMG * 0.4 * (1.0 - out / MORTAR_SPLASH))
+			_explosion(at, 8.0)
+			_puff(at + Vector3(0, 2.0, 0), 6.0, Color(0.45, 0.4, 0.33))
+			continue
+		r["pos"] = p1
+		_tracer(p0, p1, Color(1.0, 0.85, 0.5), 0.12, 0.3)
+
+
 # ---------------------------------------------------------------- effects
 
 func _fx_mesh(mesh: Mesh, col: Color, at: Vector3, life: float, kind: String) -> MeshInstance3D:
@@ -460,6 +579,10 @@ func _physics_process(delta: float) -> void:
 			_fire_mg(v)
 		if main_pressed and on and v.reload <= 0.0:
 			_fire_main(v)
+	if forced_input.get("mortar", false):
+		forced_input.erase("mortar")
+		mortar_barrage()
+	_mortar_tick(delta)
 	_shells_tick(delta)
 	_fx_tick(delta)
 	if _flash_t > 0.0:
@@ -497,6 +620,8 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event is InputEventMouseButton and event.pressed:
 		if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED and event.button_index == MOUSE_BUTTON_LEFT:
 			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+		elif event.button_index == MOUSE_BUTTON_MIDDLE:
+			mortar_barrage()
 		elif event.button_index == MOUSE_BUTTON_WHEEL_UP:
 			cam_dist = maxf(12.0, cam_dist * 0.9)
 		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
@@ -507,6 +632,8 @@ func _unhandled_input(event: InputEvent) -> void:
 				set_paused(true)
 			KEY_F4:
 				dev.toggle()
+			KEY_F:
+				mortar_barrage()
 			KEY_R:
 				get_tree().reload_current_scene()
 			KEY_BACKSPACE:
@@ -564,7 +691,7 @@ func _hud_build() -> void:
 	var tr := _panel(Control.PRESET_TOP_RIGHT)
 	tr.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	var help := _rich(14)
-	help.text = "WASD move fleet   SHIFT faster   MOUSE aim   WHEEL zoom\nLMB machine guns   RMB main guns\nR reset   BACKSPACE level select   ESC pause / levels   F4 dev mode"
+	help.text = "WASD move fleet   SHIFT faster   MOUSE aim   WHEEL zoom\nLMB machine guns   RMB 125mm cannons   F / MMB mortar barrage\nR reset   BACKSPACE level select   ESC pause / levels   F4 dev mode"
 	tr.add_child(help)
 	ui.add_child(tr)
 	var br := _panel(Control.PRESET_BOTTOM_RIGHT)
@@ -615,13 +742,15 @@ func _hud_update() -> void:
 	_hud.text = "ARMORED FLEET   [color=%s](PROTOTYPE)[/color]%s\n" % [C_DIM, "" if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED else "   (CLICK TO AIM)"] \
 		+ "FLEET      %d VEHICLES   %3.0f km/h\n" % [vehicles.size(), spd * 3.6] \
 		+ "MG         %s\n" % ("[color=%s]FIRING[/color]" % C_WARN if mg_firing else "READY") \
-		+ "MAIN GUNS  %d / %d LOADED\n" % [loaded, vehicles.size()] \
+		+ "125MM      %d / %d LOADED\n" % [loaded, vehicles.size()] \
+		+ "MORTAR     %d / %d READY   %s\n" % [mortars_ready(), vehicles.size(), _mortar_range_text()] \
 		+ "TARGET     [color=%s][%s] %d%%[/color]   %.0f m\n" % [hp_col, _bar(hp_k), int(ceil(hp_k * 100.0)), Vector2(anchor.x, anchor.z).length()] \
-		+ "HITS       MAIN %d   MG %d" % [hits_main, hits_mg]
+		+ "HITS       125MM %d   MORTAR %d   MG %d" % [hits_main, hits_mortar, hits_mg]
 	var lines: Array = ["FLEET  %d / %d" % [vehicles.size(), N_VEHICLES]]
 	for v in vehicles:
-		var r: String = ("[color=%s]LOADED[/color]" % C_OK) if v.reload <= 0.0 else ("[color=%s]%s[/color]" % [C_WARN, _bar(1.0 - v.reload / v.MAIN_RELOAD, 8)])
-		lines.append("V%d  %s  %s" % [v.index + 1, ["LEAD", "LEFT", "RIGHT", "L WING", "R WING"][v.index], r])
+		var r: String = ("[color=%s]125 READY[/color]" % C_OK) if v.reload <= 0.0 else ("[color=%s]125 %s[/color]" % [C_WARN, _bar(1.0 - v.reload / v.MAIN_RELOAD, 5)])
+		var m: String = ("[color=%s]MTR READY[/color]" % C_OK) if v.mortar_reload <= 0.0 else ("[color=%s]MTR %s[/color]" % [C_WARN, _bar(1.0 - v.mortar_reload / v.MORTAR_RELOAD, 5)])
+		lines.append("V%d  %-6s  %s  %s" % [v.index + 1, ["LEAD", "LEFT", "RIGHT", "L WING", "R WING"][v.index], r, m])
 	_units.text = "\n".join(lines)
 
 

@@ -20,7 +20,7 @@ const ENTRIES := [
 	[4, "OPERATION SLEIPNIR", true, "Combined arms on open farmland, the biggest map. Advance stacked behind your LAV-25 on a checkpoint, a hedgerow treeline, a farm and a crossroads village with an APC.", true],
 	[1, "TEST FIELD", true, "Open ground and three small enemy positions, for trying out orders.", false],
 	[2, "MODEL VIEWER", true, "Every soldier, pose and firing position on a turntable.", false],
-	[FLEET, "ARMORED FLEET", true, "Prototype: five armored vehicles on open hills. LMB MGs, RMB main guns.", false],
+	[FLEET, "ARMORED FLEET", true, "Prototype: five tanks on open hills. MG, 125mm cannon, mortar.", false],
 ]
 const FLEET := 100           # not a main.gd map: the armored fleet mode has its own scene
 

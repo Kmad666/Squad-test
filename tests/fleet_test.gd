@@ -7,7 +7,10 @@ extends SceneTree
 ##  4. main guns (RMB): every vehicle fires once, the shells hit the box hard,
 ##     all five reload, and fire again once loaded
 ##  5. driving straight at the box: nobody drives into it
-##  6. shoot it to nothing: TARGET DESTROYED
+##  6. mortar (F): too close, nothing fires; at range every tube lobs a round
+##     in a high arc (well above the hills), red rings mark where they'll
+##     land, they come down near the aim point and hurt the box; then reload
+##  7. shoot it to nothing: TARGET DESTROYED
 ## Prints FAIL lines and exits 1 on any failure.
 
 var fm
@@ -19,6 +22,8 @@ var t0 := 0
 var hp0 := 0.0
 var worst_ground := 0.0
 var inside := 0
+var peak := 0.0
+var landed_near := 0.0
 
 
 func _initialize() -> void:
@@ -107,6 +112,39 @@ func _physics_process(_d: float) -> bool:
 			if f - t0 == 1500:
 				_check(inside == 0, "driving at the box, nobody drove into it (%d frames inside)" % inside)
 				_check(fm.anchor.distance_to(Vector3.ZERO) < 60.0, "...though the fleet got right up to it (%.0f m)" % Vector2(fm.anchor.x, fm.anchor.z).length())
+				# Mortar: from back at the start line.
+				fm.anchor = Vector3(0, 0, 230)
+				for v in fm.vehicles:
+					var p: Vector3 = fm._slot_world(v)
+					v.global_position = p
+					v.vel = Vector3.ZERO
+				fm.forced_input = {"aim": fm.anchor + Vector3(0, 0, -20), "mortar": true}
+				t0 = f
+				phase = 10
+		10:
+			if f - t0 == 10:
+				_check(fm.mortars_ready() == 5 and fm._mortars.is_empty() and fm._mortar_queue.is_empty(), "mortar: aim point too close, nothing fires")
+				hp0 = fm.target_hp
+				fm.forced_input = {"aim": _box_aim(), "mortar": true}
+			if f - t0 == 70:
+				_check(fm.mortars_ready() == 0, "F: every tube fired (%d still ready)" % fm.mortars_ready())
+				_check(fm._mortars.size() == 5, "five rounds in the air (%d)" % fm._mortars.size())
+				var rings := 0
+				for r in fm._mortars:
+					if is_instance_valid(r["ring"]) and r["ring"].is_inside_tree():
+						rings += 1
+				_check(rings == 5, "a red ring where each will land (%d)" % rings)
+			if f - t0 > 70 and not fm._mortars.is_empty():
+				for r in fm._mortars:
+					peak = maxf(peak, r["pos"].y)
+					landed_near = maxf(landed_near, Vector2(r["land"].x - _box_aim().x, r["land"].z - _box_aim().z).length())
+			if f - t0 == 900:
+				print("mortar barrage: peak %.0f m, furthest landing %.1f m from the aim point, box %d -> %d, %d direct hits" % [peak, landed_near, hp0, fm.target_hp, fm.hits_mortar])
+				_check(fm._mortars.is_empty(), "all the rounds came down (%d still up)" % fm._mortars.size())
+				_check(peak > fm.HILLS + 40.0, "a high arc, well over the hills (peak %.0f m)" % peak)
+				_check(landed_near < fm.MORTAR_SCATTER * 2.0, "they came down near the aim point (furthest %.1f m)" % landed_near)
+				_check(fm.target_hp < hp0 - fm.MORTAR_DMG, "the barrage hurt the box (%d -> %d, %d direct hits)" % [hp0, fm.target_hp, fm.hits_mortar])
+				_check(fm.mortars_ready() == 5, "...and the tubes reloaded")
 				fm.target_hp = 50.0
 				fm.forced_input = {"main": true, "aim": _box_aim()}
 				t0 = f

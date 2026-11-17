@@ -145,12 +145,13 @@ vehicles over an 840 m hilly countryside; a big box stands in the middle to shoo
 | WASD | Move the fleet (it keeps a wedge, turned the way it's going); Shift: faster |
 | Mouse / wheel | Aim (every turret tracks the reticle) / zoom |
 | Left mouse (hold) | Coaxial machine guns |
-| Right mouse | Main guns: each vehicle fires when loaded (4 s) and on target |
+| Right mouse | 125mm cannons: each vehicle fires when loaded (4 s) and on target |
+| F / middle mouse | Mortar barrage: every ready tube (8 s reload) lobs a round in a high arc over the hills onto the reticle (40-650 m), landing within a few metres; red rings mark where they'll come down |
 | R / Backspace | Reset / level select |
 | Esc | Pause, with the level list (go straight to any level) |
 | F4 | Developer mode (the fleet's tuning sliders) |
 
-Prototype limits: shells fly straight (no drop), the box doesn't shoot back, vehicles drive through each other's
+Each vehicle carries a coaxial machine gun, a 125mm cannon and a rear-deck mortar. Prototype limits: 125mm shells fly straight (no drop), the box doesn't shoot back, vehicles drive through each other's
 gaps rather than physically colliding, and the ground is a height function (shots are traced against it and the box).
 
 ## Units
