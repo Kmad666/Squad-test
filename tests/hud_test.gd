@@ -84,6 +84,7 @@ func _process(_delta: float) -> bool:
 			var yaw0: float = rig.yaw
 			var mv := InputEventMouseMotion.new()
 			mv.relative = Vector2(80, 0)
+			mv.position = Vector2(80, 0)           # (the button went down at 0,0: a drag, not a click)
 			rig._unhandled_input(mv)
 			_check(is_equal_approx(rig.yaw, yaw0), "free mouse: moving the cursor doesn't turn the camera")
 			var down := InputEventMouseButton.new()

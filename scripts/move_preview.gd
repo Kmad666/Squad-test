@@ -2,6 +2,8 @@ extends Node3D
 ## Move preview: hold the reticle still on the ground and floating,
 ## see-through orbs show where each man of the team you command would end up
 ## if you pressed E now (squad.preview_move: the same rules as the move).
+## In command mode (Tab) they follow the cursor, and with men selected show
+## where a right click would send them (squad.preview_detach).
 ##   green  behind cover
 ##   amber  flat on the ground in the open (no cover there for him)
 ##   blue   standing in formation (an ordinary move: nobody takes cover)
@@ -116,10 +118,17 @@ func _wanted(delta: float) -> bool:
 	var sq = main.squad
 	if not enabled or sq == null or sq.soldiers.is_empty():
 		return false
-	if sq.order_target != null or Input.get_vector("move_left", "move_right", "move_forward", "move_back").length() > 0.05:
+	# Command mode (Tab): the cursor instead of the reticle, and with men
+	# selected, where they'd go on their own.
+	var cmd: bool = main.command != null and main.command.active()
+	var men: Array = main.command.selected_men() if cmd else []
+	if men.is_empty() and (sq.order_target != null or (not cmd and Input.get_vector("move_left", "move_right", "move_forward", "move_back").length() > 0.05)):
 		return false                   # already on the move
-	var p: Variant = aim_override if aim_override != null else main.reticle_ground_point()
-	if p == null or (p as Vector3).distance_to(sq.anchor) > RANGE or (p as Vector3).distance_to(sq.anchor) < 2.0:
+	var p: Variant = aim_override
+	if p == null:
+		p = main.command.hover_point() if cmd else main.reticle_ground_point()
+	var reach := RANGE * (1.5 if cmd else 1.0)
+	if p == null or (p as Vector3).distance_to(sq.anchor) > reach or (men.is_empty() and (p as Vector3).distance_to(sq.anchor) < 2.0):
 		_last_p = null
 		return false
 	_plan_t -= delta
@@ -133,7 +142,7 @@ func _wanted(delta: float) -> bool:
 	_last_p = p
 	if _steady < STEADY:
 		return false
-	var plan: Array = sq.preview_move(p)
+	var plan: Array = sq.preview_move(p) if men.is_empty() else sq.preview_detach(men, p)
 	for i in _orbs.size():
 		var o: Dictionary = _orbs[i]
 		if i < plan.size():

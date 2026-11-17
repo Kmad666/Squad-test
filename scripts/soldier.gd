@@ -50,6 +50,9 @@ var main: Node3D
 var index := 0
 var team := 0                  # fire team (0 = A, 1 = B) when the squad is split
 var slot_offset := Vector3.ZERO
+var detached := false          # sent to hold a spot of his own (command mode); U rejoins
+var hold_spot := Vector3.ZERO
+var hold_dir := Vector3.FORWARD   # detached: the way he faces from his spot
 var slot_index := 0            # place in the team's formation (squad deals them)
 var pace := 1                  # squad.WALK / MOVE / RUSH, set by the squad every frame
 var cover_off := Vector3.ZERO  # his place in the unit's spread while it's in cover
@@ -605,6 +608,11 @@ func _separation() -> Vector3:
 	return push
 
 
+## The way the enemy is for him: his team's, or his own if he's detached.
+func _threat_dir() -> Vector3:
+	return hold_dir if detached else squad.threat_dir_for(team)
+
+
 func _update_facing(delta: float, vel: Vector3) -> void:
 	var look := Vector3.ZERO
 	var rate := 10.0
@@ -612,7 +620,7 @@ func _update_facing(delta: float, vel: Vector3) -> void:
 		rate = 3.0        # a man lying down turns slowly
 	if _prone and _moving and Vector2(vel.x, vel.z).length() > 0.1:
 		look = vel        # crawls head first...
-		var threat: Vector3 = squad.threat_dir_for(team)
+		var threat: Vector3 = _threat_dir()
 		if vel.normalized().dot(threat) < -0.3:
 			look = threat  # ...except backing away: feet first, face to the enemy
 	elif target and is_instance_valid(target):
@@ -620,7 +628,7 @@ func _update_facing(delta: float, vel: Vector3) -> void:
 	elif _has_aim:
 		look = _aim_point - global_position
 	elif state == State.IN_COVER:
-		look = squad.threat_dir_for(team)
+		look = _threat_dir()
 	elif Vector2(vel.x, vel.z).length() > 0.4:
 		look = vel
 	look.y = 0
@@ -745,7 +753,10 @@ func _choose_aim() -> void:
 			_has_aim = false
 		FIRE_AT_WILL:
 			_has_aim = false
-			if target == null or not _has_los(target, _spot()) or _rng.randf() < 0.15:
+			var mk: Node3D = squad.marked
+			if mk and mk.alive and mk.global_position.distance_to(global_position) < primary["max"] and _has_los(mk, _spot()):
+				target = mk                  # the marked enemy first, whenever he can see him
+			elif target == null or not _has_los(target, _spot()) or _rng.randf() < 0.15:
 				target = _find_target(false)
 		FIRE_FOCUS:
 			if target and not (main.in_reticle(target.aim_point()) and _has_los(target, _spot())):

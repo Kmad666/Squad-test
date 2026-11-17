@@ -5,6 +5,7 @@ extends Node3D
 const CoverUtil = preload("res://scripts/cover_util.gd")
 const SquadScript = preload("res://scripts/squad.gd")
 const MovePreview = preload("res://scripts/move_preview.gd")
+const CommandMode = preload("res://scripts/command_mode.gd")
 const EnemySoldierScript = preload("res://scripts/enemy_soldier.gd")
 const VehicleScript = preload("res://scripts/vehicle.gd")
 const CameraRigScript = preload("res://scripts/camera_rig.gd")
@@ -85,6 +86,7 @@ var hurt := 0.0               # red screen-edge flash when a soldier is hit
 var _friendly_tracer_mat: StandardMaterial3D
 var _enemy_tracer_mat: StandardMaterial3D
 var kills := 0
+var command: Node3D            # Tab: command mode (clicks, selection, detached men)
 var move_preview: Node3D        # orbs where the men would go (E)
 var game_time := 0.0          # seconds of play (stops while paused): mission clock, fire log ages
 var _debrief: PanelContainer   # end-of-operation panel (won or wiped out)
@@ -156,6 +158,9 @@ func _ready() -> void:
 	move_preview = MovePreview.new()
 	move_preview.main = self
 	add_child(move_preview)
+	command = CommandMode.new()
+	command.main = self
+	add_child(command)
 	squad.setup(self, map.START)
 	squad.spawn_waiting_team("ANTI-ARMOR TEAM", map.AT_TEAM, ["anti_armor", "anti_armor", "anti_armor"])
 	if map_const("LAV", false):
@@ -291,6 +296,7 @@ func _setup_input() -> void:
 	_bind("formation", [KEY_Y])
 	_bind("walk", [KEY_J])
 	_bind("rush", [KEY_SHIFT])
+	_bind("rejoin", [KEY_U])
 
 
 func _bind(action: String, keys: Array) -> void:
@@ -1882,7 +1888,7 @@ func _build_hud() -> void:
 		+ "F auto fire   T split / join teams   Q switch team   B bound   H hold + scout   Z LAV with us / overwatch\n" \
 		+ "G on a door: stack up, G again: breach and clear the room   Y formation   J walk   SHIFT rush\n" \
 		+ "L lights   N night vision   I thermal (in reticle)   F2 graphics   V retro   F3 difficulty\n" \
-		+ "TAB aim / free mouse (free: hold RMB to pan)   ESC manual   O reticle\n" \
+		+ "TAB command mode (click orders, select men)   ESC manual   O reticle\n" \
 		+ "M next map   BACKSPACE level select   R restart   F1 help"
 	help_panel.add_child(help_label)
 
@@ -2013,7 +2019,9 @@ func _unit_text() -> String:
 		var sp_name: String = Weapons.SPECIALS[s.special_kind][1]
 		var sp := "[color=%s]%-5s %d[/color]" % [C_OK if s.special_ammo > 0 else C_DIM, sp_name, s.special_ammo]
 		var flag := ""
-		if s.pinned():
+		if s.detached:
+			flag = "  [color=%s]DETACHED[/color]" % C_WARN
+		elif s.pinned():
 			flag = "  [color=%s]PINNED[/color]" % C_WARN
 		elif s.hp < s.MAX_HP * 0.5:
 			flag = "  [color=%s]WOUNDED[/color]" % C_WARN
@@ -2138,7 +2146,7 @@ func _process(delta: float) -> void:
 	if hud_label:
 		var captured := Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
 		_notice_t = maxf(0.0, _notice_t - delta)
-		hud_label.text = "%s%s\n" % [map.NAME, "" if captured else ("   (FREE MOUSE: TAB TO AIM, HOLD RMB TO PAN)" if cam_rig.free_mouse else "   (CLICK OR TAB TO AIM)")] \
+		hud_label.text = "%s%s\n" % [map.NAME, "" if captured else ("   [COMMAND MODE]" if cam_rig.free_mouse else "   (CLICK OR TAB TO AIM)")] \
 			+ "SQUAD   %s\n" % squad.status_text() \
 			+ "FIRE    %s%s\n" % [squad.fire_mode_text(), "   (auto fire ON)" if squad.auto_fire else ""] \
 			+ "FIRE ON US  %s\n" % _supp_bar(squad.avg_suppression()) \

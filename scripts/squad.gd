@@ -73,6 +73,7 @@ var main: Node3D
 var soldiers: Array = []
 var slot_offsets: Array = []       # by soldier index (kept for tests / tools)
 var auto_fire := false             # F: permanent fire at will
+var marked: Node3D = null       # command mode: the enemy the squad concentrates on (RMB on him)
 var forced_mode := -1              # tests can force a fire mode
 var forced_specials := false       # tests: use a special every 1.5 s automatically
 var selected_special := 0          # index into Weapons.SPECIAL_ORDER (keys 1-4, X)
@@ -273,10 +274,15 @@ func _react_prone(s: Node3D, t: int, id: int) -> void:
 		s.go_prone(s.global_position)
 
 
+## The men moving with team `t` (not the ones detached to hold a spot of their own).
 func team_members(t: int) -> Array:
 	if not split:
-		return soldiers if t == 0 else []
-	return soldiers.filter(func(s): return s.team == t)
+		return soldiers.filter(func(s): return not s.detached) if t == 0 else []
+	return soldiers.filter(func(s): return s.team == t and not s.detached)
+
+
+func detached_men() -> Array:
+	return soldiers.filter(func(s): return s.detached)
 
 
 ## Loose cluster per team: sunflower spiral with a little per-soldier jitter
@@ -481,6 +487,149 @@ func _clear_width(p: Vector3, fwd: Vector3) -> float:
 	return total
 
 
+# ---------------------------------------------------------------- detached men
+# Command mode (Tab): selected men can be sent to a spot of their own. They
+# leave the formation and hold it (in cover if there's any there, else flat
+# if a fight is on) until they rejoin (U). Their fire orders stay the team's.
+
+const DETACH_GAP := 1.8          # several men sent to one spot: this far apart, across the threat
+const DETACH_COVER := 3.0        # a cover spot this close to his spot is his
+
+
+## Where the enemy is, seen from `p`: toward the nearest alerted enemy within
+## 90 m, else the way the camera looks.
+func threat_from(p: Vector3) -> Vector3:
+	var best: Node3D = null
+	for a in main.areas:
+		if not a["alerted"]:
+			continue
+		for m in a["members"]:
+			if m.alive and m.global_position.distance_to(p) < 90.0 and (best == null or m.global_position.distance_to(p) < best.global_position.distance_to(p)):
+				best = m
+	if best:
+		var d: Vector3 = best.global_position - p
+		d.y = 0
+		if d.length() > 1.0:
+			return d.normalized()
+	return main.camera_forward()
+
+
+## Each man's spot if `men` were sent to `p`: [{man, pos, kind, cp}], kind
+## "cover" (cp: the cover point), "prone" (in the open, a fight on) or "open".
+func _detach_plan(men: Array, p: Vector3) -> Array:
+	var lim: float = main.nav_half - 2.0
+	var dest: Vector3 = CoverUtil.push_out(main.solid_defs, Vector3(clampf(p.x, -lim, lim), 0, clampf(p.z, -lim, lim)), 1.0)
+	var tdir := threat_from(dest)
+	var across := Vector3(-tdir.z, 0, tdir.x)
+	# Spots in a short line across the threat, nearest man to nearest spot.
+	var spots: Array = []
+	for i in men.size():
+		spots.append(dest + across * (i - (men.size() - 1) / 2.0) * DETACH_GAP)
+	var order: Array = men.duplicate()
+	order.sort_custom(func(a, b): return a.global_position.dot(across) < b.global_position.dot(across))
+	var claimed: Array = []
+	for s in soldiers:
+		if not men.has(s) and s.state != 0:
+			claimed.append(s.cover_pos)
+	var fight: bool = main.any_area_alerted()
+	var out: Array = []
+	for i in order.size():
+		var s: Node3D = order[i]
+		var want: Vector3 = CoverUtil.push_out(main.cover_defs, spots[i], 0.6)
+		var best: Dictionary = {}
+		var bd := DETACH_COVER
+		for cp in main.cover_points:
+			if (cp["normal"] as Vector3).dot(tdir) > -0.3:
+				continue
+			var d: float = (cp["pos"] as Vector3).distance_to(want)
+			if d >= bd:
+				continue
+			var free := true
+			for c in claimed:
+				if c.distance_to(cp["pos"]) < MIN_COVER_GAP:
+					free = false
+					break
+			if free:
+				bd = d
+				best = cp
+		if not best.is_empty():
+			claimed.append(best["pos"])
+			out.append({"man": s, "pos": best["pos"], "kind": "cover", "cp": best})
+		else:
+			out.append({"man": s, "pos": want, "kind": "prone" if fight else "open", "cp": {}})
+	return out
+
+
+## The move preview for sending `men` to `p` (same shape as preview_move).
+func preview_detach(men: Array, p: Vector3) -> Array:
+	return _detach_plan(men.filter(func(s): return is_instance_valid(s) and soldiers.has(s)), p)
+
+
+## Send `men` to hold `p` on their own (RMB with men selected).
+func detach(men: Array, p: Vector3) -> void:
+	men = men.filter(func(s): return is_instance_valid(s) and soldiers.has(s))
+	if men.is_empty():
+		return
+	for s in men:
+		if teams[s.team].get("breach") != null:
+			cancel_breach(s.team)          # a man pulled out of the door stack calls the breach off
+	var plan := _detach_plan(men, p)
+	var taken: Array = []
+	var all_spots: Array = plan.map(func(o): return o["pos"])
+	for o in plan:
+		var s: Node3D = o["man"]
+		s.detached = true
+		s.release_hold()                       # an old halt point isn't his spot now
+		s.hold_spot = o["pos"]
+		s.hold_dir = threat_from(o["pos"])
+		match o["kind"]:
+			"cover":
+				var leans := _leans_for(o["cp"], all_spots, taken)
+				taken.append_array(leans)
+				s.go_to_cover(o["pos"], true, leans)
+			"prone":
+				s.go_prone(o["pos"])
+			_:
+				s.leave_cover()
+				s.move_target = o["pos"]
+	var names := "%d MEN" % men.size() if men.size() > 1 else _man_name(men[0])
+	main.sgt_callout("%s: HOLD THERE" % names)
+
+
+## Back to the team (U): into its formation, or its cover if it's in cover.
+func rejoin(men: Array = []) -> void:
+	if men.is_empty():
+		men = detached_men()
+	men = men.filter(func(s): return is_instance_valid(s) and soldiers.has(s) and s.detached)
+	if men.is_empty():
+		return
+	var teams_hit := {}
+	for s in men:
+		s.detached = false
+		s.release_hold()
+		teams_hit[s.team] = true
+		if not teams[s.team]["in_cover"] or lav_with(s.team):
+			s.leave_cover()
+	for t in teams_hit:
+		if teams[t]["in_cover"] and not lav_with(t):
+			_cover_shift(t)                    # find them spots with the rest
+	main.sgt_callout("%s: ON ME" % ("%d MEN" % men.size() if men.size() > 1 else _man_name(men[0])))
+
+
+func _man_name(s: Node3D) -> String:
+	if s.is_sergeant:
+		return "SERGEANT"
+	return {"rifleman": "RIFLEMAN", "grenadier": "GRENADIER", "anti_armor": "ROCKET MAN"}.get(s.role, "RIFLEMAN")
+
+
+## RMB on an enemy in command mode: everybody concentrates on him (fire at will on).
+func mark(t: Node3D) -> void:
+	marked = t
+	auto_fire = true
+	log_fire("MARKED TARGET")
+	main.sgt_callout("TARGET MARKED: %s" % ("VEHICLE" if t.kind == "vehicle" else "RIFLEMAN" if not t.get("rpg") else "RPG"))
+
+
 # ---------------------------------------------------------------- fire control
 
 ## Primary weapons for the team you command: left mouse held = focus fire on
@@ -645,6 +794,9 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event.is_action_pressed("auto_fire"):
 		auto_fire = not auto_fire
 	elif event.is_action_pressed("move_order"):
+		if main.command and main.command.active():
+			main.command.right_click(main.get_viewport().get_mouse_position())   # command mode: E acts on the cursor
+			return
 		var p: Variant = main.reticle_ground_point()
 		if p != null:
 			move_to(p)
@@ -874,7 +1026,11 @@ func centroid(t := -1) -> Vector3:
 
 func _physics_process(delta: float) -> void:
 	var input := Input.get_vector("move_left", "move_right", "move_forward", "move_back")
+	if main.cam_rig and main.cam_rig.free_mouse:
+		input = Vector2.ZERO                   # command mode: WASD pans the camera
 	_update_pace()
+	if marked != null and (not is_instance_valid(marked) or not marked.alive):
+		marked = null
 	var lim: float = main.nav_half - 2.0
 	if input.length() > 0.05:
 		var dir: Vector3 = main.cam_rig.get_yaw_basis() * Vector3(input.x, 0, input.y)

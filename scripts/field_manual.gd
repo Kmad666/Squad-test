@@ -261,7 +261,8 @@ const PAGES := [
 {h}GAME{/h}
   {k}ESC{/k}            This manual (pauses)
   {k}F1{/k}             Controls panel on/off
-  {k}TAB{/k}            Aim / free mouse (free: hold {k}RIGHT MOUSE{/k} and drag to pan)
+  {k}TAB{/k}            Aim / command mode (click orders, select and place men)
+  {k}U{/k}              Command mode: detached men rejoin the team
   {k}O{/k}              Reticle settings (and the move preview orbs on / off)
   {k}F2{/k}             Graphics HIGH / LOW
   {k}F3{/k}             Difficulty EASY / NORMAL (restarts the operation)
@@ -329,7 +330,18 @@ const PAGES := [
 
 {h}10. THE MOUSE AND THE CAMERA{/h}
   - Click to aim: the mouse turns the camera. {k}ESC{/k} lets go of the mouse and opens this manual.
-  - {k}TAB{/k} lets go of the mouse without pausing: the cursor moves freely and you can hold {k}RIGHT MOUSE{/k} and drag to look around. {k}TAB{/k} again to aim.
+  - {k}TAB{/k} lets go of the mouse without pausing: command mode (next guide). {k}TAB{/k} again to aim.
+
+{h}11. COMMAND MODE: PLACING MEN ONE BY ONE{/h}
+  1. {k}TAB{/k}. The camera rises over the field and the cursor is free. The game does {h}not{/h} pause.
+  2. {k}WASD{/k} now moves the camera, not the squad. Hold {k}RIGHT MOUSE{/k} and drag to turn it.
+  3. {k}RIGHT CLICK{/k} the ground: the whole team moves there, just like {k}E{/k}. Rest the cursor first and the orbs show where everyone will end up.
+  4. {k}LEFT CLICK{/k} a man to select him (a ring under his feet); {k}SHIFT{/k}-click to add more, or drag a box. Now the orbs show where {h}they{/h} would go.
+  5. {k}RIGHT CLICK{/k} the ground with men selected: they leave the formation and hold that spot. In cover if there is any (green orb), flat in the open if a fight is on (amber), standing if not (blue). An amber diamond hangs over each detached man and the unit panel says {h}DETACHED{/h}.
+  6. The team carries on without them: move it, take cover, bound. The detached men stay put and keep firing on the team's fire orders.
+  7. {k}U{/k}: they rejoin (the selected ones, or all of them if none are selected) and run back into the formation, or into cover with the rest if the team is in cover.
+  8. {k}RIGHT CLICK{/k} an enemy to mark him: fire at will, and every man who can see him shoots at him first.
+Use it for a flank: a pair to the side of the enemy, the team fixing him from the front. A man pulled out of a door stack calls the breach off.
   - {k}H{/k} holds the squad in place and lets {k}WASD{/k} scout ahead with the camera.
 """],
 ["MOVEMENT & COVER", """{h}THE SERGEANT & HAND SIGNALS{/h}
@@ -609,8 +621,13 @@ Classic green goggles over the whole screen: the dark lifted, lights blooming, h
 {h}THERMAL SIGHT  ({k}I{/k}){/h}
 Inside the reticle only: white-hot. Bodies glow (faces and hands hottest, rifles cooler, the dead cooling), the rest of the scene goes cold grey; lamps, muzzle flashes and fires show hot too. Works with night vision on, by day and night, HD or RETRO. Resize the reticle ({k}O{/k}) to see more.
 
-{h}AIM / FREE MOUSE  ({k}TAB{/k}){/h}
-Tab lets go of the mouse without pausing: the cursor moves freely and clicks don't fire. Hold the right button and drag to pan the camera. Tab again grabs the mouse and you're aiming. (In the browser, if Tab can't grab the mouse, click.)
+{h}COMMAND MODE  ({k}TAB{/k}){/h}
+Tab lets go of the mouse without pausing and lifts the camera over the field. {k}WASD{/k} moves the camera, {k}RIGHT MOUSE{/k} drag turns it.
+  - {k}LEFT CLICK{/k} a man: select him. {k}SHIFT{/k}-click: add or remove. Drag: box select. Click empty ground: back to the whole team.
+  - {k}RIGHT CLICK{/k} the ground: the team (nothing selected) or the selected men (detached: they hold that spot) go there. {k}E{/k} does the same at the cursor.
+  - {k}RIGHT CLICK{/k} an enemy: mark him (fire at will, he's everyone's first target).
+  - {k}U{/k}: detached men rejoin.
+Tab again grabs the mouse and you're aiming; the camera comes back to the squad. (In the browser, if Tab can't grab the mouse, click.)
 
 {h}UNIT STATUS  (bottom right){/h}
 The dial turns with the camera: the notch at the top is where you're looking, the letters show north, and the amber arrow is the way the unit you command is moving (longer = faster; a dot when halted). Next to it: the compass heading and speed, whether the unit is in cover (with how many men are in position and how many are prone), and the last three fire orders with how long ago they were given.

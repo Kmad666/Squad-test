@@ -50,7 +50,8 @@ sky reflections are off. CI builds both desktop versions after the tests and the
 | Z | LAV with us (it leads, the infantry stack behind it) / LAV on overwatch (OPERATION SLEIPNIR) |
 | M | Next map (remembered) |
 | Backspace | Back to the level select |
-| Tab | Aim / free mouse. Free mouse: cursor moves freely, hold right mouse and drag to pan the camera |
+| Tab | Aim / command mode (real time). Command mode: camera over the field, WASD moves it, right-drag turns it; left-click selects men (Shift adds, drag for a box); right-click the ground moves the team, or sends the selected men to hold that spot on their own (detached); right-click an enemy marks him |
+| U | Command mode: detached men rejoin the team |
 | O | Reticle settings (sizes are saved in your browser) and the move preview orbs on / off. Rest the reticle on the ground and orbs show where E would send each man: green behind cover, amber prone in the open, blue standing in formation |
 | F2 | Graphics LOW / HIGH (LOW: no shadows or bloom, 70% 3D resolution, lighter screen effects; remembered) |
 | F3 | Difficulty EASY / NORMAL (also on the level select; restarts the operation; remembered). NORMAL punishes walking at a position in the open |

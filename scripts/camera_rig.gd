@@ -3,8 +3,9 @@ extends Node3D
 ## down-range, so the screen centre (and the reticle) is where the squad will
 ## be shooting, not the squad itself. The squad sits in the lower third.
 ## Click to grab the mouse, Esc to release, wheel to zoom.
-## Tab switches between aiming (mouse grabbed) and a free mouse; with a free
-## mouse, hold the right button and drag to pan the camera.
+## Tab switches between aiming (mouse grabbed) and command mode (free mouse,
+## camera up over the field, WASD moves it, RMB drag pans, clicks give orders:
+## command_mode.gd).
 ## Shake and FOV kick come from main.fire_heat (how hard the squad is firing).
 
 const Atmosphere = preload("res://scripts/atmosphere.gd")
@@ -12,6 +13,10 @@ const PIVOT_HEIGHT := 1.9     # pivot above the squad's anchor
 const INDOOR_PITCH := -1.0     # looking down into rooms (rad)
 const INDOOR_DIST := 9.5
 const CAM_LIFT := 1.7         # extra camera height above the pivot line
+const COMMAND_PITCH := -0.9   # command mode (Tab): looking down over the field (rad)
+const COMMAND_DIST := 17.0
+const PAN_SPEED := 22.0       # command mode: WASD moves the camera this fast (m/s, at the usual zoom)
+const CLICK_PX := 6.0         # RMB moving less than this before release: a click (an order), not a pan
 
 var target: Node3D
 var main: Node3D
@@ -25,9 +30,12 @@ var _snapped := false
 var _shake_t := 0.0
 var indoors := false          # the squad is inside a house: look down into the rooms
 var _in := 0.0
-var free_mouse := false       # Tab: cursor free, clicks don't grab, RMB drag pans
+var free_mouse := false       # Tab: command mode (cursor free; see command_mode.gd)
 var _panning := false
 var _pan_from := Vector2.ZERO
+var _rmb_down := false        # RMB held in command mode, not yet a pan
+var _cmd := 0.0               # 0..1 easing into the command view
+var pan := Vector3.ZERO       # command mode: camera moved off the squad (WASD)
 
 
 func _ready() -> void:
@@ -91,19 +99,26 @@ func _end_pan() -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	var captured := Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
-	if free_mouse and not captured:
+	if free_mouse and not captured or _panning:
+		# RMB: a click is an order (command mode), a drag pans.
 		if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_RIGHT:
 			if event.pressed:
-				_panning = true
+				_rmb_down = true
 				_pan_from = event.position
-				if not OS.has_feature("web"):
-					Input.mouse_mode = Input.MOUSE_MODE_CONFINED_HIDDEN
 			else:
+				if _rmb_down and not _panning and main and main.command:
+					main.command.right_click(event.position)
+				_rmb_down = false
 				_end_pan()
 			get_viewport().set_input_as_handled()
 			return
-		if event is InputEventMouseMotion and _panning:
-			_turn(event.relative)
+		if event is InputEventMouseMotion and _rmb_down:
+			if not _panning and event.position.distance_to(_pan_from) > CLICK_PX:
+				_panning = true
+				if not OS.has_feature("web"):
+					Input.mouse_mode = Input.MOUSE_MODE_CONFINED_HIDDEN
+			if _panning:
+				_turn(event.relative)
 			return
 	if event is InputEventMouseButton and event.pressed:
 		match event.button_index:
@@ -131,7 +146,19 @@ func _turn(rel: Vector2) -> void:
 func _process(delta: float) -> void:
 	if target == null:
 		return
-	var focus: Vector3 = target.get_focus() + Vector3(0, PIVOT_HEIGHT, 0)
+	# Command mode: WASD moves the camera over the field; back to aiming, it
+	# comes back to the squad.
+	if free_mouse and Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
+		var inp := Input.get_vector("move_left", "move_right", "move_forward", "move_back")
+		pan += get_yaw_basis() * Vector3(inp.x, 0, inp.y) * PAN_SPEED * (dist / 8.5) * delta
+		var lim: float = main.nav_half if main else 200.0
+		var f0: Vector3 = target.get_focus()
+		pan.x = clampf(f0.x + pan.x, -lim, lim) - f0.x
+		pan.z = clampf(f0.z + pan.z, -lim, lim) - f0.z
+	else:
+		pan = pan.lerp(Vector3.ZERO, 1.0 - exp(-6.0 * delta))
+	_cmd = move_toward(_cmd, 1.0 if free_mouse else 0.0, delta * 2.5)
+	var focus: Vector3 = target.get_focus() + pan + Vector3(0, PIVOT_HEIGHT, 0)
 	if not _snapped:
 		global_position = focus
 		_snapped = true
@@ -141,8 +168,11 @@ func _process(delta: float) -> void:
 	# storeys above are lifted off by main) and comes in a little.
 	_in = move_toward(_in, 1.0 if indoors else 0.0, delta * 2.5)
 	var ease_in := smoothstep(0.0, 1.0, _in)
-	rotation = Vector3(lerpf(pitch, minf(pitch, INDOOR_PITCH), ease_in), yaw, 0)
-	_arm.spring_length = lerpf(_arm.spring_length, lerpf(dist, minf(dist, INDOOR_DIST), ease_in), clampf(10.0 * delta, 0.0, 1.0))
+	var ease_cmd := smoothstep(0.0, 1.0, _cmd)
+	var p := lerpf(pitch, minf(pitch, INDOOR_PITCH), ease_in)
+	var d := lerpf(dist, minf(dist, INDOOR_DIST), ease_in)
+	rotation = Vector3(lerpf(p, minf(p, COMMAND_PITCH), ease_cmd), yaw, 0)
+	_arm.spring_length = lerpf(_arm.spring_length, lerpf(d, maxf(d * 2.0, COMMAND_DIST), ease_cmd), clampf(10.0 * delta, 0.0, 1.0))
 
 	# Firing intensity -> rattling shake and a slight FOV punch.
 	var heat: float = main.fire_heat if main else 0.0
