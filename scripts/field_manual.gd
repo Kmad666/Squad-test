@@ -26,6 +26,7 @@ var _tabs: TabContainer
 var ui_theme: Theme             # set by main before adding (neon font + colours)
 var briefing := ""              # set by main before adding: this map's BRIEFING
 var briefing_title := ""        # ... and its name
+var current_map := -1           # set by main: the level being played (marked in LEVELS)
 
 
 ## The game is about to release the mouse on purpose (e.g. the reticle
@@ -180,6 +181,7 @@ func _build() -> void:
 	var pages: Array = []
 	if briefing != "":
 		pages.append(["BRIEFING", briefing + BRIEFING_FOOTER])
+	pages.append(["LEVELS", ""])         # built below: buttons, not text
 	for page in PAGES:                  # the guides first, then the reference pages
 		if page[0] == "GUIDES":
 			pages.append(page)
@@ -187,6 +189,9 @@ func _build() -> void:
 		if page[0] != "GUIDES":
 			pages.append(page)
 	for page in pages:
+		if page[0] == "LEVELS":
+			_tabs.add_child(_levels_page())
+			continue
 		var r := RichTextLabel.new()
 		r.name = page[0]
 		r.bbcode_enabled = true
@@ -197,11 +202,53 @@ func _build() -> void:
 		r.text = _style(page[1])
 		_tabs.add_child(r)
 
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	box.add_child(row)
 	var resume := Button.new()
 	resume.text = "RESUME  (ESC)"
 	resume.focus_mode = Control.FOCUS_NONE
+	resume.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	resume.pressed.connect(close)
-	box.add_child(resume)
+	row.add_child(resume)
+	var levels := Button.new()
+	levels.text = "LEVELS"
+	levels.focus_mode = Control.FOCUS_NONE
+	levels.custom_minimum_size.x = 200
+	levels.pressed.connect(func() -> void: open_tab("LEVELS"))
+	row.add_child(levels)
+
+
+## LEVELS: every level as a button (straight there), restart, the level select.
+func _levels_page() -> Control:
+	var Levels = load("res://scripts/levels.gd")
+	var scroll := ScrollContainer.new()
+	scroll.name = "LEVELS"
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 10)
+	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(v)
+	var hint := Label.new()
+	hint.text = "Click a level to go there now (this one's progress is lost). Same numbers as the level select."
+	hint.add_theme_font_size_override("font_size", 13)
+	hint.modulate = Color(1, 1, 1, 0.75)
+	v.add_child(hint)
+	v.add_child(Levels.build_list(get_tree(), current_map))
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	v.add_child(row)
+	var restart := Button.new()
+	restart.text = "RESTART THIS LEVEL"
+	restart.focus_mode = Control.FOCUS_NONE
+	restart.pressed.connect(func() -> void: Levels.deploy(get_tree(), current_map) if current_map >= 0 else null)
+	row.add_child(restart)
+	var menu := Button.new()
+	menu.text = "LEVEL SELECT MENU"
+	menu.focus_mode = Control.FOCUS_NONE
+	menu.pressed.connect(func() -> void: Levels.to_menu(get_tree()))
+	row.add_child(menu)
+	return scroll
 
 
 ## Light markup: {k}text{/k} = key, {h}text{/h} = heading, {d}text{/d} = note.
@@ -266,6 +313,7 @@ const PAGES := [
   {k}O{/k}              Reticle settings (and the move preview orbs on / off)
   {k}F2{/k}             Graphics HIGH / LOW
   {k}F3{/k}             Difficulty EASY / NORMAL (restarts the operation)
+  {k}F4{/k}             Developer mode: live tuning sliders
   {k}V{/k}              Retro graphics on / off
   {k}M{/k}              Next map
   {k}BACKSPACE{/k}      Level select
@@ -600,7 +648,17 @@ A separate mode: five armored vehicles on open hills, a big box in the middle to
 {h}SWITCHING{/h}
 {k}M{/k} loads the next map (remembered). {k}R{/k} restarts the current one. {k}BACKSPACE{/k}: back to the level select.
 """],
-["SETTINGS", """{h}DIFFICULTY  ({k}F3{/k}, or on the level select){/h}
+["SETTINGS", """{h}LEVELS  ({k}ESC{/k} > LEVELS){/h}
+The pause menu's LEVELS tab (or the LEVELS button next to RESUME) lists every level with the level select's numbers: click one to go there now. RESTART THIS LEVEL and LEVEL SELECT MENU are there too. The armored fleet's Esc pause screen has the same list.
+
+{h}DEVELOPER MODE  ({k}F4{/k}){/h}
+Sliders for the game's tuning numbers, changed live while the game keeps running: squad and men's speed, walk / rush pace, crawl, acceleration, formation spacing, the squad's accuracy and damage, where misses land, the enemy's numbers for the current difficulty, the LAV's speeds, and the game speed (slow motion). In the armored fleet: fleet and vehicle speed, turret speed, reload, damage, shell speed, machine gun rate.
+  - A changed value's name turns amber; {h}R{/h} on its row puts it back, {h}RESET ALL{/h} everything.
+  - Changes are saved between sessions (game speed isn't). While anything is changed, {h}DEV TUNING ON{/h} shows bottom-left.
+  - {h}COPY VALUES{/h} puts the changed ones on the clipboard as text, to pass on and make the new defaults.
+The men's top speed never drops below a little over the squad's, so raising the squad speed alone is enough.
+
+{h}DIFFICULTY  ({k}F3{/k}, or on the level select){/h}
 NORMAL: the enemy shoots straight, hits hard, reacts fast and wakes up the positions next door when the shooting starts; your men can't hit much while walking. Walking at a position in the open costs most of the squad. Fight from cover, pin them, then move.
 EASY: the game as it was: forgiving, a charge usually works.
 Changing it restarts the operation. Shown next to UNIT in the top-left; remembered in your browser.

@@ -6,13 +6,13 @@ extends Node3D
 
 const HULL := Vector3(3.4, 1.4, 6.6)
 const TURRET := Vector3(2.4, 0.85, 2.9)
-const MAX_SPEED := 14.0         # m/s
-const ACCEL := 9.0
+static var MAX_SPEED := 14.0         # m/s
+static var ACCEL := 9.0
 const HULL_TURN := 1.6          # rad/s
-const TURRET_TURN := 1.4        # rad/s
+static var TURRET_TURN := 1.4        # rad/s
 const GUN_ELEV := 0.6           # rad/s
-const MAIN_RELOAD := 4.0        # s between main gun shots
-const MG_RATE := 0.09           # s between machine gun rounds
+static var MAIN_RELOAD := 4.0        # s between main gun shots
+static var MG_RATE := 0.09           # s between machine gun rounds
 const ON_TARGET := 0.06         # rad: turret this close to the aim point fires
 
 var fleet: Node3D               # fleet_main
@@ -80,7 +80,7 @@ func drive(goal: Vector3, aim: Vector3, delta: float) -> void:
 	var dist := to.length()
 	var want := Vector3.ZERO
 	if dist > 0.8:
-		want = to.normalized() * minf(MAX_SPEED, dist * 1.2)
+		want = to.normalized() * minf(maxf(MAX_SPEED, fleet.SPEED * 1.15), dist * 2.5)   # always able to keep up
 	# Keep clear of the other vehicles.
 	for v in fleet.vehicles:
 		if v == self:

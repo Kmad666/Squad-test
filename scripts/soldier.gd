@@ -25,21 +25,21 @@ const SoldierModel = preload("res://scripts/soldier_model.gd")
 
 enum State { FOLLOW, TO_COVER, IN_COVER }
 
-const BASE_SPEED := 7.2
+static var BASE_SPEED := 7.2
 const EYE_HEIGHT := 1.45
 const RAY_MASK := 1 | 4     # world + targets (soldiers are layer 2)
 const FIRE_HOLD := 0       # must match squad.gd
 const FIRE_AT_WILL := 1
 const FIRE_FOCUS := 2
 const MAX_HP := 100.0
-const PACE_SPEED := [0.5, 1.0, 1.4]   # WALK / MOVE / RUSH (as the squad's)
-const WALK_ACC := 0.85          # walking: steady enough to shoot almost as from a halt
-const ACCEL := 12.0            # m/s^2: how fast he gets up to speed / slows down
+static var PACE_SPEED := [0.5, 1.0, 1.4]   # WALK / MOVE / RUSH (as the squad's)
+static var WALK_ACC := 0.85          # walking: steady enough to shoot almost as from a halt
+static var ACCEL := 12.0            # m/s^2: how fast he gets up to speed / slows down
 const LOW_SPEED := 0.45        # speed factor while moving low out of cover
 const HOP_SPEED := 0.85        # speed factor running low from one cover to the next
-const CRAWL_SPEED := 1.3       # m/s, prone
-const MISS_SHORT := 0.33        # share of misses that strike just in front of the target
-const MISS_GAP := Vector2(0.15, 0.6)   # the rest pass this far clear of his body (m)
+static var CRAWL_SPEED := 1.3       # m/s, prone
+static var MISS_SHORT := 0.33        # share of misses that strike just in front of the target
+static var MISS_GAP := Vector2(0.15, 0.6)   # the rest pass this far clear of his body (m)
 const PRONE_EYE := 0.3         # eye / rifle height lying prone
 
 static var _mats := {}
@@ -541,7 +541,7 @@ func _physics_process(delta: float) -> void:
 		if dir.length() < 0.05 or _agent.is_navigation_finished():
 			dir = to_dest
 		dir = dir.normalized()
-		var spd := BASE_SPEED * _speed_mul
+		var spd := maxf(BASE_SPEED, squad.MOVE_SPEED * 1.1) * _speed_mul   # always able to keep up with the squad
 		if state == State.FOLLOW:
 			spd *= PACE_SPEED[pace]
 		var down: float = _model.prone_amount()
@@ -933,7 +933,7 @@ func _shoot() -> void:
 		var spark := false
 		if c.has_method("take_damage"):
 			spark = true
-			if c.take_damage(primary["soft"], primary["armor"]):
+			if c.take_damage(primary["soft"] * Weapons.our_dmg, primary["armor"] * Weapons.our_dmg):
 				main.hits += 1   # only hits that hurt (ricochets off armor don't count)
 		main.spawn_impact(end, hit["normal"], spark)
 	main.suppress_enemies(from, end, 0.08 * (Weapons.tune("pin_move") if _moving and pace != 0 and state != State.IN_COVER else 1.0))

@@ -29,7 +29,7 @@ const LavScript = preload("res://scripts/lav.gd")
 const Weapons = preload("res://scripts/weapons.gd")
 const UI_FONT = preload("res://fonts/ShareTechMono-Regular.ttf")
 
-const MOVE_SPEED := 6.5
+static var MOVE_SPEED := 6.5
 const CLUSTER_RADIUS := 2.8      # loose cluster spread around the anchor
 const COVER_SEARCH := 14.0       # how far from the team a cover spot may be
 const COHESION_WEIGHT := 0.7     # how much cover choice favours staying grouped
@@ -48,16 +48,16 @@ const TEAM_NAMES := ["A", "B"]
 # closes up into a file by itself and opens out again after.
 enum { WEDGE, FILE, LINE }
 const FORMATION_NAMES := ["WEDGE", "FILE", "LINE"]
-const FILE_GAP := 1.7            # file: metres between men
-const WEDGE_GAP := Vector2(1.9, 1.6)   # wedge: across, back per step out from the point man
-const LINE_GAP := 2.1            # line: metres between men abreast
+static var FILE_GAP := 1.7            # file: metres between men
+static var WEDGE_GAP := Vector2(1.9, 1.6)   # wedge: across, back per step out from the point man
+static var LINE_GAP := 2.1            # line: metres between men abreast
 const NARROW := 6.5              # clear width (m) below which the unit goes to file
-const TURN_RATE := 3.5           # rad/s the formation swings round to a new heading
+static var TURN_RATE := 3.5           # rad/s the formation swings round to a new heading
 const RESLOT_TURN := 1.1         # rad: a turn this big re-deals the places (nobody walks through the group)
 # Pace (J walks / moves, hold SHIFT to rush).
 enum { WALK, MOVE, RUSH }
 const PACE_NAMES := ["WALK", "MOVE", "RUSH"]
-const PACE_SPEED := [0.5, 1.0, 1.4]
+static var PACE_SPEED := [0.5, 1.0, 1.4]
 const DOOR_STACK_GAP := 0.95     # door stack: spacing between men along the wall
 const ENTRY_MEN := 4             # how many go in; the rest hold the door
 const ENTRY_GAP := 0.45          # seconds between men through the door
@@ -1689,7 +1689,8 @@ func _lag_factor(t: int) -> float:
 		var d: float = Vector2(teams[t]["anchor"].x - lav.global_position.x, teams[t]["anchor"].z - lav.global_position.z).length()
 		return clampf(1.0 - (d - 3.0) / 4.0, 0.2, 1.0)
 	var lag: float = teams[t]["anchor"].distance_to(centroid(t))
-	return clampf(1.0 - (lag - 3.0) / 4.0, 0.3, 1.0)
+	var k := maxf(1.0, MOVE_SPEED * PACE_SPEED[teams[t]["pace"]] / 6.5)   # faster: men trail further, and that's fine
+	return clampf(1.0 - (lag - 3.0 * k) / (4.0 * k), 0.3, 1.0)
 
 
 ## Where the threat is for the stack: the nearest live enemy of any area

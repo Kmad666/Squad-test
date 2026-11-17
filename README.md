@@ -55,6 +55,7 @@ sky reflections are off. CI builds both desktop versions after the tests and the
 | O | Reticle settings (sizes are saved in your browser) and the move preview orbs on / off. Rest the reticle on the ground and orbs show where E would send each man: green behind cover, amber prone in the open, blue standing in formation |
 | F2 | Graphics LOW / HIGH (LOW: no shadows or bloom, 70% 3D resolution, lighter screen effects; remembered) |
 | F3 | Difficulty EASY / NORMAL (also on the level select; restarts the operation; remembered). NORMAL punishes walking at a position in the open |
+| F4 | Developer mode: live tuning sliders (speeds, pace, formation spacing, accuracy, damage, misses, enemy numbers, LAV, game speed; in the armored fleet: its speeds, turret, reload, damage). The game keeps running; changes are saved; R / RESET ALL put values back; COPY VALUES copies the changed ones as text |
 | V | RETRO graphics on / off (chunky low-poly soldiers, vertex wobble, pixelated dithered screen; remembered) |
 | L | Weapon lights on / off (on by default at night; on LOW graphics only every third man's) |
 | N | Night vision: green phosphor, amplified darks, grain, flicker, scan lines, round eyepiece edge |
@@ -145,7 +146,9 @@ vehicles over an 840 m hilly countryside; a big box stands in the middle to shoo
 | Mouse / wheel | Aim (every turret tracks the reticle) / zoom |
 | Left mouse (hold) | Coaxial machine guns |
 | Right mouse | Main guns: each vehicle fires when loaded (4 s) and on target |
-| R / Backspace / Esc | Reset / level select / free the mouse |
+| R / Backspace | Reset / level select |
+| Esc | Pause, with the level list (go straight to any level) |
+| F4 | Developer mode (the fleet's tuning sliders) |
 
 Prototype limits: shells fly straight (no drop), the box doesn't shoot back, vehicles drive through each other's
 gaps rather than physically colliding, and the ground is a height function (shots are traced against it and the box).
@@ -243,6 +246,8 @@ GODOT=/path/to/godot tests/run_all.sh          # MINUTES=10 for longer soak runs
   it while it drives (nobody in front of it, nobody left behind), both the 25mm and the leaning-out men fire at the
   outpost, Z sends the LAV to overwatch and calls it back, and losing the LAV turns the men back into normal infantry.
 - `hud_test.gd`: the unit status panel (direction, cover, fire order log) and the Tab free-mouse mode.
+- `dev_test.gd`: developer mode sliders change the game live (squad speed measured at 12 m/s, fleet at 22), amber
+  marking, reset, enemy numbers; the Esc menu's LEVELS tab and the fleet's pause screen go to other levels.
 - `fleet_test.gd`: the armored fleet prototype: hilly ground, vehicles on it, WASD drives the fleet in its wedge,
   machine guns and main guns hit the box, reloads, nobody drives into the box, and the box can be destroyed.
 - `model_test.gd`: the blocky soldier, every role and side: standing on the ground, hands on the rifle in every

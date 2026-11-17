@@ -15,6 +15,9 @@ extends Node3D
 
 const VehicleScript = preload("res://scripts/fleet/fleet_vehicle.gd")
 const UI_FONT = preload("res://fonts/ShareTechMono-Regular.ttf")
+const DevPanel = preload("res://scripts/dev_panel.gd")
+const Levels = preload("res://scripts/levels.gd")
+const PauseKeys = preload("res://scripts/fleet/pause_keys.gd")
 
 const HALF := 420.0             # the countryside is 840 m across
 const CELL := 4.0               # terrain grid (m)
@@ -23,11 +26,11 @@ const FLAT_R := 70.0            # flattened around the target...
 const START := Vector3(0, 0, 250)
 const TARGET_SIZE := Vector3(26, 16, 26)
 const TARGET_HP := 4000.0
-const MAIN_DMG := 90.0          # a main gun hit on the box
+static var MAIN_DMG := 90.0          # a main gun hit on the box
 const MAIN_SPLASH := 8.0        # ... and blast radius on the ground
-const MG_DMG := 1.5             # a machine gun round on the box
-const SHELL_SPEED := 320.0      # m/s, straight line (prototype: no drop)
-const SPEED := 11.0             # fleet speed (m/s); SHIFT x1.6
+static var MG_DMG := 1.5             # a machine gun round on the box
+static var SHELL_SPEED := 320.0      # m/s, straight line (prototype: no drop)
+static var SPEED := 11.0             # fleet speed (m/s); SHIFT x1.6
 const N_VEHICLES := 5
 const SLOTS := [Vector3(0, 0, -14), Vector3(-12, 0, -2), Vector3(12, 0, -2), Vector3(-24, 0, 10), Vector3(24, 0, 10)]   # wedge
 const NEON := Color(0.45, 1.0, 0.30)
@@ -63,6 +66,10 @@ var _units: RichTextLabel
 var _banner: Label
 var _game_t := 0.0
 var _prev_anchor := START
+var dev: CanvasLayer             # F4: developer mode
+var _pause: Control              # Esc: paused, with the level list
+var _was_captured := false
+var _expect_release := false
 var forced_input := {}          # tests: {"mg": bool, "main": bool, "move": Vector2, "aim": Vector3}
 
 
@@ -100,6 +107,17 @@ func _ready() -> void:
 	add_child(cam)
 	cam.current = true
 	_hud_build()
+	# Developer mode (F4): the fleet's tuning sliders.
+	DevPanel.apply_saved("fleet", DisplayServer.get_name() != "headless")
+	dev = DevPanel.new()
+	dev.mode = "fleet"
+	dev.on_open = func() -> void:
+		_expect_release = true
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	dev.on_close = func() -> void:
+		if DisplayServer.get_name() != "headless":
+			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	add_child(dev)
 	if not DisplayServer.get_name() == "headless":
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
@@ -412,7 +430,8 @@ func _physics_process(delta: float) -> void:
 	var lag := 0.0
 	for v in vehicles:
 		lag = maxf(lag, v.global_position.distance_to(_slot_world(v)))
-	var lag_k := clampf(1.0 - (lag - 8.0) / 20.0, 0.25, 1.0)
+	var sk := maxf(1.0, SPEED / 11.0)          # faster: the vehicles trail further, and that's fine
+	var lag_k := clampf(1.0 - (lag - 8.0 * sk) / (20.0 * sk), 0.25, 1.0)
 	anchor += move * speed * lag_k * delta
 	anchor.x = clampf(anchor.x, -HALF + 40.0, HALF - 40.0)
 	anchor.z = clampf(anchor.z, -HALF + 40.0, HALF - 40.0)
@@ -451,6 +470,12 @@ func _physics_process(delta: float) -> void:
 
 
 func _process(delta: float) -> void:
+	# The browser eats Esc while aiming (it just lets go of the mouse): pause then too.
+	var captured := Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
+	if _was_captured and not captured and not dev.is_open and not _expect_release:
+		set_paused(true)
+	_expect_release = false
+	_was_captured = captured
 	# Camera: orbit the middle of the fleet, never inside a hill.
 	var c := Vector3.ZERO
 	for v in vehicles:
@@ -479,7 +504,9 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event is InputEventKey and event.pressed and not event.echo:
 		match event.physical_keycode:
 			KEY_ESCAPE:
-				Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+				set_paused(true)
+			KEY_F4:
+				dev.toggle()
 			KEY_R:
 				get_tree().reload_current_scene()
 			KEY_BACKSPACE:
@@ -537,7 +564,7 @@ func _hud_build() -> void:
 	var tr := _panel(Control.PRESET_TOP_RIGHT)
 	tr.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	var help := _rich(14)
-	help.text = "WASD move fleet   SHIFT faster   MOUSE aim   WHEEL zoom\nLMB machine guns   RMB main guns\nR reset   BACKSPACE level select   ESC free mouse"
+	help.text = "WASD move fleet   SHIFT faster   MOUSE aim   WHEEL zoom\nLMB machine guns   RMB main guns\nR reset   BACKSPACE level select   ESC pause / levels   F4 dev mode"
 	tr.add_child(help)
 	ui.add_child(tr)
 	var br := _panel(Control.PRESET_BOTTOM_RIGHT)
@@ -596,3 +623,76 @@ func _hud_update() -> void:
 		var r: String = ("[color=%s]LOADED[/color]" % C_OK) if v.reload <= 0.0 else ("[color=%s]%s[/color]" % [C_WARN, _bar(1.0 - v.reload / v.MAIN_RELOAD, 8)])
 		lines.append("V%d  %s  %s" % [v.index + 1, ["LEAD", "LEFT", "RIGHT", "L WING", "R WING"][v.index], r])
 	_units.text = "\n".join(lines)
+
+
+# ---------------------------------------------------------------- pause
+
+## Esc: the game stops, with RESUME, the level list, restart and the menu.
+func set_paused(on: bool) -> void:
+	if _pause == null:
+		_build_pause()
+	get_tree().paused = on
+	_pause.visible = on
+	if on:
+		_expect_release = true
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	elif DisplayServer.get_name() != "headless":
+		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+
+
+func is_paused() -> bool:
+	return _pause != null and _pause.visible
+
+
+func _build_pause() -> void:
+	var layer := CanvasLayer.new()
+	layer.layer = 20
+	layer.process_mode = Node.PROCESS_MODE_ALWAYS
+	add_child(layer)
+	_pause = Control.new()
+	_pause.set_anchors_preset(Control.PRESET_FULL_RECT)
+	layer.add_child(_pause)
+	var dim := ColorRect.new()
+	dim.color = Color(0, 0.02, 0, 0.72)
+	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_pause.add_child(dim)
+	var panel := _panel(Control.PRESET_CENTER)
+	panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	panel.grow_vertical = Control.GROW_DIRECTION_BOTH
+	(panel.get_theme_stylebox("panel") as StyleBoxFlat).bg_color = Color(0.01, 0.05, 0.01, 0.95)
+	_pause.add_child(panel)
+	var theme := Theme.new()
+	theme.default_font = UI_FONT
+	theme.set_color("font_color", "Label", NEON)
+	theme.set_color("font_color", "Button", NEON)
+	panel.theme = theme
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 12)
+	panel.add_child(v)
+	var title := Label.new()
+	title.text = "PAUSED  //  ARMORED FLEET"
+	title.add_theme_font_size_override("font_size", 22)
+	v.add_child(title)
+	var sub := Label.new()
+	sub.text = "Click a level to go there now. Same numbers as the level select."
+	sub.add_theme_font_size_override("font_size", 13)
+	sub.modulate = Color(1, 1, 1, 0.75)
+	v.add_child(sub)
+	v.add_child(Levels.build_list(get_tree(), Levels.FLEET))
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	v.add_child(row)
+	for b in [["RESUME  (ESC)", func() -> void: set_paused(false)], ["RESTART", func() -> void: Levels.deploy(get_tree(), Levels.FLEET)], ["LEVEL SELECT MENU", func() -> void: Levels.to_menu(get_tree())]]:
+		var btn := Button.new()
+		btn.text = b[0]
+		btn.focus_mode = Control.FOCUS_NONE
+		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		btn.pressed.connect(b[1])
+		row.add_child(btn)
+	_pause.visible = false
+	var keys := PauseKeys.new()          # Esc again, while paused, resumes
+	keys.fleet = self
+	keys.process_mode = Node.PROCESS_MODE_ALWAYS
+	layer.add_child(keys)
+

@@ -6,6 +6,7 @@ const CoverUtil = preload("res://scripts/cover_util.gd")
 const SquadScript = preload("res://scripts/squad.gd")
 const MovePreview = preload("res://scripts/move_preview.gd")
 const CommandMode = preload("res://scripts/command_mode.gd")
+const DevPanel = preload("res://scripts/dev_panel.gd")
 const EnemySoldierScript = preload("res://scripts/enemy_soldier.gd")
 const VehicleScript = preload("res://scripts/vehicle.gd")
 const CameraRigScript = preload("res://scripts/camera_rig.gd")
@@ -86,6 +87,7 @@ var hurt := 0.0               # red screen-edge flash when a soldier is hit
 var _friendly_tracer_mat: StandardMaterial3D
 var _enemy_tracer_mat: StandardMaterial3D
 var kills := 0
+var dev: CanvasLayer           # F4: developer mode (live tuning sliders)
 var command: Node3D            # Tab: command mode (clicks, selection, detached men)
 var move_preview: Node3D        # orbs where the men would go (E)
 var game_time := 0.0          # seconds of play (stops while paused): mission clock, fire log ages
@@ -119,6 +121,7 @@ func _ready() -> void:
 	else:
 		Weapons.load_difficulty()   # (tests and probes force a map and set their own)
 		MovePreview.load_setting()
+	DevPanel.apply_saved("infantry", forced_map < 0)   # developer mode tuning (tests: defaults only)
 	if _difficulty_changed:
 		_difficulty_changed = false
 		notify("DIFFICULTY: %s  (operation restarted)" % Weapons.DIFFICULTY_NAMES[Weapons.difficulty], 6.0)
@@ -161,6 +164,15 @@ func _ready() -> void:
 	command = CommandMode.new()
 	command.main = self
 	add_child(command)
+	dev = DevPanel.new()
+	dev.mode = "infantry"
+	dev.on_open = func() -> void:
+		manual.allow_release()            # freeing the mouse here isn't a pause
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	dev.on_close = func() -> void:
+		if DisplayServer.get_name() != "headless" and not cam_rig.free_mouse:
+			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	add_child(dev)
 	squad.setup(self, map.START)
 	squad.spawn_waiting_team("ANTI-ARMOR TEAM", map.AT_TEAM, ["anti_armor", "anti_armor", "anti_armor"])
 	if map_const("LAV", false):
@@ -1887,7 +1899,7 @@ func _build_hud() -> void:
 		+ "LMB focus fire   RMB throw / fire special   1-4 pick special   X next special\n" \
 		+ "F auto fire   T split / join teams   Q switch team   B bound   H hold + scout   Z LAV with us / overwatch\n" \
 		+ "G on a door: stack up, G again: breach and clear the room   Y formation   J walk   SHIFT rush\n" \
-		+ "L lights   N night vision   I thermal (in reticle)   F2 graphics   V retro   F3 difficulty\n" \
+		+ "L lights   N night vision   I thermal (in reticle)   F2 graphics   V retro   F3 difficulty   F4 dev mode\n" \
 		+ "TAB command mode (click orders, select men)   ESC manual   O reticle\n" \
 		+ "M next map   BACKSPACE level select   R restart   F1 help"
 	help_panel.add_child(help_label)
@@ -1940,6 +1952,7 @@ func _build_hud() -> void:
 	manual.ui_theme = ui_root.theme
 	manual.briefing = map_const("BRIEFING", "")
 	manual.briefing_title = map.NAME
+	manual.current_map = map_index
 	add_child(manual)
 	_first_briefing.call_deferred()
 
@@ -2060,6 +2073,8 @@ func _unhandled_key_input(event: InputEvent) -> void:
 			get_tree().reload_current_scene()
 		elif event.physical_keycode == KEY_F2:
 			toggle_quality()
+		elif event.physical_keycode == KEY_F4:
+			dev.toggle()
 		elif event.physical_keycode == KEY_F3:
 			# The enemy's numbers change with it, so the operation starts over.
 			Weapons.cycle_difficulty()

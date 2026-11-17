@@ -57,9 +57,12 @@ const ROCKET_LAUNCHER := {
 ##   behind   our hit chance against an enemy who is behind cover
 ##   close_hit, close_dmg   enemy hit chance and damage at arm's length (see CLOSE_RANGE)
 ##   rpg, rpg_reload        enemy RPG damage to the LAV, and time between rockets
+## Developer mode (F4) multipliers on our squad's rifle fire.
+static var our_acc := 1.0
+static var our_dmg := 1.0
 static var difficulty := 0     # main.gd loads the player's choice (NORMAL unless he's picked EASY); tests run on EASY
 const DIFFICULTY_NAMES := ["EASY", "NORMAL"]
-const TUNING := [
+static var TUNING := [
 	{"acc": 1.0, "dmg": 1.0, "pause": 1.0, "react": 1.0, "cover": 0.6, "moving": 0.75, "pin_move": 1.0, "pin_acc": 0.75, "our_move": 0.6, "behind": 1.0, "close_hit": 2.4, "close_dmg": 2.0, "rpg": 1.0, "rpg_reload": 1.0},
 	{"acc": 1.7, "dmg": 1.5, "pause": 0.7, "react": 0.7, "cover": 0.4, "moving": 1.0, "pin_move": 0.2, "pin_acc": 0.75, "our_move": 0.25, "behind": 0.55, "close_hit": 1.3, "close_dmg": 1.3, "rpg": 1.34, "rpg_reload": 0.65},
 ]
@@ -152,7 +155,7 @@ static func hit_chance(w: Dictionary, target: Node3D, dist: float, moving: bool,
 		p *= 1.15
 	if followup:
 		p *= 0.85
-	return clampf(p, 0.03, 0.95)
+	return clampf(p * our_acc, 0.03, 0.95)
 
 
 # ---------------------------------------------------------------- enemy weapons
@@ -198,7 +201,7 @@ const ENEMY_RPG := {
 ## not), x(1 - 0.75 x the shooter's own suppression).
 const PRONE_HIT := 0.45
 
-const RUSH_EVADE := 0.6        # enemy hit chance on a man rushing (on top of moving)
+static var RUSH_EVADE := 0.6        # enemy hit chance on a man rushing (on top of moving)
 
 
 static func enemy_hit_chance(w: Dictionary, soldier: Node3D, dist: float, own_suppression: float) -> float:
