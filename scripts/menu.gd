@@ -1,6 +1,6 @@
 extends Control
 ## Level select: the first screen. Four operations and two training
-## grounds. 1-6 or a click deploys; BACKSPACE in game comes back
+## grounds, and the armored fleet prototype. 1-7 or a click deploys; BACKSPACE in game comes back
 ## here. The last map played is marked.
 
 const UI_FONT = preload("res://fonts/ShareTechMono-Regular.ttf")
@@ -20,7 +20,9 @@ const ENTRIES := [
 	[4, "OPERATION SLEIPNIR", true, "Combined arms on open farmland, the biggest map. Advance stacked behind your LAV-25 on a checkpoint, a hedgerow treeline, a farm and a crossroads village with an APC.", true],
 	[1, "TEST FIELD", true, "Open ground and three small enemy positions, for trying out orders.", false],
 	[2, "MODEL VIEWER", true, "Every soldier, pose and firing position on a turntable.", false],
+	[FLEET, "ARMORED FLEET", true, "Prototype: five armored vehicles on open hills. LMB MGs, RMB main guns.", false],
 ]
+const FLEET := 100           # not a main.gd map: the armored fleet mode has its own scene
 
 var _last := -1
 var _diff: Button
@@ -84,7 +86,7 @@ void fragment() {
 	big.add_theme_constant_override("h_separation", 16)
 	big.add_theme_constant_override("v_separation", 12)
 	col.add_child(big)
-	col.add_child(_label("TRAINING", 18, DIM))
+	col.add_child(_label("TRAINING  /  PROTOTYPES", 18, DIM))
 	var small := HBoxContainer.new()
 	small.add_theme_constant_override("separation", 16)
 	col.add_child(small)
@@ -103,7 +105,7 @@ void fragment() {
 	_diff.pressed.connect(_cycle_difficulty)
 	col.add_child(_diff)
 	_show_difficulty()
-	col.add_child(_label("1-6 OR CLICK TO DEPLOY      IN GAME: BACKSPACE = THIS MENU   ESC = FIELD MANUAL", 15, DIM))
+	col.add_child(_label("1-7 OR CLICK TO DEPLOY      IN GAME: BACKSPACE = THIS MENU   ESC = FIELD MANUAL", 15, DIM))
 
 
 func _card(key: int, e: Array) -> Button:
@@ -175,5 +177,8 @@ func _show_difficulty() -> void:
 
 
 func _deploy(map_index: int) -> void:
+	if map_index == FLEET:
+		get_tree().change_scene_to_file("res://fleet.tscn")
+		return
 	MainScript.picked_map = map_index
 	get_tree().change_scene_to_file("res://main.tscn")

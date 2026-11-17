@@ -134,6 +134,22 @@ Font: Share Tech Mono (SIL Open Font License, see `fonts/OFL.txt`).
 Soldiers: blocky (scripts/soldier_model.gd): box legs, torso, arms and head, a black stick for a rifle. No walk
 animation; the arms aim, recoil and give hand signals, crouching hunches the upper body forward.
 
+## Armored fleet (prototype)
+
+A separate game mode (`fleet.tscn`, `scripts/fleet/`), key 7 on the level select. You command five armored
+vehicles over an 840 m hilly countryside; a big box stands in the middle to shoot at.
+
+| Key | Action |
+|-----|--------|
+| WASD | Move the fleet (it keeps a wedge, turned the way it's going); Shift: faster |
+| Mouse / wheel | Aim (every turret tracks the reticle) / zoom |
+| Left mouse (hold) | Coaxial machine guns |
+| Right mouse | Main guns: each vehicle fires when loaded (4 s) and on target |
+| R / Backspace / Esc | Reset / level select / free the mouse |
+
+Prototype limits: shells fly straight (no drop), the box doesn't shoot back, vehicles drive through each other's
+gaps rather than physically colliding, and the ground is a height function (shots are traced against it and the box).
+
 ## Units
 - **Starting squad:** 5 riflemen + 1 grenadier (rifle with under-barrel grenade launcher).
 - **Anti-armor team (coyote packs and kit):** 3 men with burst rifles and shoulder rocket launchers, waiting west of the start.
@@ -227,6 +243,8 @@ GODOT=/path/to/godot tests/run_all.sh          # MINUTES=10 for longer soak runs
   it while it drives (nobody in front of it, nobody left behind), both the 25mm and the leaning-out men fire at the
   outpost, Z sends the LAV to overwatch and calls it back, and losing the LAV turns the men back into normal infantry.
 - `hud_test.gd`: the unit status panel (direction, cover, fire order log) and the Tab free-mouse mode.
+- `fleet_test.gd`: the armored fleet prototype: hilly ground, vehicles on it, WASD drives the fleet in its wedge,
+  machine guns and main guns hit the box, reloads, nobody drives into the box, and the box can be destroyed.
 - `model_test.gd`: the blocky soldier, every role and side: standing on the ground, hands on the rifle in every
   pose, legs never moving, crouch hunching forward, the muzzle on target when aiming, hand signals, prone bodies on
   the ground (nothing sunk) with the rifle ahead, getting back up, and corpses on the ground with the rifle beside them.
