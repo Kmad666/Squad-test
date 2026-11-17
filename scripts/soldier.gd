@@ -25,7 +25,7 @@ const SoldierModel = preload("res://scripts/soldier_model.gd")
 
 enum State { FOLLOW, TO_COVER, IN_COVER }
 
-const BASE_SPEED := 5.6
+const BASE_SPEED := 7.2
 const EYE_HEIGHT := 1.45
 const RAY_MASK := 1 | 4     # world + targets (soldiers are layer 2)
 const FIRE_HOLD := 0       # must match squad.gd
@@ -37,7 +37,9 @@ const WALK_ACC := 0.85          # walking: steady enough to shoot almost as from
 const ACCEL := 12.0            # m/s^2: how fast he gets up to speed / slows down
 const LOW_SPEED := 0.45        # speed factor while moving low out of cover
 const HOP_SPEED := 0.85        # speed factor running low from one cover to the next
-const CRAWL_SPEED := 1.0       # m/s, prone
+const CRAWL_SPEED := 1.3       # m/s, prone
+const MISS_SHORT := 0.33        # share of misses that strike just in front of the target
+const MISS_GAP := Vector2(0.15, 0.6)   # the rest pass this far clear of his body (m)
 const PRONE_EYE := 0.3         # eye / rifle height lying prone
 
 static var _mats := {}
@@ -374,8 +376,10 @@ func release_hold() -> void:
 
 ## Halt signal received: stop where you are (unless badly out of position).
 func halt_here() -> void:
+	# Close to his place: he finishes the last steps into it (at a run the
+	# signal can catch him a couple of metres short); far off, he stops where he is.
 	if state == State.FOLLOW and global_position.distance_to(move_target) < 4.0:
-		_hold_point = global_position
+		_hold_point = move_target
 
 
 ## Out of cover: move low and slow for a moment, covering the reticle.
@@ -888,15 +892,20 @@ func _fight_mod() -> float:
 	return m
 
 
-## Where a deliberate miss lands: just off the target, sideways or high/low.
+## Where a miss goes: close around the target, never wild. Most graze past
+## him at the side, just clear of his body (and a little high or low); about
+## a third kick up the dirt, or hit the cover, just in front of him.
 func _miss_point(t: Node3D, from: Vector3) -> Vector3:
 	var c: Vector3 = t.aim_point()
-	var dir := (c - from).normalized()
+	var dir := c - from
+	dir.y = 0.0
+	dir = dir.normalized()
 	var side := dir.cross(Vector3.UP).normalized()
-	var off := side * _rng.randf_range(-1.0, 1.0) + Vector3.UP * _rng.randf_range(-0.5, 0.9)
-	if off.length() < 0.2:
-		off = side
-	return c + off.normalized() * (t.radius + _rng.randf_range(0.3, 1.4))
+	if _rng.randf() < MISS_SHORT:
+		var ground := Vector3(c.x, t.global_position.y + 0.05, c.z)
+		return ground - dir * _rng.randf_range(0.6, 1.8) + side * _rng.randf_range(-0.5, 0.5)
+	var past: float = t.radius + _rng.randf_range(MISS_GAP.x, MISS_GAP.y)
+	return c + side * past * (-1.0 if _rng.randf() < 0.5 else 1.0) + Vector3.UP * _rng.randf_range(-0.3, 0.35)
 
 
 func _shoot() -> void:

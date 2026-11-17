@@ -123,7 +123,7 @@ E) goes **cover to cover**: the unit's point moves (never more than 6 m ahead of
 point plus his place in the spread the unit had when it took cover, and every 0.4 s takes the nearest free cover
 spot within 4.5 m of there that shields him from where the camera faces, running low (x0.85 speed) between spots.
 He keeps the spot he holds unless a new one is at least 1.5 m better. With no cover within reach he goes **prone and
-crawls** (1 m/s) to where he's headed, and gets up again as soon as cover is in reach. Prone men fire from where
+crawls** (1.3 m/s) to where he's headed, and gets up again as soon as cover is in reach. Prone men fire from where
 they lie once stopped, are hit x0.45 as often, take 40% less from blasts, and show only a low, small target.
 Bounding advances still leave cover and run.
 

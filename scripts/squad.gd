@@ -29,7 +29,7 @@ const LavScript = preload("res://scripts/lav.gd")
 const Weapons = preload("res://scripts/weapons.gd")
 const UI_FONT = preload("res://fonts/ShareTechMono-Regular.ttf")
 
-const MOVE_SPEED := 5.0
+const MOVE_SPEED := 6.5
 const CLUSTER_RADIUS := 2.8      # loose cluster spread around the anchor
 const COVER_SEARCH := 14.0       # how far from the team a cover spot may be
 const COHESION_WEIGHT := 0.7     # how much cover choice favours staying grouped

@@ -1,4 +1,5 @@
 extends SceneTree
+const Soldier = preload("res://scripts/soldier.gd")
 ## Persistent cover on the TEST FIELD (map 1):
 ##  1. take cover at the start, then hold W: the unit stays in cover the whole
 ##     way, nobody drops back to following, men hop to new cover and go prone
@@ -141,7 +142,7 @@ func _physics_process(_d) -> bool:
 			_check(not sq.in_cover, "unit still in cover after C")
 			for s in sq.soldiers:
 				_check(not s.is_prone() and s.state == 0, "#%d still down / in cover after leaving cover" % s.index)
-			_check(fast_crawl < 1.2, "crawling too fast (%.2f m/s)" % fast_crawl)
+			_check(fast_crawl < Soldier.CRAWL_SPEED * 1.2, "crawling too fast (%.2f m/s)" % fast_crawl)
 			_check(worst_stuck < 3.0, "a crawler made no progress for %.1f s" % worst_stuck)
 			print("cover move checks: %d, failures: %d" % [checks, fails])
 			quit(1 if fails > 0 else 0)

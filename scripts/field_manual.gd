@@ -388,7 +388,7 @@ Cover is a state the unit {h}stays in{/h} until you press {k}C{/k} again.
 
 {h}COVER TO COVER  ({k}WASD{/k} or {k}E{/k} while in cover){/h}
 The unit moves {h}without leaving cover{/h}. Each man heads where you're sending the unit, keeping his place in its spread, and makes for the {h}nearest free cover there{/h} that shields him from where the camera faces, running low from one spot to the next. He stays put until a new spot is clearly better, so a short nudge doesn't shuffle everyone. The unit's point waits for the men if it gets more than 6 m ahead.
-{h}No cover where he's going: he goes prone and crawls{/h} (about 1 m/s). Prone, he's a small target: enemy hit chance x0.45, and blasts that reach him do 40% less. He fires from where he lies once he's stopped, and gets up again as soon as there's cover in reach.
+{h}No cover where he's going: he goes prone and crawls{/h} (about 1.3 m/s). Prone, he's a small target: enemy hit chance x0.45, and blasts that reach him do 40% less. He fires from where he lies once he's stopped, and gets up again as soon as there's cover in reach.
 {h}Leaving cover{/h} ({k}C{/k} again): each man gets up and comes out on his own beat, moving {h}low and slow{/h} for about 2 s, firing at any enemy inside the reticle to cover the move, then stands and moves normally. A bounding advance ({k}B{/k}) always leaves cover and runs.
 
 {h}HOLD & SCOUT  ({k}H{/k}){/h}
