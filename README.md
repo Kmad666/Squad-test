@@ -131,13 +131,8 @@ Every push to `main` builds the web version and publishes it to GitHub Pages (gh
 
 Font: Share Tech Mono (SIL Open Font License, see `fonts/OFL.txt`).
 
-Soldier model: "Soldier Full Tactical Gear" by DanlyVostok
-(https://sketchfab.com/3d-models/soldier-full-tactical-gear-850593a8c7114c188395ba1849a66eb9), licensed CC BY 4.0;
-decimated, retextured (grey / olive variants, insignia removed) and re-rigged to the game's animation; see
-`assets/soldier/CREDITS.txt`. Motion capture: Haley Tuffles (Premade Mocap Pack, free for any use); walk / run gait
-from Rokoko's free "16 walk and run cycle animations" pack
-(https://www.rokoko.com/resources/rokoko-mocap-16-free-walk-and-run-cycle-animations; free for any project,
-commercial included).
+Soldiers: blocky (scripts/soldier_model.gd): box legs, torso, arms and head, a black stick for a rifle. No walk
+animation; the arms aim, recoil and give hand signals, crouching hunches the upper body forward.
 
 ## Units
 - **Starting squad:** 5 riflemen + 1 grenadier (rifle with under-barrel grenade launcher).
@@ -232,10 +227,9 @@ GODOT=/path/to/godot tests/run_all.sh          # MINUTES=10 for longer soak runs
   it while it drives (nobody in front of it, nobody left behind), both the 25mm and the leaning-out men fire at the
   outpost, Z sends the LAV to overwatch and calls it back, and losing the LAV turns the men back into normal infantry.
 - `hud_test.gd`: the unit status panel (direction, cover, fire order log) and the Tab free-mouse mode.
-- `model_test.gd`: geometry checks on the soldier model in every pose and gait: torso attached to hips,
-  feet never below ground, legs never over-stretched, feet never crossing, both hands on the rifle, corpses resting
-  on the ground with the rifle beside them, and prone / crawling bodies (HD and RETRO) lying on the ground without
-  sinking into it, rifle pointed ahead.
+- `model_test.gd`: the blocky soldier, every role and side: standing on the ground, hands on the rifle in every
+  pose, legs never moving, crouch hunching forward, the muzzle on target when aiming, hand signals, prone bodies on
+  the ground (nothing sunk) with the rifle ahead, getting back up, and corpses on the ground with the rifle beside them.
 - `cover_move_test.gd`: persistent cover on the test field: the unit stays in cover while you move it, men go cover
   to cover, go prone and crawl in the open, prone men are harder to hit, and leaving cover stands everyone up.
 - `death_test.gd`: in-game edge cases on both maps: men killed mid-run, mid-signal and crouched, the sergeant killed

@@ -19,7 +19,7 @@ const ENTRIES := [
 	[5, "OPERATION GORDIAN", true, "A Berlin crossroads: tram street, parked cars, five-storey blocks. Barricades hold the streets and garrisons hold the houses: go round through the gateways and courtyards, stack on a door (G) and clear room by room.", true],
 	[4, "OPERATION SLEIPNIR", true, "Combined arms on open farmland, the biggest map. Advance stacked behind your LAV-25 on a checkpoint, a hedgerow treeline, a farm and a crossroads village with an APC.", true],
 	[1, "TEST FIELD", true, "Open ground and three small enemy positions, for trying out orders.", false],
-	[2, "MODEL VIEWER", true, "Every soldier, pose, gait and firing position on a turntable.", false],
+	[2, "MODEL VIEWER", true, "Every soldier, pose and firing position on a turntable.", false],
 ]
 
 var _last := -1
@@ -104,7 +104,6 @@ void fragment() {
 	col.add_child(_diff)
 	_show_difficulty()
 	col.add_child(_label("1-6 OR CLICK TO DEPLOY      IN GAME: BACKSPACE = THIS MENU   ESC = FIELD MANUAL", 15, DIM))
-	col.add_child(_label("Soldier model: \"Soldier Full Tactical Gear\" by DanlyVostok (CC BY 4.0)    Motion capture: Haley Tuffles, Rokoko", 12, Color(0.45, 1.0, 0.3, 0.4)))
 
 
 func _card(key: int, e: Array) -> Button:

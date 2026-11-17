@@ -1,6 +1,6 @@
 extends RefCounted
-## MODEL VIEWER: every variant of the universal soldier on a slow turntable
-## (then the gaits, animated in place),
+## MODEL VIEWER: every variant of the blocky soldier on a slow turntable
+## (then firing and prone),
 ## in daylight, so the model can be judged up close. Your squad stands behind
 ## out of the way; the camera starts up close and WASD pans it along the
 ## line-up (the squad is on HOLD). Wheel zooms, mouse orbits. No enemies.
@@ -13,12 +13,12 @@ const NIGHT := false
 const GROUND := "field"
 const START := Vector3(0, 0, 26)
 const AT_TEAM := Vector3(40, 0, 44)
-const OBJECTIVE := "MODEL VIEWER  -  UNIVERSAL SOLDIER: POSES, GAITS, FIRING, PRONE  -  WASD TO PAN  -  M FOR NEXT MAP"
+const OBJECTIVE := "MODEL VIEWER  -  THE SOLDIERS: POSES, SIGNALS, FIRING, PRONE  -  WASD TO PAN  -  M FOR NEXT MAP"
 
 ## Shown on the BRIEFING tab of the field manual (and the first time you
 ## play the map). Markup: {h}heading{/h}, {k}key{/k}, {d}note{/d}.
 const BRIEFING := """{h}MODEL VIEWER{/h}
-No enemies. Every variant of the soldier on a turntable, then the gaits animated in place, then the firing positions and prone.
+No enemies. Every variant of the soldier on a turntable, then the firing positions and prone.
 {k}WASD{/k} pans along the line-up and the mouse wheel zooms. {k}M{/k} goes to the next map, {k}BACKSPACE{/k} back to the level select."""
 const COMPLETE := ""
 const BOXES := []
@@ -33,16 +33,10 @@ const LINEUP := [
 	["ENEMY RIFLEMAN", "rifleman", "enemy", false, false, "", Vector3.ZERO],
 	["CROUCHED", "rifleman", "friendly", false, true, "", Vector3.ZERO],
 	["SIGNALS (LOOP)", "rifleman", "friendly", true, false, "loop", Vector3.ZERO],
-	["WALK", "rifleman", "friendly", false, false, "", Vector3(0, 0, -1.6)],
-	["RUN", "rifleman", "friendly", false, false, "", Vector3(0, 0, -6.3)],
-	["CROUCH WALK", "rifleman", "friendly", false, true, "", Vector3(0, 0, -2.5)],
-	["STRAFE", "rifleman", "friendly", false, false, "", Vector3(3.5, 0, 0)],
-	["BACKPEDAL", "rifleman", "enemy", false, false, "", Vector3(0, 0, 2.2)],
 	["FIRING", "rifleman", "friendly", false, false, "aim", Vector3.ZERO],
 	["FIRING CROUCHED", "rifleman", "enemy", false, true, "aim", Vector3.ZERO],
-	["FIRING ON THE MOVE", "grenadier", "friendly", false, false, "aim", Vector3(0, 0, -1.6)],
+	["GRENADIER FIRING", "grenadier", "friendly", false, false, "aim", Vector3.ZERO],
 	["PRONE", "rifleman", "friendly", false, false, "prone", Vector3.ZERO],
-	["CRAWL", "rifleman", "friendly", false, false, "prone", Vector3(0, 0, -1.0)],
 	["FIRING PRONE", "rifleman", "enemy", false, false, "prone_aim", Vector3.ZERO],
 ]
 

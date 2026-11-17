@@ -592,7 +592,7 @@ You start at the south end of a street between two rows of buildings.
 Open ground with crates and walls. Three small positions: {h}ALPHA{/h} (2 riflemen), {h}BRAVO{/h} (3), {h}CHARLIE{/h} (2 + APC on patrol). Good for trying mechanics.
 
 {h}MODEL VIEWER{/h}  {d}(day, no enemies){/d}
-Every variant of the universal soldier on a turntable: rifleman, sergeant, grenadier, rocketman, enemy, crouched, and a sergeant looping his hand signals. Further along: the gaits, animated in place: walk, run, crouch-walk, strafe and backpedal, then firing (standing, crouched, on the move), then prone: lying still, crawling, and firing prone. Your squad holds back; {k}WASD{/k} pans along the line-up, wheel zooms.
+Every variant of the blocky soldier on a turntable: rifleman, sergeant, grenadier, rocketman, enemy, crouched (hunched forward), and a sergeant looping his hand signals. Further along: firing (standing, crouched, the grenadier), then prone, lying still and firing. Your squad holds back; {k}WASD{/k} pans along the line-up, wheel zooms.
 
 {h}SWITCHING{/h}
 {k}M{/k} loads the next map (remembered). {k}R{/k} restarts the current one. {k}BACKSPACE{/k}: back to the level select.
