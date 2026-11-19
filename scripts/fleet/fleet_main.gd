@@ -66,6 +66,8 @@ var cam_dist := 34.0
 var cam: Camera3D
 
 var _noise := FastNoiseLite.new()
+var _hgrid := PackedFloat32Array()   # terrain heights on the CELL grid
+var _gn := 0
 var _noise2 := FastNoiseLite.new()
 var _target: MeshInstance3D
 var _target_mat: StandardMaterial3D
@@ -99,6 +101,12 @@ func _ready() -> void:
 	_noise2.seed = 77
 	_noise2.frequency = 0.02
 	_environment()
+	_build_height_grid()
+	if load("res://scripts/bench.gd").requested() != "":
+		var b: Node = load("res://scripts/bench.gd").new()
+		b.host = self
+		add_child(b)
+	_build_fx_pool()
 	_terrain()
 	_build_target()
 	for i in N_VEHICLES:
@@ -137,7 +145,35 @@ func _ready() -> void:
 
 ## Ground height at (x, z): rolling hills, flattened around the target box
 ## and at the start, rising a little toward the map edge.
+## Ground height at (x, z), from the terrain grid: the same triangles the
+## ground mesh is drawn with, so vehicles sit exactly on what you see. (A
+## lookup, not noise: shots trace the ground hundreds of times a second.)
 func height(x: float, z: float) -> float:
+	var gx := clampf((x + HALF) / CELL, 0.0, float(_gn - 1) - 0.001)
+	var gz := clampf((z + HALF) / CELL, 0.0, float(_gn - 1) - 0.001)
+	var i := int(gx)
+	var j := int(gz)
+	var fx := gx - i
+	var fz := gz - j
+	var a := j * _gn + i
+	if fx + fz <= 1.0:
+		var h00 := _hgrid[a]
+		return h00 + (_hgrid[a + 1] - h00) * fx + (_hgrid[a + _gn] - h00) * fz
+	var h11 := _hgrid[a + _gn + 1]
+	return h11 + (_hgrid[a + _gn] - h11) * (1.0 - fx) + (_hgrid[a + 1] - h11) * (1.0 - fz)
+
+
+func _build_height_grid() -> void:
+	_gn = int(HALF * 2.0 / CELL) + 1
+	_hgrid.resize(_gn * _gn)
+	for j in _gn:
+		for i in _gn:
+			_hgrid[j * _gn + i] = _height_raw(-HALF + i * CELL, -HALF + j * CELL)
+
+
+## The hills themselves (noise): rolling, flattened around the target box and
+## at the start, rising a little toward the map edge. Sampled once into the grid.
+func _height_raw(x: float, z: float) -> float:
 	var h := (_noise.get_noise_2d(x, z) * 0.5 + 0.5) * HILLS + _noise2.get_noise_2d(x, z) * 1.2
 	var d := Vector2(x, z).length()
 	var flat := smoothstep(FLAT_R, FLAT_R + 60.0, d)        # 0 near the target
@@ -166,7 +202,7 @@ func _terrain() -> void:
 		for i in n:
 			var x := -HALF + i * CELL
 			var z := -HALF + j * CELL
-			var h := height(x, z)
+			var h := _hgrid[j * n + i]
 			verts[j * n + i] = Vector3(x, h, z)
 			var nn := normal(x, z)
 			norms[j * n + i] = nn
@@ -291,15 +327,18 @@ func trace(from: Vector3, dir: Vector3, max_d: float) -> Dictionary:
 	var hit: Variant = target_box().intersects_ray(from, dir)
 	if hit != null:
 		box_t = from.distance_to(hit)
-	var step := 2.0
+	# Big steps while high above the ground, small ones near it (the hills are
+	# never steeper than about 1 in 1.5), then home in on the crossing.
+	var end := minf(max_d, box_t)
 	var t := 0.0
-	while t < minf(max_d, box_t):
+	var prev := 0.0
+	while true:
 		var p := from + dir * t
-		if p.y < height(p.x, p.z):
-			# refine between t - step and t
-			var lo := maxf(0.0, t - step)
+		var above := p.y - height(p.x, p.z)
+		if above < 0.0:
+			var lo := prev
 			var hi := t
-			for k in 6:
+			for k in 8:
 				var mid := (lo + hi) * 0.5
 				var q := from + dir * mid
 				if q.y < height(q.x, q.z):
@@ -307,8 +346,11 @@ func trace(from: Vector3, dir: Vector3, max_d: float) -> Dictionary:
 				else:
 					lo = mid
 			return {"pos": from + dir * hi, "box": false}
-		t += step
-	if box_t < max_d:
+		if t >= end:
+			break
+		prev = t
+		t = minf(t + clampf(above * 0.6, 1.0, 40.0), end)
+	if box_t <= max_d:
 		return {"pos": from + dir * box_t, "box": true}
 	return {}
 
@@ -470,18 +512,54 @@ func _mortar_tick(delta: float) -> void:
 
 # ---------------------------------------------------------------- effects
 
-func _fx_mesh(mesh: Mesh, col: Color, at: Vector3, life: float, kind: String) -> MeshInstance3D:
-	var mi := MeshInstance3D.new()
+## Effects come from a pool made once (a low-poly sphere and a box, scaled):
+## making new meshes and materials for every round stalled the browser.
+const FX_POOL := 160
+var _pool: Array = []           # MeshInstance3D, each with its own material
+var _pool_i := 0
+var _sphere_mesh: SphereMesh
+var _box_mesh: BoxMesh
+
+
+func _build_fx_pool() -> void:
+	_sphere_mesh = SphereMesh.new()
+	_sphere_mesh.radius = 0.5
+	_sphere_mesh.height = 1.0
+	_sphere_mesh.radial_segments = 12
+	_sphere_mesh.rings = 6
+	_box_mesh = BoxMesh.new()
+	for n in FX_POOL:
+		var mi := MeshInstance3D.new()
+		var m := StandardMaterial3D.new()
+		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		mi.material_override = m
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		mi.visible = false
+		add_child(mi)
+		_pool.append(mi)
+	# Draw each once, out of sight, so the shader compiles now and not at the first shot.
+	var w: MeshInstance3D = _pool[0]
+	w.mesh = _sphere_mesh
+	w.global_position = START + Vector3(0, -10, 0)
+	w.visible = true
+	_fx.append({"node": w, "t": 0.0, "life": 0.2, "kind": "fade", "col": Color(1, 1, 1, 0.5), "base": Vector3.ONE})
+
+
+func _fx_mesh(mesh: Mesh, col: Color, at: Vector3, life: float, kind: String, base := Vector3.ONE) -> MeshInstance3D:
+	var mi: MeshInstance3D = _pool[_pool_i]
+	_pool_i = (_pool_i + 1) % _pool.size()
+	for e in _fx:
+		if e["node"] == mi:
+			_fx.erase(e)               # (the oldest effect gives its node up)
+			break
 	mi.mesh = mesh
-	var m := StandardMaterial3D.new()
-	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	m.albedo_color = col
-	mi.material_override = m
-	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	add_child(mi)
+	mi.rotation = Vector3.ZERO
+	mi.scale = base
+	(mi.material_override as StandardMaterial3D).albedo_color = col
 	mi.global_position = at
-	_fx.append({"node": mi, "t": 0.0, "life": life, "kind": kind, "col": col})
+	mi.visible = true
+	_fx.append({"node": mi, "t": 0.0, "life": life, "kind": kind, "col": col, "base": base})
 	return mi
 
 
@@ -489,35 +567,22 @@ func _tracer(a: Vector3, b: Vector3, col: Color, life: float, w := 0.12) -> void
 	var len := a.distance_to(b)
 	if len < 0.1:
 		return
-	var bm := BoxMesh.new()
-	bm.size = Vector3(w, w, len)
-	var mi := _fx_mesh(bm, col, (a + b) * 0.5, life, "fade")
+	var mi := _fx_mesh(_box_mesh, col, (a + b) * 0.5, life, "fade", Vector3(w, w, len))
 	mi.look_at_from_position((a + b) * 0.5, b, Vector3.UP if absf((b - a).normalized().y) < 0.99 else Vector3.RIGHT)
+	mi.scale = Vector3(w, w, len)
 
 
 func _muzzle(at: Vector3, size: float) -> void:
-	var sm := SphereMesh.new()
-	sm.radius = size
-	sm.height = size * 2.0
-	_fx_mesh(sm, Color(1.0, 0.8, 0.4, 0.9), at, 0.06, "fade")
+	_fx_mesh(_sphere_mesh, Color(1.0, 0.8, 0.4, 0.9), at, 0.06, "fade", Vector3.ONE * size * 2.0)
 
 
 func _puff(at: Vector3, size: float, col: Color) -> void:
-	var sm := SphereMesh.new()
-	sm.radius = size * 0.5
-	sm.height = size
-	_fx_mesh(sm, Color(col.r, col.g, col.b, 0.7), at, 0.5, "grow")
+	_fx_mesh(_sphere_mesh, Color(col.r, col.g, col.b, 0.7), at, 0.5, "grow", Vector3.ONE * size)
 
 
 func _explosion(at: Vector3, size: float) -> void:
-	var sm := SphereMesh.new()
-	sm.radius = size * 0.5
-	sm.height = size
-	_fx_mesh(sm, Color(1.0, 0.6, 0.2, 0.95), at, 0.35, "grow")
-	var sm2 := SphereMesh.new()
-	sm2.radius = size * 0.6
-	sm2.height = size * 1.2
-	_fx_mesh(sm2, Color(0.3, 0.28, 0.25, 0.75), at + Vector3(0, size * 0.3, 0), 1.6, "grow")
+	_fx_mesh(_sphere_mesh, Color(1.0, 0.6, 0.2, 0.95), at, 0.35, "grow", Vector3.ONE * size)
+	_fx_mesh(_sphere_mesh, Color(0.3, 0.28, 0.25, 0.75), at + Vector3(0, size * 0.3, 0), 1.6, "grow", Vector3.ONE * size * 1.2)
 
 
 func _fx_tick(delta: float) -> void:
@@ -526,13 +591,13 @@ func _fx_tick(delta: float) -> void:
 		var k: float = e["t"] / e["life"]
 		var mi: MeshInstance3D = e["node"]
 		if k >= 1.0:
-			mi.queue_free()
+			mi.visible = false
 			_fx.erase(e)
 			continue
 		var c: Color = e["col"]
 		(mi.material_override as StandardMaterial3D).albedo_color = Color(c.r, c.g, c.b, c.a * (1.0 - k))
 		if e["kind"] == "grow":
-			mi.scale = Vector3.ONE * (1.0 + 1.8 * k)
+			mi.scale = e["base"] * (1.0 + 1.8 * k)
 
 
 # ---------------------------------------------------------------- frame

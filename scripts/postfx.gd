@@ -21,12 +21,12 @@ func _ready() -> void:
 	var shader := Shader.new()
 	shader.code = """
 shader_type canvas_item;
-uniform sampler2D screen_tex : hint_screen_texture, filter_linear_mipmap;
+uniform sampler2D screen_tex : hint_screen_texture, filter_linear;   // (no mipmaps: building them every frame is costly)
 uniform float heat = 0.0;
 uniform float flash = 0.0;
 uniform float danger = 0.0;   // squad suppression: drains colour, closes in
 uniform float hurt = 0.0;     // red edge flash when a soldier is hit
-uniform bool cheap = false;   // LOW graphics: skip the 18-sample blur and the grain
+uniform bool cheap = false;   // LOW graphics: skip the firing blur and the grain
 uniform bool retro = false;   // RETRO graphics: chunky pixels, 15-bit colour, ordered dither
 uniform bool nvg = false;     // night vision goggles
 uniform bool ir = false;      // thermal sight inside ir_rect
@@ -61,13 +61,15 @@ void fragment() {
 		float amt = heat * 0.045;
 		float split = heat * 0.006;
 		vec3 acc = vec3(0.0);
-		for (int i = 0; i < 6; i++) {
-			float s = 1.0 - amt * float(i) / 5.0;
+		// Two taps per channel (was six): the same streaky zoom at a third of
+		// the cost; on a laptop GPU in a browser the 18-read version lagged.
+		for (int i = 0; i < 2; i++) {
+			float s = 1.0 - amt * float(i);
 			acc.r += texture(screen_tex, 0.5 + c * (s + split)).r;
 			acc.g += texture(screen_tex, 0.5 + c * s).g;
 			acc.b += texture(screen_tex, 0.5 + c * (s - split)).b;
 		}
-		col = acc / 6.0;
+		col = acc / 2.0;
 	} else {
 		col = texture(screen_tex, uv).rgb;
 	}

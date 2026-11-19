@@ -37,6 +37,9 @@ func _ready() -> void:
 	if cfg.load(SETTINGS_PATH) == OK:
 		_last = int(cfg.get_value("game", "map", -1))
 	Weapons.load_difficulty()
+	var bench: String = load("res://scripts/bench.gd").requested()
+	if bench != "":
+		_deploy.call_deferred(FLEET if bench == "fleet" else 1)   # firing benchmark: straight in
 	_build()
 
 

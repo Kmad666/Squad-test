@@ -1559,7 +1559,7 @@ func spawn_explosion(pos: Vector3, w: Dictionary, direct: Node3D, hostile := fal
 	ball.visible = true
 	ball.scale = Vector3.ONE * 0.3
 	(ball.material_override as StandardMaterial3D).albedo_color.a = 1.0
-	light.visible = true
+	light.visible = dynamic_lights()
 	light.light_energy = 9.0 if big else 6.0
 	for k in ["debris", "smoke"]:
 		e[k].restart()
@@ -1676,7 +1676,7 @@ func _flashbang(pos: Vector3, w: Dictionary) -> void:
 	_explosion_idx = (_explosion_idx + 1) % _explosions.size()
 	e["root"].global_position = pos
 	var light: OmniLight3D = e["light"]
-	light.visible = true
+	light.visible = dynamic_lights()
 	light.light_color = Color(0.9, 0.95, 1.0)
 	light.light_energy = 16.0
 	if e["tween"]:
@@ -1775,6 +1775,35 @@ func notify(text: String, seconds := 4.0) -> void:
 
 
 ## Every shot heats up the screen effects; many at once = shake, blur, flash.
+## Real lights for muzzle flashes and explosions: not in the browser (its
+## renderer draws everything a light touches again, a pass per light, and
+## the first lit frame compiles new shaders mid-fight) and not on LOW. The
+## screen's flash wash still shows the shots.
+## Draw each kind of shot effect once, hidden under the ground at the start:
+## the browser compiles a shader the first time something uses it, and doing
+## that in the middle of the first firefight stalls the game.
+func _warm_effects() -> void:
+	if squad == null:
+		return
+	var at: Vector3 = squad.anchor + Vector3(0, -6, 0)
+	spawn_tracer(at, at + Vector3(0, 0, -2))
+	spawn_tracer(at + Vector3(0.5, 0, 0), at + Vector3(0.5, 0, -2), true)
+	spawn_impact(at, Vector3.UP, true)
+	var e: Dictionary = _explosions[_explosions.size() - 1]
+	(e["root"] as Node3D).global_position = at
+	e["ball"].visible = true
+	e["debris"].restart()
+	e["smoke"].restart()
+	for i in 3:
+		await get_tree().process_frame
+	if is_instance_valid(e["ball"]):
+		e["ball"].visible = false
+
+
+func dynamic_lights() -> bool:
+	return not OS.has_feature("web") and not low_quality
+
+
 func on_shot(at: Vector3) -> void:
 	fire_heat = minf(1.0, fire_heat + 0.06)
 	flash = minf(1.0, flash + 0.3)
@@ -1955,6 +1984,11 @@ func _build_hud() -> void:
 	manual.current_map = map_index
 	add_child(manual)
 	_first_briefing.call_deferred()
+	_warm_effects.call_deferred()
+	if forced_map < 0 and load("res://scripts/bench.gd").requested() != "":
+		var b: Node = load("res://scripts/bench.gd").new()
+		b.host = self
+		add_child(b)
 
 	# End of the operation: won or wiped out (hidden until then).
 	_debrief = PanelContainer.new()
@@ -1979,6 +2013,8 @@ func _build_hud() -> void:
 ## waits paused until you close it). Not in tests and tools, which pick the
 ## map themselves, nor without a screen.
 func _first_briefing() -> void:
+	if load("res://scripts/bench.gd").requested() != "":
+		return                                 # (firing benchmark: no briefing in the way)
 	if forced_map >= 0 or DisplayServer.get_name() == "headless" or manual.briefing == "":
 		return
 	var cfg := ConfigFile.new()
@@ -2133,7 +2169,7 @@ func _process(delta: float) -> void:
 	fire_heat = move_toward(fire_heat, 0.0, delta * 1.1)
 	flash = move_toward(flash, 0.0, delta * 9.0)
 	_muzzle_light.light_energy = flash * 5.0
-	_muzzle_light.visible = flash > 0.03
+	_muzzle_light.visible = flash > 0.03 and dynamic_lights()
 	hurt = move_toward(hurt, 0.0, delta * 2.5)
 	if postfx:
 		postfx.set_fx(fire_heat, flash, squad.avg_suppression(), hurt)
