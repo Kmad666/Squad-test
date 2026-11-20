@@ -8,8 +8,8 @@ extends SceneTree
 ##     all five reload, and fire again once loaded
 ##  5. driving straight at the box: nobody drives into it
 ##  6. mortar (F): too close, nothing fires; at range every tube lobs a round
-##     in a high arc (well above the hills), red rings mark where they'll
-##     land, they come down near the aim point and hurt the box; then reload
+##     in a high arc (well above the hills), drawn as tracers in flight;
+##     they come down near the aim point and hurt the box; then reload
 ##  7. shoot it to nothing: TARGET DESTROYED
 ## Prints FAIL lines and exits 1 on any failure.
 
@@ -129,11 +129,7 @@ func _physics_process(_d: float) -> bool:
 			if f - t0 == 70:
 				_check(fm.mortars_ready() == 0, "F: every tube fired (%d still ready)" % fm.mortars_ready())
 				_check(fm._mortars.size() == 5, "five rounds in the air (%d)" % fm._mortars.size())
-				var rings := 0
-				for r in fm._mortars:
-					if is_instance_valid(r["ring"]) and r["ring"].is_inside_tree():
-						rings += 1
-				_check(rings == 5, "a red ring where each will land (%d)" % rings)
+				_check(fm.tracers.active() >= 5, "each round in flight drawn as a tracer (%d up)" % fm.tracers.active())
 			if f - t0 > 70 and not fm._mortars.is_empty():
 				for r in fm._mortars:
 					peak = maxf(peak, r["pos"].y)

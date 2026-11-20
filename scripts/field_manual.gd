@@ -503,7 +503,7 @@ Point the reticle at where you want to go and press {k}B{/k}. It splits the squa
 """],
 ["COMBINED ARMS", """{h}THE LAV-25{/h}  {d}(OPERATION SLEIPNIR){/d}
 An eight-wheeled armored vehicle in woodland camo with an orange air-recognition panel on the back deck. Its turret carries a {h}25mm chain gun{/h} firing HE: bursts of 3-5, out to 120 m, a small burst on impact that catches men next to the strike, and enough punch to chew through the enemy APC. It follows your fire orders like the men do: hold, fire at will, focus on the reticle. It shows in the unit panel with its armor.
-Bullets bounce off it. Only {h}cannon shells{/h} (the enemy APC) hurt it. Destroyed, it burns and the men carry on on foot.
+Bullets bounce off it. Only {h}cannon shells{/h} (the enemy APC) hurt it. Destroyed, it's a dark wreck and the men carry on on foot.
 
 {h}LAV WITH US  ({k}Z{/k}){/h}
 The LAV {h}leads{/h}: it drives to the unit's point (the front) and the infantry {h}stack up behind it{/h} in two tight files, close against the hull. You steer as usual (WASD, E, B, H); the vehicle drives there at a walking pace and the men walk in its shadow. It waits for anyone falling behind, backs up rather than turning round for short moves, and drives round buildings on its own.
@@ -539,7 +539,7 @@ Each man has 100 HP. Below 50 he's {h}wounded{/h}: slower and less accurate. At 
 
 {h}SUPPRESSION (BOTH SIDES){/h}
 Rounds passing close (about 2 m) build suppression; it fades about 1.5 s after the fire stops. Hits rattle more. Fire from far away is less frightening than fire from close up.
-  - {h}Your men:{/h} suppressed = shorter looks over cover, worse aim. {h}PINNED{/h} = they stay down. The {h}FIRE ON US{/h} bar shows the squad average; the screen drains of color as it climbs.
+  - {h}Your men:{/h} suppressed = shorter looks over cover, worse aim. {h}PINNED{/h} = they stay down. The {h}FIRE ON US{/h} bar shows the squad average.
   - {h}Enemies:{/h} suppressed = slower, worse fire. {h}PINNED{/h} = they stop shooting.
 
 {h}THE CORE LOOP{/h}
@@ -587,7 +587,7 @@ Each position fights as a team:
   - {h}Assault:{/h} if they outnumber you two to one they stop defending and close in, cover to cover.
 
 {h}APC{/h}  {d}(enemy vehicle, label shows its HP){/d}
-Heavy armor, 360 HP. Patrols a short route; stops the moment it sees you or takes fire. The turret tracks you with a machine gun and fires explosive cannon shells. Bullets ricochet, so use rockets (3 hits), or grenades for a little damage. Once destroyed it burns and stays down.
+Heavy armor, 360 HP. Patrols a short route; stops the moment it sees you or takes fire. The turret tracks you with a machine gun and fires explosive cannon shells. Bullets ricochet, so use rockets (3 hits), or grenades for a little damage. Once destroyed it goes dark and stays down.
 
 {h}WAITING TEAMS{/h}
 The {h}anti-armor team{/h} (coyote-brown packs and kit, green label) waits to link up. Walk the squad within about 7 m and they join, bringing 3 burst rifles and 6 rockets.
@@ -664,8 +664,8 @@ EASY: the game as it was: forgiving, a charge usually works.
 Changing it restarts the operation. Shown next to UNIT in the top-left; remembered in your browser.
 
 {h}GRAPHICS  ({k}F2{/k}){/h}
-HIGH: shadows, bloom, anti-aliasing, full-resolution 3D, full screen effects.
-LOW: no shadows or bloom, 3D drawn at 70% resolution, lighter screen effects. For weaker machines; remembered in your browser.
+HIGH: shadows, bloom, anti-aliasing, full-resolution 3D.
+LOW: no shadows or bloom, 3D drawn at 70% resolution. For weaker machines; remembered in your browser.
 
 {h}RETRO  ({k}V{/k}){/h}
 A late-90s console look, on top of HIGH or LOW: chunky low-poly soldiers with flat colours and slightly wobbly vertices, chunky screen pixels and 15-bit dithered colour. The HD soldiers come back when you switch it off. Remembered in your browser.
@@ -680,7 +680,7 @@ A white light under every man's barrel, pointing wherever his rifle points: the 
 Classic green goggles over the whole screen: the dark lifted, lights blooming, heavy grain, flicker, scan lines and the round edge of the eyepiece. Washes out in daylight, like the real thing.
 
 {h}THERMAL SIGHT  ({k}I{/k}){/h}
-Inside the reticle only: white-hot. Bodies glow (faces and hands hottest, rifles cooler, the dead cooling), the rest of the scene goes cold grey; lamps, muzzle flashes and fires show hot too. Works with night vision on, by day and night, HD or RETRO. Resize the reticle ({k}O{/k}) to see more.
+Inside the reticle only: white-hot. Bodies glow (faces and hands hottest, rifles cooler, the dead cooling), the rest of the scene goes cold grey; lamps show hot too. Works with night vision on, by day and night, HD or RETRO. Resize the reticle ({k}O{/k}) to see more.
 
 {h}COMMAND MODE  ({k}TAB{/k}){/h}
 Tab lets go of the mouse without pausing and lifts the camera over the field. {k}WASD{/k} moves the camera, {k}RIGHT MOUSE{/k} drag turns it.
@@ -699,7 +699,7 @@ Sliders for width, height, corner length, line thickness, vertical offset, glow,
 {h}CONTROLS PANEL  ({k}F1{/k}){/h}
 The key summary in the top right. Hides itself after 25 s.
 
-{h}SCREEN EFFECTS{/h}
-Heavy firing shakes the camera, blurs the edges and flashes the screen. Being under fire drains color. A hit on one of your men flashes the screen edge red.
+{h}FIRING{/h}
+A shot draws one tracer round and nothing else: no flashes, smoke, sparks, shake or screen effects.
 """],
 ]

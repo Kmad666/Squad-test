@@ -30,8 +30,7 @@ const NEON := Color(0.45, 1.0, 0.30)
 
 const HOUSE_CEILING := 3.6     # ground-floor height of the houses you can go into
 const NAV_HALF := 50.0          # default playable half-size of the field (metres); maps may set HALF
-const TRACER_COUNT := 48
-const TRACER_LIFE := 0.06
+const Tracers = preload("res://scripts/tracers.gd")
 const TALL_COVER := 1.6         # boxes taller than this need a lean-out to shoot
 
 var map: GDScript              # the map being played (scripts/maps/*)
@@ -70,26 +69,17 @@ var reticle: Control
 var reticle_panel: PanelContainer
 var status_panel: PanelContainer
 var hits := 0
-var fire_heat := 0.0          # 0..1, how hard the squad is firing right now
-var flash := 0.0              # 0..1, muzzle-flash wash on screen
 var ui_root: Control
 var atmosphere: Node3D
 var postfx: CanvasLayer
-var _muzzle_light: OmniLight3D
-var _impacts: Array = []
-var _impact_idx := 0
 var _flicker_t := 0.0
-var _explosions: Array = []
-var _explosion_idx := 0
 var _notice := ""
 var _notice_t := 0.0
-var hurt := 0.0               # red screen-edge flash when a soldier is hit
-var _friendly_tracer_mat: StandardMaterial3D
-var _enemy_tracer_mat: StandardMaterial3D
 var kills := 0
 var dev: CanvasLayer           # F4: developer mode (live tuning sliders)
 var command: Node3D            # Tab: command mode (clicks, selection, detached men)
 var move_preview: Node3D        # orbs where the men would go (E)
+var tracers: MultiMeshInstance3D   # every tracer round (the only thing a shot draws)
 var game_time := 0.0          # seconds of play (stops while paused): mission clock, fire log ages
 var _debrief: PanelContainer   # end-of-operation panel (won or wiped out)
 var _debrief_label: RichTextLabel
@@ -101,10 +91,6 @@ var thermal := false         # I: thermal sight, inside the reticle only
 var _ir_rect := Vector4.ZERO
 const SETTINGS_PATH := "user://settings.cfg"
 var debug_reticle_all := false   # headless tests: treat everything as inside the reticle
-
-var _tracers: Array = []
-var _tracer_life: Array = []
-var _tracer_idx := 0
 
 
 func _ready() -> void:
@@ -146,14 +132,8 @@ func _ready() -> void:
 	_drop_wet_cover_points()
 	_prune_cover_points()        # finishes a couple of frames from now, once the nav map is live
 	_build_areas()
-	_build_tracers()
-	_build_impacts()
-	_build_explosions()
-	_muzzle_light = OmniLight3D.new()
-	_muzzle_light.light_color = Color(1.0, 0.68, 0.32)
-	_muzzle_light.omni_range = 9.0
-	_muzzle_light.visible = false
-	add_child(_muzzle_light)
+	tracers = Tracers.new()
+	add_child(tracers)
 
 	squad = SquadScript.new()
 	squad.name = "Squad"
@@ -597,7 +577,6 @@ func _build_ground() -> void:
 		wall.shape = ws
 		wall.position = side * (nav_half + 0.5) + Vector3(0, 3, 0)
 		body.add_child(wall)
-
 
 
 ## Every cover object / building from the map. Low cover and tall crates go
@@ -1374,156 +1353,13 @@ func reticle_ground_point() -> Variant:
 	return p
 
 
-func _build_tracers() -> void:
-	var mat := StandardMaterial3D.new()
-	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	mat.albedo_color = Color(1.0, 0.82, 0.4)
-	mat.disable_fog = true
-	_friendly_tracer_mat = mat
-	_enemy_tracer_mat = mat.duplicate()
-	_enemy_tracer_mat.albedo_color = Color(1.3, 0.25, 0.15)   # enemy rounds burn red
-	var bm := BoxMesh.new()
-	bm.size = Vector3(0.04, 0.04, 1.0)
-	for i in TRACER_COUNT:
-		var mi := MeshInstance3D.new()
-		mi.mesh = bm
-		mi.material_override = mat
-		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		mi.visible = false
-		add_child(mi)
-		_tracers.append(mi)
-		_tracer_life.append(0.0)
-
-
-func spawn_tracer(from: Vector3, to: Vector3, hostile := false) -> void:
-	var v := to - from
-	var length := v.length()
-	if length < 0.05:
-		return
-	var up := Vector3.UP if absf(v.normalized().y) < 0.99 else Vector3.RIGHT
-	var t: MeshInstance3D = _tracers[_tracer_idx]
-	t.material_override = _enemy_tracer_mat if hostile else _friendly_tracer_mat
-	t.global_transform = Transform3D(Basis.looking_at(v, up), (from + to) * 0.5)
-	t.scale = Vector3(1, 1, length)
-	t.visible = true
-	_tracer_life[_tracer_idx] = TRACER_LIFE
-	_tracer_idx = (_tracer_idx + 1) % _tracers.size()
-
-
-## Pool of one-shot spark/splash bursts for bullet impacts.
-func _build_impacts() -> void:
-	var mesh := BoxMesh.new()
-	mesh.size = Vector3(0.035, 0.035, 0.035)
-	var mat := StandardMaterial3D.new()
-	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	mat.vertex_color_use_as_albedo = true
-	mat.disable_fog = true
-	mesh.material = mat
-	for i in 16:
-		var p := CPUParticles3D.new()
-		p.emitting = false
-		p.one_shot = true
-		p.amount = 10
-		p.lifetime = 0.3
-		p.explosiveness = 1.0
-		p.local_coords = false
-		p.mesh = mesh
-		p.spread = 40.0
-		p.initial_velocity_min = 2.5
-		p.initial_velocity_max = 6.0
-		p.gravity = Vector3(0, -12, 0)
-		p.scale_amount_min = 0.6
-		p.scale_amount_max = 1.4
-		add_child(p)
-		_impacts.append(p)
-
-
-func spawn_impact(pos: Vector3, normal: Vector3, on_target: bool, tint := Color(0, 0, 0, 0)) -> void:
-	var p: CPUParticles3D = _impacts[_impact_idx]
-	_impact_idx = (_impact_idx + 1) % _impacts.size()
-	p.global_position = pos + normal * 0.03
-	p.direction = normal
-	p.color = Color(1.6, 0.9, 0.35) if on_target else Color(0.75, 0.82, 0.95)  # sparks vs wet splash
-	if tint.a > 0.0:
-		p.color = tint
-	p.restart()
-	p.emitting = true
-
-
-## Pool of explosion effects: fireball, sparks/debris, smoke and a light flash.
-func _build_explosions() -> void:
-	for i in 5:
-		var root := Node3D.new()
-		add_child(root)
-		var ball := MeshInstance3D.new()
-		var sm := SphereMesh.new()
-		sm.radius = 0.5
-		sm.height = 1.0
-		sm.radial_segments = 16
-		sm.rings = 8
-		ball.mesh = sm
-		var bm := StandardMaterial3D.new()
-		bm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		bm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-		bm.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
-		bm.disable_fog = true
-		bm.albedo_color = Color(1.0, 0.6, 0.2, 1.0)
-		ball.material_override = bm
-		ball.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		ball.visible = false
-		root.add_child(ball)
-
-		var debris := _burst(Color(1.5, 0.75, 0.3), 36, 0.6, 0.06, 8.0, 16.0, Vector3(0, -12, 0), false)
-		root.add_child(debris)
-		var smoke := _burst(Color(0.12, 0.12, 0.12, 0.55), 16, 2.2, 0.9, 0.8, 2.5, Vector3(0, 0.8, 0), true)
-		root.add_child(smoke)
-
-		var light := OmniLight3D.new()
-		light.light_color = Color(1.0, 0.6, 0.25)
-		light.omni_range = 14.0
-		light.visible = false
-		light.position.y = 1.0
-		root.add_child(light)
-		_explosions.append({"root": root, "ball": ball, "debris": debris, "smoke": smoke, "light": light, "tween": null})
-
-
-func _burst(color: Color, amount: int, life: float, size: float, vmin: float, vmax: float, grav: Vector3, billboard: bool) -> CPUParticles3D:
-	var p := CPUParticles3D.new()
-	p.emitting = false
-	p.one_shot = true
-	p.explosiveness = 0.95
-	p.amount = amount
-	p.lifetime = life
-	p.local_coords = false
-	var mat := StandardMaterial3D.new()
-	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	mat.vertex_color_use_as_albedo = true
-	if billboard:
-		var q := QuadMesh.new()
-		q.size = Vector2(size, size)
-		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-		mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
-		q.material = mat
-		p.mesh = q
-		p.scale_amount_min = 1.0
-		p.scale_amount_max = 3.0
-	else:
-		var b := BoxMesh.new()
-		b.size = Vector3(size, size, size)
-		mat.disable_fog = true
-		b.material = mat
-		p.mesh = b
-	p.color = color
-	p.direction = Vector3.UP
-	p.spread = 70.0
-	p.initial_velocity_min = vmin
-	p.initial_velocity_max = vmax
-	p.gravity = grav
-	return p
+## A tracer round from `from` to `to` (red: the enemy's).
+func spawn_tracer(from: Vector3, to: Vector3, hostile := false, width := Tracers.WIDTH, life := Tracers.LIFE) -> void:
+	tracers.fire(from, to, Tracers.ENEMY if hostile else Tracers.FRIENDLY, width, life)
 
 
 ## Blast: splash damage with falloff to every target in the radius (a direct
-## hit always takes full damage), plus the big screen and light effects.
+## hit always takes full damage), and suppression around it.
 func spawn_explosion(pos: Vector3, w: Dictionary, direct: Node3D, hostile := false) -> void:
 	if w["kind"] == "flash":
 		_flashbang(pos, w)
@@ -1549,37 +1385,6 @@ func spawn_explosion(pos: Vector3, w: Dictionary, direct: Node3D, hostile := fal
 				continue
 			f = lerpf(1.0, 0.25, d / radius)
 		t.take_damage(w["soft"] * f, w["armor"] * f)
-
-	var big: bool = w["kind"] != "grenade"
-	var e: Dictionary = _explosions[_explosion_idx]
-	_explosion_idx = (_explosion_idx + 1) % _explosions.size()
-	e["root"].global_position = pos
-	var ball: MeshInstance3D = e["ball"]
-	var light: OmniLight3D = e["light"]
-	ball.visible = true
-	ball.scale = Vector3.ONE * 0.3
-	(ball.material_override as StandardMaterial3D).albedo_color.a = 1.0
-	light.visible = dynamic_lights()
-	light.light_energy = 9.0 if big else 6.0
-	for k in ["debris", "smoke"]:
-		e[k].restart()
-		e[k].emitting = true
-	if e["tween"]:
-		e["tween"].kill()
-	var tw := create_tween().set_parallel(true)
-	var size := radius * (0.9 if big else 0.7)
-	tw.tween_property(ball, "scale", Vector3.ONE * size * 2.0, 0.35).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_EXPO)
-	tw.tween_property(ball.material_override, "albedo_color:a", 0.0, 0.4)
-	tw.tween_property(light, "light_energy", 0.0, 0.5)
-	tw.chain().tween_callback(func():
-		ball.visible = false
-		light.visible = false)
-	e["tween"] = tw
-
-	# Shake harder the closer the blast is to the camera.
-	var cam_d: float = cam_rig.cam.global_position.distance_to(pos)
-	fire_heat = minf(1.0, fire_heat + (0.6 if big else 0.4) * clampf(40.0 / maxf(cam_d, 1.0), 0.4, 1.0))
-	flash = 1.0
 
 
 ## Enemy shell landing: damage with falloff, cut to 30% if a crate is between
@@ -1640,19 +1445,9 @@ func suppress_squad(from: Vector3, end: Vector3, amount: float) -> void:
 			s.add_suppression(amount * (1.0 - d / 2.0))
 
 
-func on_soldier_hit(_s: Node3D) -> void:
-	hurt = 1.0
-	fire_heat = minf(1.0, fire_heat + 0.15)
-
-
-func on_enemy_cannon(at: Vector3) -> void:
-	var d: float = cam_rig.cam.global_position.distance_to(at)
-	fire_heat = minf(1.0, fire_heat + clampf(20.0 / maxf(d, 1.0), 0.05, 0.3))
-
-
 ## Flashbang: no damage. Every enemy in the radius who isn't shielded by a
 ## wall is blinded (can't shoot) and pinned; your own men too close get
-## rattled. A blinding white flash fills the street.
+## rattled.
 func _flashbang(pos: Vector3, w: Dictionary) -> void:
 	var radius: float = w["radius"]
 	var space := get_world_3d().direct_space_state
@@ -1672,24 +1467,6 @@ func _flashbang(pos: Vector3, w: Dictionary) -> void:
 		var d: float = s.global_position.distance_to(pos)
 		if d < 5.0:
 			s.add_suppression(0.6 * (1.0 - d / 5.0))
-	var e: Dictionary = _explosions[_explosion_idx]
-	_explosion_idx = (_explosion_idx + 1) % _explosions.size()
-	e["root"].global_position = pos
-	var light: OmniLight3D = e["light"]
-	light.visible = dynamic_lights()
-	light.light_color = Color(0.9, 0.95, 1.0)
-	light.light_energy = 16.0
-	if e["tween"]:
-		e["tween"].kill()
-	var tw := create_tween()
-	tw.tween_property(light, "light_energy", 0.0, 0.6).set_ease(Tween.EASE_OUT)
-	tw.tween_callback(func():
-		light.visible = false
-		light.light_color = Color(1.0, 0.6, 0.25))
-	e["tween"] = tw
-	var cam_d: float = cam_rig.cam.global_position.distance_to(pos)
-	flash = 1.0
-	fire_heat = minf(1.0, fire_heat + clampf(25.0 / maxf(cam_d, 1.0), 0.1, 0.5))
 
 
 # ---------------------------------------------------------------- specials
@@ -1747,17 +1524,8 @@ func on_no_explosives() -> void:
 	special_msg("NO EXPLOSIVES LEFT", 1.6)
 
 
-## Backblast / thump when a launcher fires.
-func on_launch(at: Vector3, w: Dictionary) -> void:
-	fire_heat = minf(1.0, fire_heat + (0.3 if w["kind"] == "rocket" else 0.15))
-	flash = minf(1.0, flash + 0.6)
-	_muzzle_light.global_position = at
-
-
 func on_lav_destroyed(_lav: Node3D) -> void:
 	notify("LAV DESTROYED  -  INFANTRY ON FOOT", 5.0)
-	spawn_explosion(_lav.global_position + Vector3(0, 1.5, 0), {"kind": "rocket", "radius": 3.0, "soft": 0.0, "armor": 0.0}, null, false)
-	hurt = 1.0
 
 
 func on_vehicle_destroyed(v: Node3D) -> void:
@@ -1772,42 +1540,6 @@ func sgt_callout(text: String) -> void:
 func notify(text: String, seconds := 4.0) -> void:
 	_notice = text
 	_notice_t = seconds
-
-
-## Every shot heats up the screen effects; many at once = shake, blur, flash.
-## Real lights for muzzle flashes and explosions: not in the browser (its
-## renderer draws everything a light touches again, a pass per light, and
-## the first lit frame compiles new shaders mid-fight) and not on LOW. The
-## screen's flash wash still shows the shots.
-## Draw each kind of shot effect once, hidden under the ground at the start:
-## the browser compiles a shader the first time something uses it, and doing
-## that in the middle of the first firefight stalls the game.
-func _warm_effects() -> void:
-	if squad == null:
-		return
-	var at: Vector3 = squad.anchor + Vector3(0, -6, 0)
-	spawn_tracer(at, at + Vector3(0, 0, -2))
-	spawn_tracer(at + Vector3(0.5, 0, 0), at + Vector3(0.5, 0, -2), true)
-	spawn_impact(at, Vector3.UP, true)
-	var e: Dictionary = _explosions[_explosions.size() - 1]
-	(e["root"] as Node3D).global_position = at
-	e["ball"].visible = true
-	e["debris"].restart()
-	e["smoke"].restart()
-	for i in 3:
-		await get_tree().process_frame
-	if is_instance_valid(e["ball"]):
-		e["ball"].visible = false
-
-
-func dynamic_lights() -> bool:
-	return not OS.has_feature("web") and not low_quality
-
-
-func on_shot(at: Vector3) -> void:
-	fire_heat = minf(1.0, fire_heat + 0.06)
-	flash = minf(1.0, flash + 0.3)
-	_muzzle_light.global_position = _muzzle_light.global_position.lerp(at, 0.5) if _muzzle_light.visible else at
 
 
 # ---------------------------------------------------------------- queries
@@ -1850,8 +1582,6 @@ func camera_forward() -> Vector3:
 	var dir: Vector3 = cam_rig.get_yaw_basis() * Vector3.FORWARD
 	dir.y = 0
 	return dir.normalized()
-
-
 
 
 # ---------------------------------------------------------------- HUD
@@ -1984,7 +1714,6 @@ func _build_hud() -> void:
 	manual.current_map = map_index
 	add_child(manual)
 	_first_briefing.call_deferred()
-	_warm_effects.call_deferred()
 	if forced_map < 0 and load("res://scripts/bench.gd").requested() != "":
 		var b: Node = load("res://scripts/bench.gd").new()
 		b.host = self
@@ -2157,22 +1886,8 @@ func _process(delta: float) -> void:
 		var vs := get_viewport().get_visible_rect().size
 		if Vector4(r.position.x / vs.x, r.position.y / vs.y, r.end.x / vs.x, r.end.y / vs.y) != _ir_rect:
 			_update_vision()
-	for i in _tracers.size():
-		if _tracer_life[i] > 0.0:
-			_tracer_life[i] -= delta
-			if _tracer_life[i] <= 0.0:
-				_tracers[i].visible = false
-
 	_update_houses()
 
-	# Firing intensity decays when the guns go quiet.
-	fire_heat = move_toward(fire_heat, 0.0, delta * 1.1)
-	flash = move_toward(flash, 0.0, delta * 9.0)
-	_muzzle_light.light_energy = flash * 5.0
-	_muzzle_light.visible = flash > 0.03 and dynamic_lights()
-	hurt = move_toward(hurt, 0.0, delta * 2.5)
-	if postfx:
-		postfx.set_fx(fire_heat, flash, squad.avg_suppression(), hurt)
 	if reticle:
 		reticle.marks = _target_marks()
 

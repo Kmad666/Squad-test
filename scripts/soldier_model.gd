@@ -8,7 +8,7 @@ extends Node3D
 ##
 ## Model space: -Z ahead, +X his right, feet at the origin.
 ## Same interface as before (soldier.gd, enemy_soldier.gd and the tests use
-## it): build, animate, set_aim_point, recoil, set_crouch, set_prone,
+## it): build, animate, set_aim_point, set_crouch, set_prone,
 ## gesture, set_team_patch, set_sergeant, set_tint, lay_down.
 
 const Atmosphere = preload("res://scripts/atmosphere.gd")
@@ -59,7 +59,7 @@ static var thermal_rect := Vector4.ZERO   # the reticle in screen UV (x0, y0, x1
 
 var upper: Node3D            # torso, head, arms, rifle (hunches forward when crouched)
 var head: Node3D
-var muzzle: Node3D           # rifle muzzle (tracers / flash)
+var muzzle: Node3D           # rifle muzzle (where tracers start)
 var launch_tip: Node3D       # grenade launcher / rocket tube exit, if any
 var crouched := false
 var prone := false
@@ -86,11 +86,9 @@ var _aiming := false
 var _aim_amt := 0.0
 var _aim_dir := Vector3.FORWARD          # model frame, smoothed
 var _aim_goal := Vector3.FORWARD
-var _recoil := 0.0
 var _driven := false
 var _demo_vel := Vector3.ZERO
 var _demo_aim := false
-var _demo_fire_t := 0.0
 
 
 # ---------------------------------------------------------------- build
@@ -242,8 +240,6 @@ static func _material(tint: String) -> ShaderMaterial:
 		m.set_shader_parameter("night", 1.0 if Atmosphere.night else 0.0)
 		m.set_shader_parameter("detail", 0.0)        # plain blocks: no camo, no fabric grain
 		match tint:
-			"hurt":
-				m.set_shader_parameter("tint", Color(2.2, 0.5, 0.4))
 			"dead":
 				m.set_shader_parameter("tint", Color(0.45, 0.45, 0.45))
 			_:
@@ -268,7 +264,7 @@ static func set_low_quality(on: bool) -> void:
 	low_quality = on
 
 
-## "normal", "hurt" (red flash) or "dead" (darkened).
+## "normal" or "dead" (darkened).
 func set_tint(tint: String) -> void:
 	var m := _material(tint)
 	for mi in _meshes:
@@ -315,7 +311,7 @@ static func _solve(root: Vector3, target: Vector3, a: float, b: float, pole: Vec
 	return root + u * cos_a * a + v * sqrt(1.0 - cos_a * cos_a) * a
 
 
-## Body (hunch, lying flat) and rifle (low ready / aimed, recoil) from the
+## Body (hunch, lying flat) and rifle (low ready / aimed) from the
 ## eased amounts; then the arms reach for it.
 func _apply_pose() -> void:
 	if _laid:
@@ -342,9 +338,6 @@ func _apply_pose() -> void:
 	var aim_b := up_frame.inverse() * Basis.looking_at(_aim_dir, Vector3.UP if absf(_aim_dir.y) < 0.95 else Vector3.BACK)
 	var aimed := Transform3D(aim_b, POCKET.lerp(PRONE_POCKET, pr))
 	var rx := _rest_rifle.interpolate_with(aimed, a)
-	# Recoil: back into the shoulder, muzzle up.
-	rx.basis = rx.basis * Basis(Vector3.RIGHT, 0.12 * _recoil)
-	rx.origin += rx.basis.z * 0.05 * _recoil
 	_rifle.transform = rx
 	_grip = rx * _grip_on_rifle()
 	_guard = rx * _guard_on_rifle()
@@ -378,13 +371,12 @@ func animate_local(_v: Vector3, delta: float) -> void:
 	var crouch_goal := 1.0 if crouched else 0.0
 	var aim_goal := 1.0 if _aiming else 0.0
 	var prone_goal := 1.0 if prone else 0.0
-	if _crouch_amt == crouch_goal and _aim_amt == aim_goal and not _aiming and _recoil == 0.0 \
+	if _crouch_amt == crouch_goal and _aim_amt == aim_goal and not _aiming \
 			and _prone_amt == prone_goal and not _gesturing:
 		return                                              # settled: nothing to pose
 	_prone_amt = move_toward(_prone_amt, prone_goal, (1.8 if prone else 2.2) * delta)
 	_aim_amt = move_toward(_aim_amt, aim_goal, (4.5 if _aiming else 2.5) * delta)
 	_aim_dir = _aim_dir.lerp(_aim_goal, clampf(14.0 * delta, 0.0, 1.0)).normalized()
-	_recoil = move_toward(_recoil, 0.0, 7.0 * delta)
 	_crouch_amt = move_toward(_crouch_amt, crouch_goal, 5.0 * delta)
 	_apply_pose()
 
@@ -416,11 +408,6 @@ func _frame() -> Transform3D:
 	return global_transform * transform.affine_inverse()
 
 
-## One shot: the stick kicks back and up.
-func recoil() -> void:
-	_recoil = minf(1.0, _recoil + 0.65)
-
-
 func is_shouldered() -> bool:
 	return _aim_amt > 0.85
 
@@ -431,7 +418,7 @@ func set_demo_motion(local_vel: Vector3) -> void:
 	set_process(local_vel != Vector3.ZERO or _demo_aim)
 
 
-## Model viewer: shoulder the rifle at a point straight ahead and fire bursts.
+## Model viewer: shoulder the rifle at a point straight ahead.
 func set_demo_aim(on: bool) -> void:
 	_demo_aim = on
 	set_process(on or _demo_vel != Vector3.ZERO)
@@ -440,10 +427,6 @@ func set_demo_aim(on: bool) -> void:
 func _process(delta: float) -> void:
 	if _demo_aim:
 		set_aim_point(_frame() * Vector3(0.0, 0.3 if prone else 1.35, -12.0))
-		_demo_fire_t -= delta
-		if _demo_fire_t <= 0.0 and _aim_amt > 0.95:
-			recoil()
-			_demo_fire_t = 0.1 if randf() < 0.7 else 0.9
 	animate_local(_demo_vel, delta)
 
 
@@ -576,7 +559,6 @@ func lay_down(face_up: bool) -> void:
 	_prone_amt = 0.0
 	_aiming = false
 	_aim_amt = 0.0
-	_recoil = 0.0
 	_aim_dir = Vector3.FORWARD
 	_apply_pose()
 	_laid = true

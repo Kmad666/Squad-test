@@ -63,7 +63,7 @@ func _build_day() -> void:
 	env.ambient_light_energy = 0.5
 	env.tonemap_mode = Environment.TONE_MAPPER_ACES
 	env.tonemap_exposure = 0.9
-	env.glow_enabled = true            # gentle bloom on muzzle flashes / explosions
+	env.glow_enabled = true            # gentle bloom on lamps
 	env.glow_intensity = 0.25
 	env.glow_hdr_threshold = 1.3
 	env.fog_enabled = true             # light distance haze

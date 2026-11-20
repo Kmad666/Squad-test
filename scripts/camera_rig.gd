@@ -6,7 +6,6 @@ extends Node3D
 ## Tab switches between aiming (mouse grabbed) and command mode (free mouse,
 ## camera up over the field, WASD moves it, RMB drag pans, clicks give orders:
 ## command_mode.gd).
-## Shake and FOV kick come from main.fire_heat (how hard the squad is firing).
 
 const Atmosphere = preload("res://scripts/atmosphere.gd")
 const PIVOT_HEIGHT := 1.9     # pivot above the squad's anchor
@@ -27,7 +26,6 @@ var dist := 8.5
 var cam: Camera3D
 var _arm: SpringArm3D
 var _snapped := false
-var _shake_t := 0.0
 var indoors := false          # the squad is inside a house: look down into the rooms
 var _in := 0.0
 var free_mouse := false       # Tab: command mode (cursor free; see command_mode.gd)
@@ -173,14 +171,6 @@ func _process(delta: float) -> void:
 	var d := lerpf(dist, minf(dist, INDOOR_DIST), ease_in)
 	rotation = Vector3(lerpf(p, minf(p, COMMAND_PITCH), ease_cmd), yaw, 0)
 	_arm.spring_length = lerpf(_arm.spring_length, lerpf(d, maxf(d * 2.0, COMMAND_DIST), ease_cmd), clampf(10.0 * delta, 0.0, 1.0))
-
-	# Firing intensity -> rattling shake and a slight FOV punch.
-	var heat: float = main.fire_heat if main else 0.0
-	_shake_t += delta * 38.0
-	var amp := heat * heat * 0.12
-	cam.h_offset = (sin(_shake_t * 1.7) + sin(_shake_t * 3.1) * 0.5) * amp
-	cam.v_offset = (cos(_shake_t * 2.3) + sin(_shake_t * 4.3) * 0.5) * amp
-	cam.fov = lerpf(cam.fov, 65.0 - heat * 3.5, clampf(12.0 * delta, 0.0, 1.0))
 
 
 func get_yaw_basis() -> Basis:

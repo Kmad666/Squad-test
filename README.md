@@ -53,7 +53,7 @@ sky reflections are off. CI builds both desktop versions after the tests and the
 | Tab | Aim / command mode (real time). Command mode: camera over the field, WASD moves it, right-drag turns it; left-click selects men (Shift adds, drag for a box); right-click the ground moves the team, or sends the selected men to hold that spot on their own (detached); right-click an enemy marks him |
 | U | Command mode: detached men rejoin the team |
 | O | Reticle settings (sizes are saved in your browser) and the move preview orbs on / off. Rest the reticle on the ground and orbs show where E would send each man: green behind cover, amber prone in the open, blue standing in formation |
-| F2 | Graphics LOW / HIGH (LOW: no shadows or bloom, 70% 3D resolution, lighter screen effects; remembered) |
+| F2 | Graphics LOW / HIGH (LOW: no shadows or bloom, 70% 3D resolution; remembered) |
 | F3 | Difficulty EASY / NORMAL (also on the level select; restarts the operation; remembered). NORMAL punishes walking at a position in the open |
 | F4 | Developer mode: live tuning sliders (speeds, pace, formation spacing, accuracy, damage, misses, enemy numbers, LAV, game speed; in the armored fleet: its speeds, turret, reload, damage). The game keeps running; changes are saved; R / RESET ALL put values back; COPY VALUES copies the changed ones as text |
 | V | RETRO graphics on / off (chunky low-poly soldiers, vertex wobble, pixelated dithered screen; remembered) |
@@ -93,7 +93,7 @@ It follows your fire orders like the men do. Bullets bounce off it; only cannon 
   side, fires and ducks back. The LAV drives at a walking pace, waits for stragglers, reverses for short moves
   back, and paths round buildings on its own navigation mesh (sized for a vehicle).
 - **Overwatch (Z again):** it stops and fires at will once a fight is on; the men act as normal infantry. Z
-  calls it back. Split into teams, it works with team A. Destroyed, it burns and the men carry on on foot.
+  calls it back. Split into teams, it works with team A. Destroyed, it's a dark wreck and the men carry on on foot.
 
 ## In-game help
 - **Field manual** (Esc, pauses the game; `scripts/field_manual.gd`):
@@ -133,7 +133,7 @@ Every push to `main` builds the web version and publishes it to GitHub Pages (gh
 Font: Share Tech Mono (SIL Open Font License, see `fonts/OFL.txt`).
 
 Soldiers: blocky (scripts/soldier_model.gd): box legs, torso, arms and head, a black stick for a rifle. No walk
-animation; the arms aim, recoil and give hand signals, crouching hunches the upper body forward.
+animation; the arms aim and give hand signals, crouching hunches the upper body forward.
 
 ## Armored fleet (prototype)
 
@@ -176,6 +176,9 @@ so the blast can still catch the target.
 
 ## Enemy fire, health and suppression
 - Enemy riflemen (olive-brown camo, red armband, red mask lenses) and the APC shoot back (red tracers). The APC's turret tracks you with a machine gun and fires explosive cannon shells. Enemies need line of sight: a soldier crouched behind a low crate is hidden.
+- A shot draws one tracer round (yours amber, theirs red) and nothing else. All tracers are instances of one
+  MultiMesh (`scripts/tracers.gd`): one draw call, nothing created per shot. Rockets, shells and grenades in flight
+  are tracer streaks too; explosions and flashbangs do their damage, suppression and blinding with no visuals.
 - **Enemy tactics** (`scripts/enemy_tactics.gd`, one brain over every defended area, thinking twice a second;
   the men still do their own cover, peeking and shooting, it decides where they fight):
   - **Flank:** a few seconds into contact one man (two from a group of five or more) goes to fight from cover
@@ -308,7 +311,7 @@ The rig still animates everything; each frame its pose is mapped onto the skelet
 to chest, neck and head copy its rotations; arms and legs are re-solved with this model's own limb lengths so the
 feet land where the rig's feet are and the hands on the rifle (the rifle is shifted with the right hand to suit his
 shorter reach). Every bone's axis offset is measured once from the rest pose. Your men wear grey variants of the
-fatigues and kit with green lenses, the enemy olive with red lenses; tints (hurt / dead) are material variants and
+fatigues and kit with green lenses, the enemy olive with red lenses; tints (dead) are material variants and
 the thermal sight is a second material pass that draws heat only inside the reticle. The team patch and the
 sergeant's antenna ride on his bones. RETRO (V) swaps back to the chunky soldiers. `model_test.gd` checks his hands
 on the rifle and his feet above ground in every pose. Asset pipeline (Blender): stray parts removed, meshes joined
@@ -346,8 +349,7 @@ feet alternate planted / swinging steps along the direction of travel, stride an
 running adds a forward lean, lower hips and a heel kick, crouching gives short low steps, and when strafing or
 backing up the hips turn toward travel while the torso keeps facing the enemy. Crouch transitions ease in.
 Aiming: `set_aim_point(world point | Vector3.INF)` while engaging raises the rifle to the shoulder (bladed stance,
-torso turns with the aim, cheek on the stock, works through crouch / gait / lean); `recoil()` on each shot kicks the
-muzzle up. Friendlies shoulder when they have a shot and may fire; enemies when their gunner has a target and is up.
+torso turns with the aim, cheek on the stock, works through crouch / gait / lean). Friendlies shoulder when they have a shot and may fire; enemies when their gunner has a target and is up.
 Poses: idle (rifle at low ready), crouch (hips drop, torso leans forward from the waist, rifle stays level),
 prone (`set_prone()`: the whole body pivots forward about the hips onto the ground over ~0.5 s, angled off the line
 of fire with the chest up on the elbows, rifle shouldered and pointed ahead, legs apart with toes pointed; crawling,
@@ -358,7 +360,7 @@ the body and the body is fitted to the ground so nothing sinks or floats).
 Vision: weapon lights are shadowless SpotLight3Ds on each friendly rifle (`soldier.gd`). Night vision is a post
 effect (`postfx.gd`). Thermal: inside the reticle (its screen rect is passed to both soldier shaders and the post
 effect) the soldier shaders drop their lighting and emit a yellow, no-blue "heat" colour kept under the bloom
-threshold; the post effect turns that (and other hot, warm-saturated light such as lamps and flashes) white and
+threshold; the post effect turns that (and other hot, warm-saturated light such as lamps) white and
 everything else cold grey, so only the reticle shows thermal.
 
 `tests/tools/capture_vision.gd` screenshots lights / night vision / thermal / both (MAP=0 night, MAP=1 day, RETRO=1).

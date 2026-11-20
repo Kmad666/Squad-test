@@ -61,7 +61,6 @@ var _peek_timer := 0.0
 var _reposition_timer := 0.0
 var _check_timer := 0.0
 var _path_timer := 0.0
-var _hurt_t := 0.0
 var _peek_spot := Vector3.ZERO
 var _scope_c := Vector3.ZERO    # where he looks for cover: centre, radius,
 var _scope_r := 0.0             # and the fighting distance he likes
@@ -153,11 +152,6 @@ func can_fire() -> bool:
 	return alive and not _crouched and state != State.MOVING
 
 
-## Called by his gunner on every shot.
-func on_fired() -> void:
-	_model.recoil()
-
-
 func on_spotted() -> void:
 	_alert_area()
 
@@ -168,8 +162,6 @@ func take_damage(soft_dmg: float, _armor_dmg: float) -> bool:
 	hp -= soft_dmg
 	_model.wounded = hp < MAX_HP * 0.5     # limps
 	_gun.add_suppression(0.2)
-	_model.set_tint("hurt")
-	_hurt_t = 0.1
 	_alert_area()
 	if hp <= 0.0:
 		_die()
@@ -372,11 +364,6 @@ func _cover_still_good() -> bool:
 
 
 func _physics_process(delta: float) -> void:
-	if _hurt_t > 0.0:
-		_hurt_t -= delta
-		if _hurt_t <= 0.0:
-			_model.set_tint("normal")
-
 	if _gun.suppression > 0.05:
 		_alert_area()
 

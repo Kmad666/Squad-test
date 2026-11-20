@@ -20,6 +20,7 @@ const UI_FONT = preload("res://fonts/ShareTechMono-Regular.ttf")
 const DevPanel = preload("res://scripts/dev_panel.gd")
 const Levels = preload("res://scripts/levels.gd")
 const PauseKeys = preload("res://scripts/fleet/pause_keys.gd")
+const Tracers = preload("res://scripts/tracers.gd")
 
 const HALF := 420.0             # the countryside is 840 m across
 const CELL := 4.0               # terrain grid (m)
@@ -55,7 +56,7 @@ var target_dead := false
 var hits_main := 0
 var hits_mg := 0
 var hits_mortar := 0
-var _mortars: Array = []        # rounds in the air: {pos, vel, land (where it should come down), ring}
+var _mortars: Array = []        # rounds in the air: {pos, vel, land (where it should come down)}
 var _mortar_queue: Array = []   # [vehicle, time]: a barrage fires tube by tube
 var aim := Vector3.ZERO         # where the reticle is on the ground / box
 var mg_firing := false
@@ -71,9 +72,8 @@ var _gn := 0
 var _noise2 := FastNoiseLite.new()
 var _target: MeshInstance3D
 var _target_mat: StandardMaterial3D
-var _flash_t := 0.0
 var _shells: Array = []         # [{pos, dir, from (vehicle), life}]
-var _fx: Array = []             # [{node, t, life, kind}]
+var tracers: MultiMeshInstance3D   # every round in flight is drawn here, and nothing else
 var _hud: RichTextLabel
 var _units: RichTextLabel
 var _banner: Label
@@ -106,7 +106,8 @@ func _ready() -> void:
 		var b: Node = load("res://scripts/bench.gd").new()
 		b.host = self
 		add_child(b)
-	_build_fx_pool()
+	tracers = Tracers.new()
+	add_child(tracers)
 	_terrain()
 	_build_target()
 	for i in N_VEHICLES:
@@ -306,14 +307,11 @@ func damage_target(dmg: float) -> void:
 	if target_dead:
 		return
 	target_hp = maxf(0.0, target_hp - dmg)
-	_flash_t = 0.12
 	if target_hp <= 0.0:
 		target_dead = true
 		_target_mat.albedo_color = Color(0.12, 0.11, 0.1)
 		_target.scale = Vector3(1.0, 0.35, 1.0)
 		_target.position.y = height(0, 0) + TARGET_SIZE.y * 0.35 / 2.0 - 0.5
-		for i in 6:
-			_explosion(_target.position + Vector3(randf_range(-10, 10), randf_range(0, 6), randf_range(-10, 10)), 9.0)
 		_banner.text = "TARGET DESTROYED  -  R TO RESET"
 		_banner.visible = true
 
@@ -365,11 +363,8 @@ func _fire_mg(v: Node3D) -> void:
 		if hit["box"]:
 			damage_target(MG_DMG)
 			hits_mg += 1
-		_puff(end, 0.6 if hit["box"] else 0.9, Color(0.9, 0.85, 0.6) if hit["box"] else Color(0.55, 0.48, 0.36))
 	v.shots_mg += 1
-	if v.shots_mg % 3 == 0:
-		_tracer(from, end, Color(1.0, 0.75, 0.3), 0.06)
-	_muzzle(v.mg_muzzle.global_position, 0.25)
+	tracers.fire(from, end, Tracers.FRIENDLY, 0.08)
 
 
 func _fire_main(v: Node3D) -> void:
@@ -377,8 +372,6 @@ func _fire_main(v: Node3D) -> void:
 	v.shots_main += 1
 	var from: Vector3 = v.muzzle.global_position
 	_shells.append({"pos": from, "dir": v.gun_dir(), "life": 3.0})
-	_muzzle(from, 1.1)
-	_puff(from + v.gun_dir() * 1.5, 2.2, Color(0.75, 0.72, 0.68))
 
 
 func _shells_tick(delta: float) -> void:
@@ -392,12 +385,11 @@ func _shells_tick(delta: float) -> void:
 				hits_main += 1
 			elif (hit["pos"] as Vector3).distance_to(_target.position) < TARGET_SIZE.x * 0.7 + MAIN_SPLASH:
 				damage_target(MAIN_DMG * 0.25)          # a near miss at its foot still shakes it
-			_explosion(hit["pos"], 5.0)
 			continue
 		var p0: Vector3 = s["pos"]
 		s["pos"] = p0 + s["dir"] * step
 		s["life"] -= delta
-		_tracer(p0, s["pos"], Color(1.0, 0.9, 0.6), 0.05, 0.22)
+		tracers.fire(p0 - s["dir"] * step, s["pos"], Tracers.FRIENDLY, 0.22, 0.05)
 		if s["life"] <= 0.0:
 			_shells.erase(s)
 
@@ -457,23 +449,7 @@ func _launch_mortar(v: Node3D, at: Vector3) -> void:
 	if target_box().has_point(Vector3(land.x, target_box().position.y + 1.0, land.z)):
 		land.y = target_box().end.y               # comes down on its roof
 	v.shots_mortar += 1
-	_muzzle(from, 0.7)
-	_puff(from + Vector3(0, 1.0, 0), 2.6, Color(0.8, 0.78, 0.74))
-	# A red ring where it will come down, until it does.
-	var tm := TorusMesh.new()
-	tm.inner_radius = 2.6
-	tm.outer_radius = 3.0
-	var ring := MeshInstance3D.new()
-	ring.mesh = tm
-	var m := StandardMaterial3D.new()
-	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	m.no_depth_test = true
-	m.albedo_color = Color(1.0, 0.3, 0.2, 0.6)
-	ring.material_override = m
-	add_child(ring)
-	ring.global_position = land + Vector3(0, 0.3, 0)
-	_mortars.append({"pos": from, "vel": mortar_velocity(from, land), "land": land, "ring": ring, "t": 0.0})
+	_mortars.append({"pos": from, "vel": mortar_velocity(from, land), "land": land, "t": 0.0})
 
 
 func _mortar_tick(delta: float) -> void:
@@ -487,14 +463,12 @@ func _mortar_tick(delta: float) -> void:
 		var p0: Vector3 = r["pos"]
 		r["vel"] = r["vel"] + Vector3(0, -MORTAR_G * delta, 0)
 		var p1: Vector3 = p0 + r["vel"] * delta
-		(r["ring"] as Node3D).scale = Vector3.ONE * (1.0 + 0.12 * sin(r["t"] * 9.0))
 		# Coming down: did this step reach the ground or the box?
 		var seg := p1 - p0
 		var hit := trace(p0, seg.normalized(), seg.length()) if r["vel"].y < 0.0 else {}
 		if not hit.is_empty() or r["t"] > 30.0:
 			var at: Vector3 = hit.get("pos", p1)
 			_mortars.erase(r)
-			(r["ring"] as Node).queue_free()
 			if hit.get("box", false):
 				damage_target(MORTAR_DMG)
 				hits_mortar += 1
@@ -503,101 +477,9 @@ func _mortar_tick(delta: float) -> void:
 				var out := Vector2(maxf(absf(at.x - box.get_center().x) - box.size.x / 2.0, 0.0), maxf(absf(at.z - box.get_center().z) - box.size.z / 2.0, 0.0)).length()
 				if out < MORTAR_SPLASH:
 					damage_target(MORTAR_DMG * 0.4 * (1.0 - out / MORTAR_SPLASH))
-			_explosion(at, 8.0)
-			_puff(at + Vector3(0, 2.0, 0), 6.0, Color(0.45, 0.4, 0.33))
 			continue
 		r["pos"] = p1
-		_tracer(p0, p1, Color(1.0, 0.85, 0.5), 0.12, 0.3)
-
-
-# ---------------------------------------------------------------- effects
-
-## Effects come from a pool made once (a low-poly sphere and a box, scaled):
-## making new meshes and materials for every round stalled the browser.
-const FX_POOL := 160
-var _pool: Array = []           # MeshInstance3D, each with its own material
-var _pool_i := 0
-var _sphere_mesh: SphereMesh
-var _box_mesh: BoxMesh
-
-
-func _build_fx_pool() -> void:
-	_sphere_mesh = SphereMesh.new()
-	_sphere_mesh.radius = 0.5
-	_sphere_mesh.height = 1.0
-	_sphere_mesh.radial_segments = 12
-	_sphere_mesh.rings = 6
-	_box_mesh = BoxMesh.new()
-	for n in FX_POOL:
-		var mi := MeshInstance3D.new()
-		var m := StandardMaterial3D.new()
-		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-		mi.material_override = m
-		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		mi.visible = false
-		add_child(mi)
-		_pool.append(mi)
-	# Draw each once, out of sight, so the shader compiles now and not at the first shot.
-	var w: MeshInstance3D = _pool[0]
-	w.mesh = _sphere_mesh
-	w.global_position = START + Vector3(0, -10, 0)
-	w.visible = true
-	_fx.append({"node": w, "t": 0.0, "life": 0.2, "kind": "fade", "col": Color(1, 1, 1, 0.5), "base": Vector3.ONE})
-
-
-func _fx_mesh(mesh: Mesh, col: Color, at: Vector3, life: float, kind: String, base := Vector3.ONE) -> MeshInstance3D:
-	var mi: MeshInstance3D = _pool[_pool_i]
-	_pool_i = (_pool_i + 1) % _pool.size()
-	for e in _fx:
-		if e["node"] == mi:
-			_fx.erase(e)               # (the oldest effect gives its node up)
-			break
-	mi.mesh = mesh
-	mi.rotation = Vector3.ZERO
-	mi.scale = base
-	(mi.material_override as StandardMaterial3D).albedo_color = col
-	mi.global_position = at
-	mi.visible = true
-	_fx.append({"node": mi, "t": 0.0, "life": life, "kind": kind, "col": col, "base": base})
-	return mi
-
-
-func _tracer(a: Vector3, b: Vector3, col: Color, life: float, w := 0.12) -> void:
-	var len := a.distance_to(b)
-	if len < 0.1:
-		return
-	var mi := _fx_mesh(_box_mesh, col, (a + b) * 0.5, life, "fade", Vector3(w, w, len))
-	mi.look_at_from_position((a + b) * 0.5, b, Vector3.UP if absf((b - a).normalized().y) < 0.99 else Vector3.RIGHT)
-	mi.scale = Vector3(w, w, len)
-
-
-func _muzzle(at: Vector3, size: float) -> void:
-	_fx_mesh(_sphere_mesh, Color(1.0, 0.8, 0.4, 0.9), at, 0.06, "fade", Vector3.ONE * size * 2.0)
-
-
-func _puff(at: Vector3, size: float, col: Color) -> void:
-	_fx_mesh(_sphere_mesh, Color(col.r, col.g, col.b, 0.7), at, 0.5, "grow", Vector3.ONE * size)
-
-
-func _explosion(at: Vector3, size: float) -> void:
-	_fx_mesh(_sphere_mesh, Color(1.0, 0.6, 0.2, 0.95), at, 0.35, "grow", Vector3.ONE * size)
-	_fx_mesh(_sphere_mesh, Color(0.3, 0.28, 0.25, 0.75), at + Vector3(0, size * 0.3, 0), 1.6, "grow", Vector3.ONE * size * 1.2)
-
-
-func _fx_tick(delta: float) -> void:
-	for e in _fx.duplicate():
-		e["t"] += delta
-		var k: float = e["t"] / e["life"]
-		var mi: MeshInstance3D = e["node"]
-		if k >= 1.0:
-			mi.visible = false
-			_fx.erase(e)
-			continue
-		var c: Color = e["col"]
-		(mi.material_override as StandardMaterial3D).albedo_color = Color(c.r, c.g, c.b, c.a * (1.0 - k))
-		if e["kind"] == "grow":
-			mi.scale = e["base"] * (1.0 + 1.8 * k)
+		tracers.fire(p0 - seg * 2.0, p1, Tracers.FRIENDLY, 0.3, 0.05)
 
 
 # ---------------------------------------------------------------- frame
@@ -649,12 +531,6 @@ func _physics_process(delta: float) -> void:
 		mortar_barrage()
 	_mortar_tick(delta)
 	_shells_tick(delta)
-	_fx_tick(delta)
-	if _flash_t > 0.0:
-		_flash_t -= delta
-		_target_mat.emission_enabled = _flash_t > 0.0
-		_target_mat.emission = Color(1.0, 0.7, 0.4)
-		_target_mat.emission_energy_multiplier = 0.6
 
 
 func _process(delta: float) -> void:

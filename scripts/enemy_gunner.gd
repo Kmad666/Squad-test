@@ -27,8 +27,6 @@ var _fire_timer := 0.0
 var _burst_left := 0
 var _since_incoming := 99.0
 var _reaction := 0.0
-var _flash: MeshInstance3D
-var _flash_t := 0.0
 
 
 func _ready() -> void:
@@ -36,19 +34,6 @@ func _ready() -> void:
 	if Atmosphere.night:
 		spot_range = 35.0     # harder to spot you in the dark
 	_fire_timer = _rng.randf_range(1.0, 3.0)
-	_flash = MeshInstance3D.new()
-	var sm := SphereMesh.new()
-	sm.radius = 0.12 if weapon["kind"] == "bullet" else 0.3
-	sm.height = sm.radius * 2.0
-	_flash.mesh = sm
-	var m := StandardMaterial3D.new()
-	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	m.albedo_color = Color(1.0, 0.55, 0.25)
-	m.disable_fog = true
-	_flash.material_override = m
-	_flash.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	_flash.visible = false
-	add_child(_flash)
 
 
 func add_suppression(amount: float) -> void:
@@ -69,9 +54,6 @@ func _physics_process(delta: float) -> void:
 	_since_incoming += delta
 	if _since_incoming > 1.2:
 		suppression = maxf(0.0, suppression - 0.22 * delta)
-	_flash_t -= delta
-	if _flash_t <= 0.0:
-		_flash.visible = false
 	if not host.alive:
 		target = null
 		suppression = 0.0
@@ -189,16 +171,9 @@ func _shoot() -> void:
 			if weapon["kind"] == "bullet" and near < Weapons.CLOSE_RANGE:
 				dmg *= lerpf(Weapons.tune("close_dmg"), 1.0, near / Weapons.CLOSE_RANGE)     # close quarters: hits tell
 			col.take_damage(dmg, from)
-			main.spawn_impact(end, hit["normal"], false, Color(0.6, 0.05, 0.03))
-		else:
-			main.spawn_impact(end, hit["normal"], false)
 	main.suppress_squad(from, end, weapon["suppress"])
 	main.spawn_tracer(from, end, true)
 	shots += 1
-	if host and host.has_method("on_fired"):
-		host.on_fired()
-	_flash.visible = true
-	_flash_t = 0.05
 
 
 func _fire_shell() -> void:
@@ -217,6 +192,3 @@ func _fire_shell() -> void:
 	p.setup(main, weapon, from, to, _rng)
 	main.add_child(p)
 	shots += 1
-	_flash.visible = true
-	_flash_t = 0.08
-	main.on_enemy_cannon(from)

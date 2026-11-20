@@ -30,14 +30,8 @@ var hp := MAX_HP
 
 var _hull_mat: StandardMaterial3D
 var _wreck_mat: StandardMaterial3D
-var _hit_mat: StandardMaterial3D
 var _parts: Array = []
 var _label: Label3D
-var _fire: CPUParticles3D
-var _smoke: CPUParticles3D
-var _fire_light: OmniLight3D
-var _flash_timer := 0.0
-var _t := 0.0
 
 
 func _ready() -> void:
@@ -57,9 +51,6 @@ func _ready() -> void:
 	_wreck_mat = StandardMaterial3D.new()
 	_wreck_mat.albedo_color = Color(0.05, 0.045, 0.04)
 	_wreck_mat.roughness = 0.6
-	_hit_mat = StandardMaterial3D.new()
-	_hit_mat.albedo_color = Color(1.0, 0.45, 0.2)
-	_hit_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	var tire := StandardMaterial3D.new()
 	tire.albedo_color = Color(0.04, 0.04, 0.04)
 	tire.roughness = 0.35
@@ -126,15 +117,6 @@ func _ready() -> void:
 	add_child(_label)
 	_update_label()
 
-	_fire = _make_emitter(Color(1.4, 0.55, 0.15), 40, 0.7, 0.45, Vector3(0, 3.5, 0))
-	_smoke = _make_emitter(Color(0.08, 0.08, 0.08, 0.6), 30, 2.4, 0.9, Vector3(0, 1.6, 0))
-	_fire_light = OmniLight3D.new()
-	_fire_light.light_color = Color(1.0, 0.5, 0.2)
-	_fire_light.omni_range = 12.0
-	_fire_light.position = Vector3(0, 2.6, 0)
-	_fire_light.visible = false
-	add_child(_fire_light)
-
 
 func _add_box(size: Vector3, pos: Vector3, tilt := 0.0, parent: Node3D = null) -> void:
 	var mi := MeshInstance3D.new()
@@ -146,36 +128,6 @@ func _add_box(size: Vector3, pos: Vector3, tilt := 0.0, parent: Node3D = null) -
 	mi.rotation.x = tilt
 	(parent if parent else self).add_child(mi)
 	_parts.append(mi)
-
-
-func _make_emitter(color: Color, amount: int, life: float, size: float, gravity: Vector3) -> CPUParticles3D:
-	var p := CPUParticles3D.new()
-	p.emitting = false
-	p.amount = amount
-	p.lifetime = life
-	p.local_coords = false
-	var q := QuadMesh.new()
-	q.size = Vector2(size, size)
-	var m := StandardMaterial3D.new()
-	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	m.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
-	m.vertex_color_use_as_albedo = true
-	q.material = m
-	p.mesh = q
-	p.color = color
-	p.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
-	p.emission_box_extents = Vector3(1.0, 0.3, 2.0)
-	p.position = Vector3(0, 2.0, 0)
-	p.direction = Vector3.UP
-	p.spread = 15.0
-	p.initial_velocity_min = 0.8
-	p.initial_velocity_max = 2.0
-	p.gravity = gravity
-	p.scale_amount_min = 0.8
-	p.scale_amount_max = 2.2
-	add_child(p)
-	return p
 
 
 func suppression_level() -> float:
@@ -237,18 +189,10 @@ func take_damage(_soft: float, armor_dmg: float) -> bool:
 	if armor_dmg <= 0.0:
 		return false
 	hp -= armor_dmg
-	_flash(true)
 	if hp <= 0.0:
 		_destroy()
 	_update_label()
 	return true
-
-
-func _flash(on: bool) -> void:
-	for p in _parts:
-		p.material_override = _hit_mat if on else (_hull_mat if alive else _wreck_mat)
-	if on:
-		_flash_timer = 0.07
 
 
 func _destroy() -> void:
@@ -256,9 +200,6 @@ func _destroy() -> void:
 	hp = 0.0
 	for p in _parts:
 		p.material_override = _wreck_mat
-	_fire.emitting = true
-	_smoke.emitting = true
-	_fire_light.visible = true
 	if main:
 		main.on_vehicle_destroyed(self)
 		main.on_enemy_killed(self)
@@ -271,17 +212,5 @@ func _rebuild() -> void:
 	hp = MAX_HP
 	for p in _parts:
 		p.material_override = _hull_mat
-	_fire.emitting = false
-	_smoke.emitting = false
-	_fire_light.visible = false
 	_update_label()
 
-
-func _process(delta: float) -> void:
-	_t += delta
-	if _flash_timer > 0.0:
-		_flash_timer -= delta
-		if _flash_timer <= 0.0:
-			_flash(false)
-	if _fire_light.visible:
-		_fire_light.light_energy = 2.2 + sin(_t * 23.0) * 0.6 + sin(_t * 7.0) * 0.4

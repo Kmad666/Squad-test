@@ -4,7 +4,7 @@ extends SceneTree
 ##     --resolution 960x540 -s tests/tools/capture_game.gd -- <out_dir> [run|fight]
 ## run:   TEST FIELD, the squad ordered forward, frames mid-move.
 ## fight: TEST FIELD, the squad advances on ALPHA at fire-at-will, frames of
-##        the firefight (shouldered rifles, recoil).
+##        the firefight (shouldered rifles).
 ## cover: TEST FIELD, the squad takes cover, then W is held: frames of the
 ##        cover-to-cover move (men hopping low, others prone and crawling).
 ## breach: GORDIAN (MAP=5), the squad stacks on the EAST HOUSE's front door,

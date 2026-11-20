@@ -48,19 +48,13 @@ var _turret: Node3D
 var _gun: Node3D               # elevation pivot
 var _barrel: Node3D
 var _muzzle: Node3D
-var _flash: MeshInstance3D
 var _wheels: Array = []
 var _steer: Array = []          # pivots of the front four wheels
 var _parts: Array = []          # every hull mesh (turned to the wreck colour)
 var _wreck_mat: StandardMaterial3D
-var _fire: CPUParticles3D
-var _smoke: CPUParticles3D
-var _fire_light: OmniLight3D
 var _fire_t := 0.0
 var _burst_left := 0
 var _retarget := 0.0
-var _flash_t := 0.0
-var _recoil := 0.0
 var _aim_point := Vector3.INF
 var _last_speed := 0.0
 var _t := 0.0
@@ -229,19 +223,6 @@ func _build_model() -> void:
 	_muzzle = Node3D.new()
 	_muzzle.position = Vector3(0, 0, 2.75)
 	_barrel.add_child(_muzzle)
-	_flash = MeshInstance3D.new()
-	var fm := SphereMesh.new()
-	fm.radius = 0.22
-	fm.height = 0.44
-	_flash.mesh = fm
-	var fmat := StandardMaterial3D.new()
-	fmat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	fmat.albedo_color = Color(1.0, 0.7, 0.3)
-	fmat.disable_fog = true
-	_flash.material_override = fmat
-	_flash.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	_flash.visible = false
-	_muzzle.add_child(_flash)
 	# Antenna whips at the back.
 	for s in [-1.0, 1.0]:
 		var a := MeshInstance3D.new()
@@ -256,14 +237,6 @@ func _build_model() -> void:
 		a.rotation.x = -0.12
 		v.add_child(a)
 
-	_fire = _emitter(Color(1.4, 0.55, 0.15), 40, 0.7, 0.45, Vector3(0, 3.5, 0))
-	_smoke = _emitter(Color(0.08, 0.08, 0.08, 0.6), 30, 2.4, 0.9, Vector3(0, 1.6, 0))
-	_fire_light = OmniLight3D.new()
-	_fire_light.light_color = Color(1.0, 0.5, 0.2)
-	_fire_light.omni_range = 12.0
-	_fire_light.position = Vector3(0, 2.6, 0)
-	_fire_light.visible = false
-	add_child(_fire_light)
 
 
 func _box(parent: Node3D, size: Vector3, pos: Vector3, mat: Material, rot := Vector3.ZERO) -> MeshInstance3D:
@@ -292,36 +265,6 @@ func _cyl(parent: Node3D, r: float, length: float, pos: Vector3, mat: Material) 
 	mi.rotation.x = PI / 2.0
 	parent.add_child(mi)
 	_parts.append(mi)
-
-
-func _emitter(color: Color, amount: int, life: float, size: float, gravity: Vector3) -> CPUParticles3D:
-	var p := CPUParticles3D.new()
-	p.emitting = false
-	p.amount = amount
-	p.lifetime = life
-	p.local_coords = false
-	var q := QuadMesh.new()
-	q.size = Vector2(size, size)
-	var m := StandardMaterial3D.new()
-	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	m.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
-	m.vertex_color_use_as_albedo = true
-	q.material = m
-	p.mesh = q
-	p.color = color
-	p.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
-	p.emission_box_extents = Vector3(1.0, 0.3, 2.2)
-	p.position = Vector3(0, 2.2, 0)
-	p.direction = Vector3.UP
-	p.spread = 15.0
-	p.initial_velocity_min = 0.8
-	p.initial_velocity_max = 2.0
-	p.gravity = gravity
-	p.scale_amount_min = 0.8
-	p.scale_amount_max = 2.2
-	add_child(p)
-	return p
 
 
 # ---------------------------------------------------------------- queries
@@ -360,13 +303,7 @@ func local_rect(pad: float) -> Rect2:
 
 func _physics_process(delta: float) -> void:
 	_t += delta
-	if _flash_t > 0.0:
-		_flash_t -= delta
-		if _flash_t <= 0.0:
-			_flash.visible = false
 	if not alive:
-		if _fire_light.visible:
-			_fire_light.light_energy = 2.2 + sin(_t * 23.0) * 0.6 + sin(_t * 7.0) * 0.4
 		return
 	_drive(delta)
 	_fight(delta)
@@ -440,8 +377,6 @@ func _drive(delta: float) -> void:
 # ---------------------------------------------------------------- gunnery
 
 func _fight(delta: float) -> void:
-	_recoil = move_toward(_recoil, 0.0, delta * 1.5)
-	_barrel.position.z = -_recoil
 	var mode: int = squad.lav_fire_mode() if squad else 0
 	_retarget -= delta
 	if _retarget <= 0.0:
@@ -555,21 +490,15 @@ func _shoot(look: Vector3) -> void:
 		if c.has_method("take_damage") and c.take_damage(w["soft"], w["armor"]):
 			hits += 1
 			main.hits += 1
-		_burst_at(end, c as Node3D, hit["normal"])
+		_burst_at(end, c as Node3D)
 	main.suppress_enemies(from, end, w["suppress"])
 	main.spawn_tracer(from, end)
-	main.on_shot(from)
 	shots += 1
-	_flash.visible = true
-	_flash_t = 0.06
-	_recoil = 0.18
 
 
 ## 25mm HE: a small burst that catches anyone right next to the strike.
-func _burst_at(p: Vector3, direct: Node3D, n: Vector3) -> void:
+func _burst_at(p: Vector3, direct: Node3D) -> void:
 	var w: Dictionary = Weapons.LAV_25MM
-	main.spawn_impact(p, n, true)
-	main.spawn_impact(p + Vector3(0, 0.2, 0), Vector3.UP, true, Color(1.2, 0.6, 0.2))
 	for t in main.targets:
 		if t == direct or not t.alive or t.kind == "vehicle":
 			continue
@@ -580,7 +509,7 @@ func _burst_at(p: Vector3, direct: Node3D, n: Vector3) -> void:
 
 # ---------------------------------------------------------------- damage
 
-## Enemy cannon shells (squad soldiers' and enemy small arms only spark off it).
+## Enemy cannon shells (squad soldiers' and enemy small arms bounce off it).
 func armor_hit(dmg: float) -> void:
 	if not alive or dmg <= 0.0:
 		return
@@ -597,8 +526,5 @@ func _destroy() -> void:
 	speed = 0.0
 	for p in _parts:
 		p.material_override = _wreck_mat
-	_fire.emitting = true
-	_smoke.emitting = true
-	_fire_light.visible = true
 	if main:
 		main.on_lav_destroyed(self)

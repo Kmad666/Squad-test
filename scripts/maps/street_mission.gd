@@ -45,7 +45,7 @@ Six men. The {h}anti-armor team{/h} waits in the first side passage between the 
 
 {h}WATCH OUT FOR{/h}
   - The alley ambush covers the whole length of the alley. Clear it before you rely on that route.
-  - Night vision flares white near lamps and muzzle flashes."""
+  - Night vision flares white near lamps."""
 const COMPLETE := "COMPOUND SECURED  -  MISSION COMPLETE  -  R TO REPLAY"
 
 const BOXES := [

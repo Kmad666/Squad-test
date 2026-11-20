@@ -1,7 +1,8 @@
 extends Node3D
-## Rocket (straight, fast, smoke trail), enemy cannon shell (straight, fast)
+## Rocket (straight, fast), enemy cannon shell (straight, fast)
 ## or grenade (lobbed arc, can drop over cover). Hostile projectiles hit
 ## soldiers; friendly ones pass through them. Explodes on contact with anything, or when its fuse runs out.
+## It draws nothing of its own: in flight it is a tracer streak (main.tracers).
 
 const GRENADE_GRAVITY := -12.0
 
@@ -14,8 +15,6 @@ var hostile := false
 var _gravity := 0.0
 var _life := 5.0
 var _done := false
-var _body: Node3D
-var _trail: CPUParticles3D
 var _t := 0.0
 var _wobble := Vector2.ZERO
 
@@ -34,73 +33,6 @@ func setup(m: Node3D, w: Dictionary, from: Vector3, to: Vector3, rng: RandomNumb
 		_gravity = GRENADE_GRAVITY
 		vel = (to - from - 0.5 * Vector3(0, _gravity, 0) * flight * flight) / flight
 		_life = flight + 1.5
-
-
-func _ready() -> void:
-	var rocket: bool = weapon["kind"] == "rocket"
-	var is_shell: bool = weapon["kind"] == "shell"
-	_body = Node3D.new()
-	add_child(_body)
-
-	var shell := MeshInstance3D.new()
-	var dark := StandardMaterial3D.new()
-	dark.albedo_color = Color(0.15, 0.17, 0.12)
-	dark.roughness = 0.3
-	if rocket:
-		var cm := CylinderMesh.new()
-		cm.top_radius = 0.06
-		cm.bottom_radius = 0.06
-		cm.height = 0.55
-		shell.mesh = cm
-		shell.rotation.x = PI / 2.0
-	else:
-		var sm := SphereMesh.new()
-		sm.radius = 0.06
-		sm.height = 0.12
-		shell.mesh = sm
-	shell.material_override = dark
-	_body.add_child(shell)
-
-	# Hot glowing exhaust / fuse that blooms.
-	var glow := MeshInstance3D.new()
-	var gm := SphereMesh.new()
-	gm.radius = 0.09 if rocket else 0.04
-	gm.height = gm.radius * 2.0
-	glow.mesh = gm
-	var gmat := StandardMaterial3D.new()
-	gmat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	gmat.albedo_color = Color(1.0, 0.75, 0.35) if rocket else Color(1.0, 0.35, 0.15)
-	if is_shell:
-		gmat.albedo_color = Color(1.6, 0.4, 0.2)   # hot enemy tracer round
-	gmat.disable_fog = true
-	glow.material_override = gmat
-	glow.position = Vector3(0, 0, 0.3) if rocket else Vector3.ZERO
-	_body.add_child(glow)
-
-	_trail = CPUParticles3D.new()
-	_trail.amount = 70 if rocket else (12 if is_shell else 24)
-	_trail.lifetime = 1.2 if rocket else 0.5
-	_trail.local_coords = false
-	var q := QuadMesh.new()
-	q.size = Vector2(0.35, 0.35) if rocket else Vector2(0.12, 0.12)
-	var tm := StandardMaterial3D.new()
-	tm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	tm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	tm.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
-	tm.vertex_color_use_as_albedo = true
-	q.material = tm
-	_trail.mesh = q
-	_trail.color = Color(0.55, 0.55, 0.55, 0.35) if rocket else Color(0.6, 0.6, 0.6, 0.25)
-	_trail.direction = Vector3.UP
-	_trail.spread = 180.0
-	_trail.initial_velocity_min = 0.1
-	_trail.initial_velocity_max = 0.5
-	_trail.gravity = Vector3(0, 0.4, 0)
-	_trail.scale_amount_min = 0.6
-	_trail.scale_amount_max = 1.8
-	_trail.position = Vector3(0, 0, 0.35) if rocket else Vector3.ZERO
-	_body.add_child(_trail)
-	_trail.emitting = true
 
 
 func _physics_process(delta: float) -> void:
@@ -125,8 +57,7 @@ func _physics_process(delta: float) -> void:
 		return
 
 	global_position = next
-	if step.length() > 0.001:
-		_body.look_at(next + step, Vector3.UP if absf(step.normalized().y) < 0.98 else Vector3.RIGHT)
+	main.spawn_tracer(prev - step * 2.0, next, hostile, 0.09 if weapon["kind"] == "rocket" else 0.06, 0.05)
 	_life -= delta
 	if _life <= 0.0 or next.y < -0.5:
 		_explode(next)
@@ -136,8 +67,4 @@ func _explode(at: Vector3) -> void:
 	_done = true
 	global_position = at
 	main.spawn_explosion(at, weapon, direct_target, hostile)
-	for c in _body.get_children():
-		if c != _trail:
-			c.visible = false
-	_trail.emitting = false
-	get_tree().create_timer(1.5).timeout.connect(queue_free)
+	queue_free()

@@ -92,11 +92,6 @@ func _run() -> void:
 					var want: Vector3 = (t - m.muzzle.global_position).normalized()
 					_check(_muzzle_dir(m).angle_to(want) < 0.15, "%s: muzzle off target by %.2f rad" % [tag, _muzzle_dir(m).angle_to(want)])
 					_hands_on(m, tag)
-			for i in 6:
-				m.recoil()
-				m.set_aim_point(Vector3(0, 1.4, -15))
-				m.animate(Vector3.ZERO, 1.0 / 60.0)
-			_hands_on(m, label + " firing")
 			m.set_aim_point(Vector3.INF)
 			_settle(m)
 			_check(m._aim_amt == 0.0, label + ": rifle never lowered")

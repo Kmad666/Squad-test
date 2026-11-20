@@ -42,7 +42,6 @@ var SHOTS := [
 	["aim_front", "rifleman", "enemy", false, false, "aim", 0.0, Vector3(0.15, 0, -1), 1.5, 2.6, 1.3],
 	["aim_back", "grenadier", "friendly", true, false, "aim", 0.0, Vector3(0.5, 0, 1), 1.7, 2.6, 1.3],
 	["aim_crouch", "rifleman", "friendly", false, true, "aim", 0.0, Vector3(-0.8, 0, -0.5), 1.2, 2.4, 0.9],
-	["aim_recoil", "rifleman", "friendly", false, false, "aim_recoil", 0.0, Vector3(1, 0, -0.2), 1.4, 2.6, 1.2],
 	["aim_left", "anti_armor", "friendly", false, false, "aim_left", 0.0, Vector3(-0.5, 0, -1), 1.5, 2.6, 1.3],
 	["aim_walk", "rifleman", "friendly", false, false, "aim_walk", 0.0, Vector3(1, 0, -0.4), 1.3, 2.6, 1.1],
 	["dead_down", "rifleman", "friendly", false, false, "dead_down", 0.0, Vector3(1, 0, 0.3), 1.0, 3.0, 0.1],
@@ -113,10 +112,6 @@ func _run(out: String) -> void:
 			for i in 60:
 				m.set_aim_point(tgt)
 				m.animate_local(vel, 1.0 / 60.0)
-			if s[5] == "aim_recoil":
-				m._recoil = 1.0
-				m._apply_pose()
-				m._solve_arms()
 		elif s[5].begins_with("dead"):
 			m.lay_down(s[5] == "dead_up")
 			m.set_tint("dead")

@@ -1,13 +1,11 @@
 extends CanvasLayer
 ## Full-screen post effect drawn over the 3D view (under the HUD).
 ## Always: vignette + analogue film grain.
-## While firing (heat 0..1): radial zoom blur from the screen centre,
-## chromatic split, a warm muzzle-flash wash and a tighter vignette.
 ## Night vision (N): green phosphor, amplified darks, heavy grain, flicker,
 ## scan lines and a round eyepiece edge.
 ## Thermal (I), inside the reticle only: white-hot. Soldiers' shaders mark
-## body heat in a yellow no-blue colour; that (and lamps, flashes, fire)
-## shows white, everything else cold grey.
+## body heat in a yellow no-blue colour; that (and lamps) shows white,
+## everything else cold grey.
 
 var _rect: ColorRect
 var _mat: ShaderMaterial
@@ -22,11 +20,7 @@ func _ready() -> void:
 	shader.code = """
 shader_type canvas_item;
 uniform sampler2D screen_tex : hint_screen_texture, filter_linear;   // (no mipmaps: building them every frame is costly)
-uniform float heat = 0.0;
-uniform float flash = 0.0;
-uniform float danger = 0.0;   // squad suppression: drains colour, closes in
-uniform float hurt = 0.0;     // red edge flash when a soldier is hit
-uniform bool cheap = false;   // LOW graphics: skip the firing blur and the grain
+uniform bool cheap = false;   // LOW graphics: skip the grain
 uniform bool retro = false;   // RETRO graphics: chunky pixels, 15-bit colour, ordered dither
 uniform bool nvg = false;     // night vision goggles
 uniform bool ir = false;      // thermal sight inside ir_rect
@@ -54,25 +48,8 @@ void fragment() {
 		cell = floor(uv * px / 3.0);
 		uv = (cell * 3.0 + 1.5) / px;
 	}
-	vec2 c = uv - 0.5;
-	float d = length(c);
-	vec3 col;
-	if (heat > 0.02 && !cheap) {
-		float amt = heat * 0.045;
-		float split = heat * 0.006;
-		vec3 acc = vec3(0.0);
-		// Two taps per channel (was six): the same streaky zoom at a third of
-		// the cost; on a laptop GPU in a browser the 18-read version lagged.
-		for (int i = 0; i < 2; i++) {
-			float s = 1.0 - amt * float(i);
-			acc.r += texture(screen_tex, 0.5 + c * (s + split)).r;
-			acc.g += texture(screen_tex, 0.5 + c * s).g;
-			acc.b += texture(screen_tex, 0.5 + c * (s - split)).b;
-		}
-		col = acc / 2.0;
-	} else {
-		col = texture(screen_tex, uv).rgb;
-	}
+	float d = length(uv - 0.5);
+	vec3 col = texture(screen_tex, uv).rgb;
 	vec3 raw = col;
 	if (nvg) {
 		float l = dot(col, vec3(0.3, 0.59, 0.11));
@@ -94,11 +71,7 @@ void fragment() {
 		col = mix(vec3(0.03, 0.035, 0.05), vec3(1.0, 0.98, 0.93), t);
 		col += (hash(uv * 733.0 + TIME) - 0.5) * 0.05;
 	}
-	col += vec3(1.0, 0.72, 0.4) * flash * 0.14;
-	float grey = dot(col, vec3(0.3, 0.59, 0.11));
-	col = mix(col, vec3(grey), danger * 0.55);
-	col += vec3(0.7, 0.02, 0.0) * hurt * smoothstep(0.3, 0.75, d);
-	float vig = smoothstep(0.9, 0.22, d + heat * 0.14 + danger * 0.18);
+	float vig = smoothstep(0.9, 0.22, d);
 	col *= mix(0.45, 1.0, vig);
 	if (retro) {
 		// 5 bits per channel with ordered dithering, like the old consoles
@@ -128,10 +101,3 @@ func set_vision(night_vision: bool, thermal: bool, rect_uv: Vector4) -> void:
 	_mat.set_shader_parameter("nvg", night_vision)
 	_mat.set_shader_parameter("ir", thermal)
 	_mat.set_shader_parameter("ir_rect", rect_uv)
-
-
-func set_fx(heat: float, flash: float, danger := 0.0, hurt := 0.0) -> void:
-	_mat.set_shader_parameter("heat", heat)
-	_mat.set_shader_parameter("flash", flash)
-	_mat.set_shader_parameter("danger", danger)
-	_mat.set_shader_parameter("hurt", hurt)

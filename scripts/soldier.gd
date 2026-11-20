@@ -82,7 +82,6 @@ var suppression := 0.0
 
 var _agent: NavigationAgent3D
 var _upper: Node3D
-var _flash: MeshInstance3D
 var _launch_tip: Node3D
 var _rng := RandomNumberGenerator.new()
 var _speed_mul := 1.0
@@ -98,10 +97,8 @@ var _burst_idx := 0
 var _peeking := false
 var _peek_timer := 0.0
 var _peek_age := 0.0
-var _flash_timer := 0.0
 var _cover_timer := 0.0
 var _since_incoming := 99.0
-var _hurt_t := 0.0
 var _cap: CapsuleShape3D
 var _col: CollisionShape3D
 var _model: Node3D
@@ -184,15 +181,6 @@ func _build_model() -> void:
 	_model.build(role, "friendly", index)
 	_upper = _model.upper
 	_launch_tip = _model.launch_tip
-	var fm := SphereMesh.new()
-	fm.radius = 0.08
-	fm.height = 0.16
-	_flash = MeshInstance3D.new()
-	_flash.mesh = fm
-	_flash.material_override = _mat("flash", Color(1.0, 0.9, 0.4), true)
-	_flash.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	_flash.visible = false
-	_model.muzzle.add_child(_flash)
 	# Weapon light: a white spot along the barrel, from the front of the
 	# handguard. Shadows only on the desktop renderer at HIGH; range and
 	# cone kept tight.
@@ -338,9 +326,6 @@ func take_damage(dmg: float, _from: Vector3) -> bool:
 	hp -= dmg
 	_model.wounded = hp < MAX_HP * 0.5     # limps
 	add_suppression(0.35)
-	_hurt_t = 0.12
-	_model.set_tint("hurt")
-	main.on_soldier_hit(self)
 	if hp <= 0.0:
 		_die()
 	return true
@@ -407,7 +392,6 @@ func _die() -> void:
 	_set_crouch(false)
 	_prone = false
 	collision_layer = 0
-	_flash.visible = false
 	update_light()
 	_model.lay_down(false)
 	_model.set_tint("dead")
@@ -491,10 +475,6 @@ func _physics_process(delta: float) -> void:
 	_since_incoming += delta
 	if _since_incoming > 1.5:
 		suppression = maxf(0.0, suppression - 0.2 * delta)
-	if _hurt_t > 0.0:
-		_hurt_t -= delta
-		if _hurt_t <= 0.0:
-			_model.set_tint("normal")
 	for i in range(_pending.size() - 1, -1, -1):
 		_pending[i][0] -= delta
 		if _pending[i][0] <= 0.0:
@@ -776,9 +756,6 @@ func _choose_aim() -> void:
 
 
 func _update_combat(delta: float) -> void:
-	_flash_timer -= delta
-	if _flash_timer <= 0.0:
-		_flash.visible = false
 	secondary_cd = maxf(0.0, secondary_cd - delta)
 
 	if target and not target.alive:
@@ -930,19 +907,12 @@ func _shoot() -> void:
 	if not hit.is_empty():
 		end = hit["position"]
 		var c: Object = hit["collider"]
-		var spark := false
 		if c.has_method("take_damage"):
-			spark = true
 			if c.take_damage(primary["soft"] * Weapons.our_dmg, primary["armor"] * Weapons.our_dmg):
 				main.hits += 1   # only hits that hurt (ricochets off armor don't count)
-		main.spawn_impact(end, hit["normal"], spark)
 	main.suppress_enemies(from, end, 0.08 * (Weapons.tune("pin_move") if _moving and pace != 0 and state != State.IN_COVER else 1.0))
 	shots += 1
-	main.spawn_tracer(_flash.global_position, end)
-	main.on_shot(_flash.global_position)
-	_flash.visible = true
-	_flash_timer = 0.05
-	_model.recoil()
+	main.spawn_tracer(_model.muzzle.global_position, end)
 
 
 ## Throw / fire one special at a target (or a ground point). The hit roll
@@ -957,7 +927,7 @@ func _launch_special(t: Node3D, point: Vector3) -> void:
 	if thrown:
 		from = _upper.global_transform * Vector3(0.25, 1.75, -0.25)   # throwing hand, over the shoulder
 	else:
-		from = _launch_tip.global_position if _launch_tip else _flash.global_position
+		from = _launch_tip.global_position if _launch_tip else _model.muzzle.global_position
 	var to: Vector3 = point
 	var lobbed: bool = w["kind"] != "rocket"
 	if t and is_instance_valid(t) and t.alive:
@@ -983,5 +953,3 @@ func _launch_special(t: Node3D, point: Vector3) -> void:
 	special_ammo -= 1
 	secondary_cd = w["reload"]
 	specials_fired += 1
-	if not thrown:
-		main.on_launch(from, w)

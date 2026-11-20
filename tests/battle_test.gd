@@ -4,6 +4,7 @@ extends SceneTree
 ## each enemy area every 10 s.
 var main
 var frame := 0
+var max_tracers := 0
 var plan := [
 	[60, Vector3(-34, 0, 31), -1],      # link up with AT team, hold fire
 	[600, Vector3(-14, 0, 21), -1],     # midfield wall
@@ -44,8 +45,11 @@ func _physics_process(_d):
 			sq.forced_mode = 1 if p[2] == 1 else 0
 			sq.forced_specials = frame >= 2100
 			if frame == 5100: sq.select_special(3)   # rockets for CHARLIE
+	max_tracers = maxi(max_tracers, main.tracers.active())
 	if frame % 600 == 0: _report()
 	if frame == 7200:
 		print(main._notice)
+		print("tracers: up to %d at once" % max_tracers)
+		if max_tracers == 0: print("ERROR: a whole firefight and no tracer was drawn")
 		quit()
 	return false
